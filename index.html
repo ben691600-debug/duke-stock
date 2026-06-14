@@ -13,8 +13,13 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW error',e));
+  // Supprimer les anciens service workers pour forcer le rechargement du nouveau code
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    regs.forEach(function(r){ r.unregister(); });
+  });
+  // Enregistrer le nouveau service worker
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(e){console.warn('SW error',e);});
   });
 }
 let _installPrompt=null;
