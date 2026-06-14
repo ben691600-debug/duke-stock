@@ -3797,9 +3797,46 @@ $('operatorForm').onsubmit=e=>{
       existingCar.driver=username;
     }
   }
+  var _isNew=!editingOperatorUsername;
+  var _sharedUsername=username, _sharedPassword=password, _sharedPhone=phone, _sharedEmail=email;
   editingOperatorUsername=null;
   save();
   $('newUser').disabled=false;
+
+  // Si c'est un NOUVEL opérateur, afficher la section partage
+  if(_isNew){
+    var ss=document.getElementById('operatorShareSection');
+    if(ss){
+      ss.style.display='block';
+      var appUrl='https://ben691600-debug.github.io/duke-stock/';
+      var msg='Bonjour '+_sharedUsername+' !\n\nLien Duke Stock Manager :\n'+appUrl+'\n\nLogin : '+_sharedUsername+'\nMot de passe : '+_sharedPassword+'\n\nOuvre le lien et installe l\'app sur ton telephone.';
+      document.getElementById('operatorShareBtn').onclick=function(){
+        if(navigator.share){
+          navigator.share({title:'Duke Stock Manager',text:msg,url:appUrl}).catch(function(){});
+        } else {
+          alert('Partage non supporté. Envoie manuellement:\n'+appUrl);
+        }
+      };
+      document.getElementById('operatorShareSMS').onclick=function(){
+        var smsBody=encodeURIComponent(msg);
+        var smsNum=_sharedPhone?encodeURIComponent(_sharedPhone):'';
+        window.open('sms:'+smsNum+'?body='+smsBody);
+      };
+      document.getElementById('operatorShareEmail').onclick=function(){
+        var subj=encodeURIComponent('Acces Duke Stock Manager');
+        var body=encodeURIComponent(msg);
+        var mail=_sharedEmail?encodeURIComponent(_sharedEmail):'';
+        window.open('mailto:'+mail+'?subject='+subj+'&body='+body);
+      };
+      document.getElementById('operatorShareClose').onclick=function(){
+        ss.style.display='none';
+        $('operatorDialog').close();
+        renderAll();
+      };
+      return; // Ne pas fermer - l'utilisateur ferme via le bouton Fermer
+    }
+  }
+
   $('operatorDialog').close();
   renderAll();
 };
