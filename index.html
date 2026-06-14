@@ -2680,18 +2680,19 @@ async function secureLogin(){
   }
   const login=$('loginUser').value.trim();
   const password=$('loginPass').value;
-  const localUser=findLocalUser(login);
+  // Toujours vérifier les utilisateurs locaux en premier (admin/1234 etc.)
+  const found=(db.users||[]).find(x=>x.username===login&&x.password===password);
+  if(found){
+    afterSuccessfulAuth(found);
+    return;
+  }
+  // Si pas trouvé localement, essayer Firebase Auth avec email
   if(firebaseReady){
+    const localUser=findLocalUser(login);
     try{
       const email=(localUser&&localUser.email)?localUser.email:login;
       if(!email || !String(email).includes('@')) throw new Error('EMAIL_REQUIRED');
       const cred=await firebaseAuth.signInWithEmailAndPassword(email,password);
-      if(SECURITY.requireVerifiedEmail && cred.user && !cred.user.emailVerified){
-        try{await cred.user.sendEmailVerification()}catch(e){}
-        await firebaseAuth.signOut();
-        $('loginHelp').textContent=T('emailNotVerified');
-        return;
-      }
       if(!localUser){
         await firebaseAuth.signOut();
         $('loginHelp').textContent=T('firebaseNoRole');
@@ -2701,13 +2702,12 @@ async function secureLogin(){
       return;
     }catch(e){
       registerBadLogin();
-      $('loginHelp').textContent=(e&&e.message==='EMAIL_REQUIRED')?'Compte sans email. Ajoute un email à cet utilisateur.':T('badLogin');
+      $('loginHelp').textContent=T('badLogin');
       return;
     }
   }
-  const found=(db.users||[]).find(x=>x.username===login&&x.password===password);
-  if(!found){registerBadLogin();$('loginHelp').textContent=T('badLogin');return}
-  afterSuccessfulAuth(found);
+  registerBadLogin();
+  $('loginHelp').textContent=T('badLogin');
 }
 async function forgotPassword(){
   initFirebaseSecurity();
