@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Duke Stock Manager</title>
+<title>Duke Stock Manager v8</title>
+<meta name="app-version" content="v8">
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0A7CC2">
@@ -1959,7 +1960,7 @@ body.draggingMachine{
     <div class="headerTopRow">
       <button class="btn secondary" id="langBtn" title="Langue">🌐</button>
       <button class="btn secondary adminOnly" id="settingsBtn" title="Paramètres">⚙️</button>
-      <button class="btn danger logoutIconBtn" id="logoutBtn" title="Déconnexion">⏻</button>
+      <span id="appVersionBadge" style="font-size:10px;color:#aab4bf;margin-right:4px;font-weight:600">v8</span><button class="btn danger logoutIconBtn" id="logoutBtn" title="Déconnexion">⏻</button>
     </div>
     <div class="headerBottomRow">
       <button class="btn secondary adminOnly" id="usersBtn" data-i="operators">Opérateurs</button>
