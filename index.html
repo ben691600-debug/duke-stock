@@ -5827,6 +5827,13 @@ function faultMachineOpenForm(machineId=null){
 function faultMachineRender(){
   faultMachineEnsureDb();
 
+  // Dédupliquer par ID pour éviter les doublons (causés par Firebase)
+  var seen = {};
+  db.faultMachines = db.faultMachines.filter(function(m){
+    if(!m || !m.id || seen[m.id]) return false;
+    seen[m.id] = true; return true;
+  });
+
   const grid = $('faultMachineGrid');
   grid.innerHTML = '';
 
@@ -5847,7 +5854,7 @@ function faultMachineRender(){
     const faults = machine.faults || [];
 
     card.innerHTML = `
-      $<div style="position:relative">
+      <div style="position:relative">
         ${machine.image ? `<img class="faultMachineImage" src="${machine.image}">` : `<div class="faultMachineImage">🛠️</div>`}
         ${(typeof isAdmin==='function'&&(isAdmin()||isOperator()))?`<button type="button" data-fm="credentials" title="Acces / Codes" style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.92);border:none;font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🔐</button>`:``}
       </div>
@@ -9337,25 +9344,26 @@ function renderCredList(m){
         save(); renderCredList(m2);
       };
     } else {
-      // OPERATOR: read-only card
+      // OPERATOR: read-only card - uniquement les champs non vides
       card.style.cssText = 'background:white;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px';
-      card.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-          +'<span style="font-weight:900;font-size:14px;color:var(--blue)">🔐 '+esc(cred.label||'Acces '+(idx+1))+'</span>'
-          +(cred.validDate?'<span style="font-size:11px;color:#e65100;font-weight:700;background:#fff3e0;padding:2px 8px;border-radius:20px">'+esc(cred.validDate)+'</span>':'')
-        +'</div>'
-        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-          +'<div style="background:#f5f8fb;border-radius:10px;padding:8px 10px">'
-            +'<div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">UTILISATEUR</div>'
-            +'<div style="font-size:14px;font-weight:800">'+esc(cred.username||'-')+'</div>'
-          +'</div>'
-          +'<div style="background:#f0faf4;border-radius:10px;padding:8px 10px">'
-            +'<div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">CODE</div>'
-            +'<div style="font-size:14px;font-weight:800;font-family:monospace;letter-spacing:1px">'+esc(cred.password||'-')+'</div>'
-          +'</div>'
-        +'</div>';
+      var hasUser = !!(cred.username||'').trim();
+      var hasPass = !!(cred.password||'').trim();
+      var hasDate = !!(cred.validDate||'').trim();
+      var hasLabel = !!(cred.label||'').trim();
+      var cols = (hasUser && hasPass) ? '1fr 1fr' : '1fr';
+      var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(hasUser||hasPass?'6px':'0')+'">'
+        + '<span style="font-weight:900;font-size:14px;color:var(--blue)">\uD83D\uDD10 '+esc(hasLabel?cred.label:'Acces '+(idx+1))+'</span>'
+        + (hasDate ? '<span style="font-size:11px;color:#e65100;font-weight:700;background:#fff3e0;padding:2px 8px;border-radius:20px">'+esc(cred.validDate)+'</span>' : '')
+        + '</div>';
+      if(hasUser || hasPass){
+        html += '<div style="display:grid;grid-template-columns:'+cols+';gap:8px">';
+        if(hasUser) html += '<div style="background:#f5f8fb;border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">UTILISATEUR</div><div style="font-size:14px;font-weight:800">'+esc(cred.username)+'</div></div>';
+        if(hasPass) html += '<div style="background:#f0faf4;border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">CODE</div><div style="font-size:14px;font-weight:800;font-family:monospace;letter-spacing:1px">'+esc(cred.password)+'</div></div>';
+        html += '</div>';
+      }
+      card.innerHTML = html;
     }
-    list.appendChild(card);
+        list.appendChild(card);
   });
 }
 
