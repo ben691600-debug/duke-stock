@@ -2628,33 +2628,45 @@ function initFirebaseSecurity(){
 
 // ── Firebase Realtime Database Sync ──────────────────────────────
 let _rtdb=null, _rtdbSyncing=false;
+// Fusionne deux listes d'utilisateurs - les deux sources sont préservées
+function mergeUsers(localUsers, remoteUsers){
+  var result=(remoteUsers||[]).map(function(u){return Object.assign({},u);});
+  (localUsers||[]).forEach(function(lu){
+    var exists=result.some(function(ru){return ru.username===lu.username;});
+    if(!exists) result.push(Object.assign({},lu));
+  });
+  // Garantir qu'admin/1234 existe toujours
+  var hasAdmin=result.some(function(u){return u.username==='admin';});
+  if(!hasAdmin) result.unshift({username:'admin',password:'1234',role:'admin',main:true});
+  return result;
+}
 function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
     _rtdb=firebase.database();
-    // Pull remote data on startup (jamais les users - auth reste locale)
+    // Lecture initiale au démarrage
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
       if(!remote||!remote._ts) return;
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
       if((remote._ts||0)>(local._ts||0)){
-        const localUsers=db.users||[]; // Sauvegarde les users locaux
+        var merged=mergeUsers(db.users||[], remote.users||[]);
         Object.assign(db, remote);
-        db.users=localUsers; // Restaure toujours les users locaux
+        db.users=merged; // Fusion des utilisateurs locaux + Firebase
         localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: données synchronisées depuis Firebase');
+        console.log('Duke: sync Firebase - '+merged.length+' utilisateurs');
       }
     }).catch(e=>console.warn('RTDB pull error',e));
-    // Listen for live updates from other devices
+    // Écoute en temps réel les mises à jour des autres appareils
     _rtdb.ref('duke_main').on('value',function(snap){
       if(_rtdbSyncing) return;
       const remote=snap.val();
       if(!remote||!remote._ts) return;
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
       if((remote._ts||0)>(local._ts||0)){
-        const localUsers=db.users||[]; // Sauvegarde les users locaux
+        var merged=mergeUsers(db.users||[], remote.users||[]);
         Object.assign(db, remote);
-        db.users=localUsers; // Restaure toujours les users locaux
+        db.users=merged; // Fusion des utilisateurs
         localStorage.setItem(STORE, JSON.stringify(db));
       }
     });
@@ -2663,9 +2675,9 @@ function initRTDB(){
 function syncToRTDB(){
   if(!_rtdb) return;
   _rtdbSyncing=true;
-  // Sync toutes les données SAUF les users (mots de passe restent locaux)
+  // Sync TOUTES les données y compris les utilisateurs pour que les opérateurs
+  // puissent se connecter depuis leur téléphone
   var dataToSync=Object.assign({},db);
-  delete dataToSync.users;
   _rtdb.ref('duke_main').update(dataToSync).catch(e=>console.warn('RTDB write error',e)).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
 }
 // ─────────────────────────────────────────────────────────────────
