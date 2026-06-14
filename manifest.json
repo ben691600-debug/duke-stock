@@ -2,7 +2,7 @@
   "name": "Duke Stock Manager",
   "short_name": "Duke Stock",
   "description": "Gestion de stock Duke Medical Solutions",
-  "start_url": "/",
+  "start_url": "/duke-stock/",
   "display": "standalone",
   "background_color": "#EEF7FC",
   "theme_color": "#0A7CC2",

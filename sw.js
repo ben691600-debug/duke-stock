@@ -1,10 +1,10 @@
 // Duke Stock Manager - Service Worker
-const CACHE_NAME = 'duke-stock-v1';
+const CACHE_NAME = 'duke-stock-v2';
 const URLS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/logo.png'
+  '/duke-stock/',
+  '/duke-stock/index.html',
+  '/duke-stock/manifest.json',
+  '/duke-stock/logo.png'
 ];
 
 self.addEventListener('install', event => {
