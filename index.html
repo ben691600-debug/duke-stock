@@ -2627,25 +2627,29 @@ function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
     _rtdb=firebase.database();
-    // Pull remote data on startup
+    // Pull remote data on startup (jamais les users - auth reste locale)
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
       if(!remote||!remote._ts) return;
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
       if((remote._ts||0)>(local._ts||0)){
+        const localUsers=db.users||[]; // Sauvegarde les users locaux
         Object.assign(db, remote);
+        db.users=localUsers; // Restaure toujours les users locaux
         localStorage.setItem(STORE, JSON.stringify(db));
         console.log('Duke: données synchronisées depuis Firebase');
       }
     }).catch(e=>console.warn('RTDB pull error',e));
     // Listen for live updates from other devices
     _rtdb.ref('duke_main').on('value',function(snap){
-      if(_rtdbSyncing) return; // Ignore our own writes
+      if(_rtdbSyncing) return;
       const remote=snap.val();
       if(!remote||!remote._ts) return;
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
       if((remote._ts||0)>(local._ts||0)){
+        const localUsers=db.users||[]; // Sauvegarde les users locaux
         Object.assign(db, remote);
+        db.users=localUsers; // Restaure toujours les users locaux
         localStorage.setItem(STORE, JSON.stringify(db));
       }
     });
@@ -2654,7 +2658,10 @@ function initRTDB(){
 function syncToRTDB(){
   if(!_rtdb) return;
   _rtdbSyncing=true;
-  _rtdb.ref('duke_main').set(db).catch(e=>console.warn('RTDB write error',e)).finally(()=>{_rtdbSyncing=false;});
+  // Sync toutes les données SAUF les users (mots de passe restent locaux)
+  var dataToSync=Object.assign({},db);
+  delete dataToSync.users;
+  _rtdb.ref('duke_main').update(dataToSync).catch(e=>console.warn('RTDB write error',e)).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
 }
 // ─────────────────────────────────────────────────────────────────
 function loginLockInfo(){
@@ -2687,27 +2694,31 @@ function afterSuccessfulAuth(localUser){
   log('LOGIN',currentUser.username);
   afterLogin();
 }
-async function secureLogin(){
-  if(isLoginLocked()){
-    $('loginHelp').textContent=T('tooManyAttempts');
-    return;
+function secureLogin(){
+  // Reset lockout - interne, pas nécessaire pour cette app
+  localStorage.removeItem('duke_security_lock');
+  // Lire les users depuis localStorage directement (évite problèmes de sync Firebase)
+  var storedDb;
+  try{ storedDb=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(e){ storedDb={}; }
+  // Garantir qu'admin/1234 existe toujours
+  if(!storedDb.users||!storedDb.users.length){
+    storedDb.users=[{username:'admin',password:'1234',role:'admin',main:true}];
+    localStorage.setItem(STORE,JSON.stringify(storedDb));
   }
-  const login=$('loginUser').value.trim();
-  const password=$('loginPass').value;
-  if(!login||!password){
-    $('loginHelp').textContent=T('badLogin');
-    return;
-  }
-  // Login 100% local — admin/1234 ou tout utilisateur créé dans l'app
-  const found=(db.users||[]).find(function(x){
+  db.users=storedDb.users;
+
+  var login=($('loginUser').value||'').trim();
+  var password=$('loginPass').value||'';
+
+  var found=db.users.find(function(x){
     return x.username===login && x.password===password;
   });
   if(found){
     afterSuccessfulAuth(found);
     return;
   }
-  registerBadLogin();
-  $('loginHelp').textContent=T('badLogin');
+  var h=$('loginHelp');
+  if(h) h.textContent=T('badLogin');
 }
 async function forgotPassword(){
   initFirebaseSecurity();
