@@ -2193,6 +2193,17 @@ body.draggingMachine{
   <label><span data-i="plate">Numéro de plaque</span><input id="plate" required placeholder="123-45-678"></label>
   <label><span data-i="driver">Conducteur</span><select id="driver" required><option value="">— Choisir un opérateur —</option></select></label>
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
+  <!-- Section partage lien - apparaît après enregistrement -->
+  <div id="operatorShareSection" style="display:none;margin-top:14px;padding:14px;background:#e8f6ff;border-radius:16px;text-align:center">
+    <p style="margin:0 0 10px;color:#0A7CC2;font-weight:800;font-size:15px">✅ Opérateur créé avec succès !</p>
+    <p style="margin:0 0 12px;color:#4a6070;font-size:13px">Envoyer le lien d'accès à l'opérateur :</p>
+    <button type="button" id="operatorShareBtn" style="width:100%;min-height:48px;border-radius:16px;border:0;background:#0A7CC2;color:white;font-weight:900;font-size:15px;cursor:pointer;margin-bottom:8px">📲 Partager (WhatsApp / SMS / Email...)</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button type="button" id="operatorShareSMS" style="min-height:44px;border-radius:14px;border:0;background:#e5f6ee;color:#148B57;font-weight:800;font-size:13px;cursor:pointer">💬 SMS direct</button>
+      <button type="button" id="operatorShareEmail" style="min-height:44px;border-radius:14px;border:0;background:#fff4dc;color:#9a5b00;font-weight:800;font-size:13px;cursor:pointer">✉️ Email direct</button>
+    </div>
+    <button type="button" id="operatorShareClose" style="width:100%;min-height:44px;border-radius:14px;border:0;background:#e9eef4;color:#243041;font-weight:800;font-size:14px;cursor:pointer;margin-top:8px">Fermer</button>
+  </div>
 </form></dialog>
 
 <dialog class="modal" id="vehicleExpenseDialog"><form id="vehicleExpenseForm">
@@ -3718,6 +3729,7 @@ if($('operatorRole')){
 $('openUserForm').onclick=()=>{
   editingOperatorUsername=null;
   $('operatorForm').reset();
+  var ss=document.getElementById('operatorShareSection');if(ss)ss.style.display='none';
   $('operatorDialog').querySelector('h2').textContent=T('addOperator');
   $('newUser').disabled=false;
   $('newPass').required=true;
