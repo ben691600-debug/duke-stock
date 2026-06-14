@@ -1926,7 +1926,7 @@ body.draggingMachine{
     <div class="loginBox">
       <label><span data-i="username">Nom d’utilisateur</span><input id="loginUser" autocomplete="username" value=""></label>
       <label><span data-i="password">Mot de passe</span><input id="loginPass" type="password" autocomplete="current-password" value=""></label>
-      <button class="btn primary" id="loginBtn" data-i="login">Connexion</button>
+      <button class="btn primary" id="loginBtn" data-i="login" onclick="secureLogin()">Connexion</button>
       <button class="forgotBtn" type="button" id="forgotPasswordBtn" data-i="forgotPassword">Mot de passe oublié ?</button>
       <p class="smallNote" id="loginHelp"></p>
       <p class="securityStatus" id="securityStatus">Sécurité Firebase : à configurer</p>
@@ -2695,30 +2695,37 @@ function afterSuccessfulAuth(localUser){
   afterLogin();
 }
 function secureLogin(){
-  // Reset lockout - interne, pas nécessaire pour cette app
-  localStorage.removeItem('duke_security_lock');
-  // Lire les users depuis localStorage directement (évite problèmes de sync Firebase)
-  var storedDb;
-  try{ storedDb=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(e){ storedDb={}; }
-  // Garantir qu'admin/1234 existe toujours
-  if(!storedDb.users||!storedDb.users.length){
-    storedDb.users=[{username:'admin',password:'1234',role:'admin',main:true}];
+  try{
+    localStorage.removeItem('duke_security_lock');
+    var storedDb={};
+    try{ storedDb=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(e){}
+    if(!Array.isArray(storedDb.users)||!storedDb.users.length){
+      storedDb.users=[{username:'admin',password:'1234',role:'admin',main:true}];
+    }
+    var hasAdmin=storedDb.users.some(function(u){return u.username==='admin';});
+    if(!hasAdmin) storedDb.users.unshift({username:'admin',password:'1234',role:'admin',main:true});
     localStorage.setItem(STORE,JSON.stringify(storedDb));
-  }
-  db.users=storedDb.users;
+    db.users=storedDb.users;
 
-  var login=($('loginUser').value||'').trim();
-  var password=$('loginPass').value||'';
+    var loginEl=document.getElementById('loginUser');
+    var passEl=document.getElementById('loginPass');
+    var loginVal=loginEl?loginEl.value.trim():'';
+    var passwordVal=passEl?passEl.value:'';
 
-  var found=db.users.find(function(x){
-    return x.username===login && x.password===password;
-  });
-  if(found){
-    afterSuccessfulAuth(found);
-    return;
+    var found=null;
+    for(var i=0;i<db.users.length;i++){
+      if(String(db.users[i].username)===loginVal && String(db.users[i].password)===passwordVal){
+        found=db.users[i]; break;
+      }
+    }
+    if(found){ afterSuccessfulAuth(found); return; }
+
+    var h=document.getElementById('loginHelp');
+    if(h){ h.textContent='Identifiant ou mot de passe incorrect.'; h.style.color='#D33B4A'; h.style.fontWeight='800'; }
+  }catch(err){
+    var h=document.getElementById('loginHelp');
+    if(h){ h.textContent='Erreur JS: '+err.message; h.style.color='#D33B4A'; h.style.fontWeight='800'; }
   }
-  var h=$('loginHelp');
-  if(h) h.textContent=T('badLogin');
 }
 async function forgotPassword(){
   initFirebaseSecurity();
