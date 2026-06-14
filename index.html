@@ -9311,38 +9311,85 @@ function renderCredList(m){
     var card = document.createElement('div');
 
     if(isAdm){
-      // ADMIN: edit form
-      card.style.cssText = 'background:#f8fbff;border:1.5px solid var(--blue);border-radius:14px;padding:12px;margin-bottom:8px';
-      var labelId='cred_lbl_'+idx, userIdEl='cred_usr_'+idx, passId='cred_pwd_'+idx, dateId='cred_dt_'+idx;
-      card.innerHTML =
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-          +'<span style="font-size:16px">🔐</span>'
-          +'<input id="'+labelId+'" value="'+esc(cred.label||'')+'" placeholder="Intitule (ex: Interface web)" style="flex:1;padding:7px 10px;border:1.5px solid var(--blue);border-radius:10px;font-size:13px;font-weight:700">'
-          +'<button type="button" style="width:32px;height:32px;border-radius:50%;background:#ffebee;border:none;font-size:15px;cursor:pointer" data-del-cred="'+idx+'">x</button>'
-        +'</div>'
-        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'
-          +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Utilisateur</div>'
-            +'<input id="'+userIdEl+'" value="'+esc(cred.username||'')+'" placeholder="System_5" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box"></div>'
-          +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Code</div>'
-            +'<input id="'+passId+'" type="text" value="'+esc(cred.password||'')+'" placeholder="CH432CH" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box;font-family:monospace"></div>'
-        +'</div>'
-        +'<div style="margin-bottom:8px"><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Date / Validite</div>'
-          +'<input id="'+dateId+'" type="text" value="'+esc(cred.validDate||'')+'" placeholder="ex: 20/02/2018" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:12px;box-sizing:border-box;color:#6f7b87"></div>'
-        +'<button type="button" class="btn ok" data-save-cred="'+idx+'" style="width:100%;min-height:36px;border-radius:10px;font-size:12px;font-weight:800">Enregistrer</button>';
+      // ADMIN: vue affichage + bouton modifier/supprimer
+      // Détecter si c'est un nouveau credential vide (jamais sauvegardé)
+      var isNew = !(cred.label||'').trim() && !(cred.username||'').trim() && !(cred.password||'').trim() && !(cred.validDate||'').trim();
 
-      card.querySelector('[data-save-cred]').onclick = function(){
-        var m2=(db.faultMachines||[]).find(function(x){return x.id===_credMachineId;});
-        if(!m2) return;
-        m2.credentials[idx]={label:document.getElementById(labelId).value.trim(),username:document.getElementById(userIdEl).value.trim(),password:document.getElementById(passId).value.trim(),validDate:document.getElementById(dateId).value.trim()};
-        save(); renderCredList(m2);
-      };
-      card.querySelector('[data-del-cred]').onclick = function(){
-        if(!confirm('Supprimer ?')) return;
-        var m2=(db.faultMachines||[]).find(function(x){return x.id===_credMachineId;});
-        if(!m2) return;
-        m2.credentials=(m2.credentials||[]).filter(function(_,i){return i!==idx;});
-        save(); renderCredList(m2);
-      };
+      if(isNew){
+        // Mode édition : formulaire vide à remplir
+        card.style.cssText = 'background:#f8fbff;border:1.5px solid var(--blue);border-radius:14px;padding:12px;margin-bottom:8px';
+        var labelId='cred_lbl_'+idx, userIdEl='cred_usr_'+idx, passId='cred_pwd_'+idx, dateId='cred_dt_'+idx;
+        card.innerHTML =
+          '<div style="font-size:12px;color:#0A7CC2;font-weight:800;margin-bottom:8px">Nouveau code accès</div>'
+          +'<input id="'+labelId+'" value="" placeholder="Intitulé (ex: Interface web, Technicien)" style="width:100%;padding:8px 10px;border:1.5px solid var(--blue);border-radius:10px;font-size:13px;font-weight:700;box-sizing:border-box;margin-bottom:8px">'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+            +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Utilisateur</div>'
+              +'<input id="'+userIdEl+'" value="" placeholder="STEELCO" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box"></div>'
+            +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Code</div>'
+              +'<input id="'+passId+'" type="text" value="" placeholder="0000" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box;font-family:monospace"></div>'
+          +'</div>'
+          +'<div style="margin-bottom:8px"><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Date / Validité (optionnel)</div>'
+            +'<input id="'+dateId+'" type="text" value="" placeholder="ex: 20/02/2025" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:12px;box-sizing:border-box;color:#6f7b87"></div>'
+          +'<button type="button" data-save-cred="'+idx+'" style="width:100%;min-height:42px;border-radius:10px;background:#0A7CC2;color:white;border:none;font-size:13px;font-weight:900;cursor:pointer">Enregistrer</button>';
+
+        card.querySelector('[data-save-cred]').onclick = function(){
+          var m2=(db.faultMachines||[]).find(function(x){return x.id===_credMachineId;});
+          if(!m2) return;
+          m2.credentials[idx]={label:document.getElementById(labelId).value.trim(),username:document.getElementById(userIdEl).value.trim(),password:document.getElementById(passId).value.trim(),validDate:document.getElementById(dateId).value.trim()};
+          save(); renderCredList(m2);
+        };
+      } else {
+        // Mode affichage : champs remplis uniquement + boutons Modifier / Supprimer
+        card.style.cssText = 'background:white;border:1.5px solid var(--blue);border-radius:14px;padding:12px 14px;margin-bottom:8px';
+        var hasUser2 = !!(cred.username||'').trim();
+        var hasPass2 = !!(cred.password||'').trim();
+        var hasDate2 = !!(cred.validDate||'').trim();
+        var html2 = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(hasUser2||hasPass2?'8px':'4px')+'">'
+          + '<span style="font-weight:900;font-size:14px;color:var(--blue)">🔐 '+esc(cred.label||'Accès '+(idx+1))+'</span>'
+          + (hasDate2?'<span style="font-size:11px;color:#e65100;font-weight:700;background:#fff3e0;padding:2px 8px;border-radius:20px">'+esc(cred.validDate)+'</span>':'')
+          + '</div>';
+        if(hasUser2||hasPass2){
+          html2 += '<div style="display:grid;grid-template-columns:'+(hasUser2&&hasPass2?'1fr 1fr':'1fr')+';gap:8px;margin-bottom:10px">';
+          if(hasUser2) html2 += '<div style="background:#f5f8fb;border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">UTILISATEUR</div><div style="font-size:14px;font-weight:800">'+esc(cred.username)+'</div></div>';
+          if(hasPass2) html2 += '<div style="background:#f0faf4;border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:#9da3aa;font-weight:700;margin-bottom:2px">CODE</div><div style="font-size:14px;font-weight:800;font-family:monospace;letter-spacing:1px">'+esc(cred.password)+'</div></div>';
+          html2 += '</div>';
+        }
+        html2 += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+          + '<button type="button" data-edit-cred="'+idx+'" style="min-height:38px;border-radius:10px;background:#e8f0fe;color:#0A7CC2;border:none;font-size:13px;font-weight:800;cursor:pointer">✏️ Modifier</button>'
+          + '<button type="button" data-del-cred="'+idx+'" style="min-height:38px;border-radius:10px;background:#ffebee;color:#c62828;border:none;font-size:13px;font-weight:800;cursor:pointer">🗑️ Supprimer</button>'
+          + '</div>';
+        card.innerHTML = html2;
+
+        card.querySelector('[data-edit-cred]').onclick = function(){
+          // Passer en mode édition
+          var labelId2='cred_lbl_'+idx, userIdEl2='cred_usr_'+idx, passId2='cred_pwd_'+idx, dateId2='cred_dt_'+idx;
+          card.style.cssText = 'background:#f8fbff;border:1.5px solid var(--blue);border-radius:14px;padding:12px;margin-bottom:8px';
+          card.innerHTML =
+            '<input id="'+labelId2+'" value="'+esc(cred.label||'')+'" placeholder="Intitulé" style="width:100%;padding:8px 10px;border:1.5px solid var(--blue);border-radius:10px;font-size:13px;font-weight:700;box-sizing:border-box;margin-bottom:8px">'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+              +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Utilisateur</div>'
+                +'<input id="'+userIdEl2+'" value="'+esc(cred.username||'')+'" placeholder="STEELCO" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box"></div>'
+              +'<div><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Code</div>'
+                +'<input id="'+passId2+'" type="text" value="'+esc(cred.password||'')+'" placeholder="0000" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;box-sizing:border-box;font-family:monospace"></div>'
+            +'</div>'
+            +'<div style="margin-bottom:8px"><div style="font-size:11px;color:#9da3aa;font-weight:700;margin-bottom:2px">Date / Validité (optionnel)</div>'
+              +'<input id="'+dateId2+'" type="text" value="'+esc(cred.validDate||'')+'" placeholder="ex: 20/02/2025" style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:12px;box-sizing:border-box;color:#6f7b87"></div>'
+            +'<button type="button" data-save-cred2="'+idx+'" style="width:100%;min-height:42px;border-radius:10px;background:#0A7CC2;color:white;border:none;font-size:13px;font-weight:900;cursor:pointer">Enregistrer</button>';
+          card.querySelector('[data-save-cred2]').onclick = function(){
+            var m2=(db.faultMachines||[]).find(function(x){return x.id===_credMachineId;});
+            if(!m2) return;
+            m2.credentials[idx]={label:document.getElementById(labelId2).value.trim(),username:document.getElementById(userIdEl2).value.trim(),password:document.getElementById(passId2).value.trim(),validDate:document.getElementById(dateId2).value.trim()};
+            save(); renderCredList(m2);
+          };
+        };
+        card.querySelector('[data-del-cred]').onclick = function(){
+          if(!confirm('Supprimer ?')) return;
+          var m2=(db.faultMachines||[]).find(function(x){return x.id===_credMachineId;});
+          if(!m2) return;
+          m2.credentials=(m2.credentials||[]).filter(function(_,i){return i!==idx;});
+          save(); renderCredList(m2);
+        };
+      }
     } else {
       // OPERATOR: read-only card - uniquement les champs non vides
       card.style.cssText = 'background:white;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px';
