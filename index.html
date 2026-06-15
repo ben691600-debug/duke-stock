@@ -1960,11 +1960,12 @@ body.draggingMachine{
     <div class="headerTopRow">
       <button class="btn secondary" id="langBtn" title="Langue">🌐</button>
       <button class="btn secondary adminOnly" id="settingsBtn" title="Paramètres">⚙️</button>
-      <span id="appVersionBadge" style="font-size:10px;color:#aab4bf;margin-right:4px;font-weight:600">v8</span><button class="btn danger logoutIconBtn" id="logoutBtn" title="Déconnexion">⏻</button>
+      <button class="btn danger logoutIconBtn" id="logoutBtn" title="Déconnexion">⏻</button>
     </div>
     <div class="headerBottomRow">
       <button class="btn secondary adminOnly" id="usersBtn" data-i="operators">Opérateurs</button>
       <button class="btn secondary" id="historyBtn" data-i="history">Historique</button>
+      <span id="appVersionBadge" style="font-size:10px;color:#aab4bf;font-weight:700;align-self:center;padding:0 2px;pointer-events:none">v8</span>
       <button class="btn excelBtn" id="exportMainBtn" data-i="exportExcel">Excel</button>
     </div>
     <button class="btn secondary hidden" id="backBtn" style="display:none!important" title="Retour">↩</button>
@@ -1995,11 +1996,7 @@ body.draggingMachine{
           <h2 data-i="clientMachineManagement">Gestion clients / machines</h2>
           <p data-i="clientMachineManagementText">Module prêt. Nous ajouterons son contenu à l’étape suivante.</p>
         </button>
-        <button class="moduleCard" id="openSuppliersModule">
-          <div class="moduleIcon">🧰</div>
-          <h2 data-i="supplierPartsManagement">Gestion fournisseurs / pièces</h2>
-          <p data-i="supplierPartsManagementText">Fournisseurs, contacts et pièces de rechange.</p>
-        </button>
+        <!-- module fournisseurs supprimé -->
         <button class="moduleCard" id="openFaultMachineModule" type="button" onclick="faultMachineOpen(); return false;">
           <div class="moduleIcon">⚠️</div>
           <h2 data-i="faultMachineManagement">Gestion liste machines / pannes</h2>
@@ -2064,9 +2061,7 @@ body.draggingMachine{
 
     <section id="carsView" class="hidden">
       <div class="hero">
-        <div class="vehicleAddHeader adminOnly">
-          <button type="button" class="btn primary" id="addCar" data-i="addItem">+ Ajouter</button>
-        </div>
+
         <p class="muted hidden" id="hint"></p>
       </div>
 
@@ -2134,9 +2129,11 @@ body.draggingMachine{
     <div class="actions moduleActionButtons twoButtons">
       <button class="btn primary" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
-
     </div>
   </div>
+  <input class="search" id="clientSearch" type="search"
+    placeholder="🔍 Rechercher groupe, contact, numéro de machine..."
+    style="margin:8px 0 4px;width:100%;box-sizing:border-box">
   <button class="btn secondary floatingBackBtn hidden" id="clientUpBtn" title="Retour">&#8617;</button>
   <div class="clientPath" id="clientPath"></div>
   <div id="groupMoveHelp" class="groupMoveHelp hidden"></div>
@@ -2265,7 +2262,7 @@ body.draggingMachine{
   <label><span data-i="role">Rôle</span>
     <select id="operatorRole">
       <option value="operator" data-i="operator">Opérateur</option>
-      <option value="storekeeper">🏪 Magasinier</option>
+      
       <option value="admin" data-i="admin">Administrateur</option>
       <option value="client">Client</option>
     </select>
@@ -2709,6 +2706,7 @@ function afterSuccessfulAuth(localUser){
   resetBadLogin();
   currentUser={...localUser};
   localStorage.setItem('duke_session_started',String(Date.now()));
+  try{localStorage.setItem('duke_current_user',JSON.stringify(currentUser));}catch(e){}
   log('LOGIN',currentUser.username);
   afterLogin();
 }
@@ -2763,6 +2761,24 @@ async function forgotPassword(){
     alert('Impossible d’envoyer le mail de réinitialisation. Vérifie que le compte existe dans Firebase.');
   }
 }
+// Restauration automatique après rechargement accidentel (pull-to-refresh)
+(function restoreSession(){
+  try{
+    var saved=localStorage.getItem('duke_current_user');
+    var t0=Number(localStorage.getItem('duke_session_started')||0);
+    if(saved && t0 && (Date.now()-t0)<30*60*1000){
+      currentUser=JSON.parse(saved);
+      setTimeout(function(){
+        if(currentUser && document.getElementById('loginView') &&
+           !document.getElementById('loginView').classList.contains('hidden')){
+          openApp();
+        }
+      },250);
+    } else {
+      localStorage.removeItem('duke_current_user');
+    }
+  }catch(e){}
+})();
 function checkSessionTimeout(){
   if(!currentUser) return;
   const start=Number(localStorage.getItem('duke_session_started')||0);
@@ -3556,7 +3572,7 @@ if($('forgotPasswordBtn')) $('forgotPasswordBtn').onclick=forgotPassword;
 initFirebaseSecurity();
 document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;localStorage.setItem(LANG,lang);translate();openApp()});
 $('langBtn').onclick=()=>{$('appView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');};
-$('logoutBtn').onclick=async()=>{log('LOGOUT',currentUser.username);try{if(firebaseReady&&firebaseAuth)await firebaseAuth.signOut()}catch(e){} currentUser=null;selected=null;localStorage.removeItem('duke_session_started');$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('loginPass').value='';var _ub=document.getElementById('universalBackBtn');if(_ub){_ub.classList.remove('visible');var _av=document.getElementById('appView');if(_av)_av.classList.remove('appView-hasback');}};
+$('logoutBtn').onclick=async()=>{log('LOGOUT',currentUser.username);try{if(firebaseReady&&firebaseAuth)await firebaseAuth.signOut()}catch(e){} currentUser=null;selected=null;localStorage.removeItem('duke_session_started');localStorage.removeItem('duke_current_user');$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('loginPass').value='';var _ub=document.getElementById('universalBackBtn');if(_ub){_ub.classList.remove('visible');var _av=document.getElementById('appView');if(_av)_av.classList.remove('appView-hasback');}};
 function navClearHistory(){ _navHistory=[]; }
 function goBackFromLogo(){
   if(!$('stockView').classList.contains('hidden')){
@@ -3616,7 +3632,7 @@ if($('vehicleExpenseForm')) $('vehicleExpenseForm').onsubmit=async e=>{
   renderCars();
 };
 
-$('addCar').onclick=()=>{if(!isAdmin())return;editingCarId=null;populateDriverDropdown();$('carForm').reset();$('carDialog').querySelector('h2').textContent=T('addVehicle');$('carDialog').showModal()};
+if($('addCar')) $('addCar').onclick=()=>{if(!isAdmin())return;editingCarId=null;populateDriverDropdown();$('carForm').reset();$('carDialog').querySelector('h2').textContent=T('addVehicle');$('carDialog').showModal()};
 
 function openEditCar(carId){
   if(!isAdmin()) return;
@@ -3945,6 +3961,11 @@ if($('exportCarBtn')) $('exportCarBtn').onclick=exportSelectedVehicle;
 
 
 let clientPathIds=[];
+// Recherche en temps réel dans gestion clients/machines
+document.addEventListener('DOMContentLoaded', function(){
+  var cs=document.getElementById('clientSearch');
+  if(cs) cs.addEventListener('input', function(){ try{renderClientMachineModule();}catch(e){} });
+});
 let groupImage='', clientMachineImage='';
 let editingGroupId=null, editingMachineId=null, movingGroupId=null, longPressTimer=null, dragGroupId=null, touchDragActive=false, touchDragGhost=null, touchDragSourceId=null, suppressNextGroupClick=false, lastPointerX=0, lastPointerY=0, dragMachineId=null, touchMachineDragActive=false, touchMachineGhost=null, touchMachineSourceId=null, suppressNextMachineClick=false;
 
@@ -4324,7 +4345,8 @@ function renderClientMachineModule(){
   });
 
   $('clientGroupsGrid').innerHTML='';
-  const clientQuery='';
+  const clientSearch=document.getElementById('clientSearch');
+  const clientQuery=clientSearch ? clientSearch.value.toLowerCase().trim() : '';
   clientAllowedChildGroups(node,clientInheritedAccess).filter(g=>{
     const contact=g.contact||{}; const contactsText=normalizeGroupContacts(g).map(c=>[c.firstName,c.phone].join(' ')).join(' ');
     const txt=[g.name,contactsText,contact.firstName,contact.lastName,contact.phone,(g.machines||[]).map(m=>[m.model,m.serial].join(' ')).join(' ')].join(' ').toLowerCase();
@@ -5519,7 +5541,7 @@ renderAll = function(){oldRenderAllSuppliers();renderSuppliersModule();renderSup
 
 function openSupplier(id){selectedSupplierId=id;if($('partSearch')) $('partSearch').value='';$('addSupplierBtn').classList.add('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.remove('hidden');$('suppliersRoot').classList.add('hidden');$('supplierDetail').classList.remove('hidden');renderSupplierParts();}
 $('supplierUpBtn').onclick=()=>{if(!$('supplierDetail').classList.contains('hidden')){selectedSupplierId=null;$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');}else{show('moduleView');}};
-$('openSuppliersModule').onclick=()=>{if(!requireAdminAccess())return;selectedSupplierId=null;if($('supplierGlobalSearch')) $('supplierGlobalSearch').value='';$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');show('suppliersView');renderSuppliersModule();};
+if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{if(!requireAdminAccess())return;selectedSupplierId=null;if($('supplierGlobalSearch')) $('supplierGlobalSearch').value='';$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');show('suppliersView');renderSuppliersModule();};
 
 function readSupplierImage(input,callback,previewId){const file=input.files[0];if(!file){callback('');return;}const r=new FileReader();r.onload=()=>{callback(r.result);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${r.result})`;p.classList.remove('hidden');}};r.readAsDataURL(file);}
 $('addSupplierBtn').onclick=()=>{editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
@@ -6797,7 +6819,8 @@ translate();
 
 /* ─── Scrolling global ─── */
 html { scroll-behavior: smooth; }
-body { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+body { -webkit-overflow-scrolling: touch; overscroll-behavior-y: none; overscroll-behavior-x: none; }
+html { overscroll-behavior: none; }
 
 /* ══════════════════════════════════════════
    HEADER (top bar)
