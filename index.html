@@ -5461,8 +5461,7 @@ function renderSupplierParts(){
     $('partGrid').appendChild(card);
   });
 }
-const oldRenderAllSuppliers = renderAll;
-renderAll = function(){oldRenderAllSuppliers();renderSuppliersModule();renderSupplierParts();};
+// renderAll suppliers supprimé (module supprimé)
 
 function openSupplier(id){selectedSupplierId=id;if($('partSearch')) $('partSearch').value='';if($('addSupplierBtn')) $('addSupplierBtn').classList.add('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.remove('hidden');$('suppliersRoot').classList.add('hidden');$('supplierDetail').classList.remove('hidden');renderSupplierParts();}
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{if(!$('supplierDetail').classList.contains('hidden')){selectedSupplierId=null;$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');}else{show('moduleView');}};
