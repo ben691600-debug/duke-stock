@@ -149,8 +149,9 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .clientPath button{padding:7px 10px;border-radius:12px}
 .groupGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px}
 .groupCard{position:relative;background:white;border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:14px;cursor:pointer;display:grid;gap:10px}
-.groupImage{width:100%;height:130px;border-radius:18px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-weight:800}
-.groupImage img{width:100%;height:100%;object-fit:cover;display:block}
+.groupImage{width:100%;height:130px;border-radius:18px;background:#f5f9fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-weight:800}
+.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
+.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 .groupCard h3{margin:0;color:var(--blue)}
 .groupCard p{margin:2px 0;color:#6f7b87;font-size:14px}
 .groupActions{display:flex;gap:8px;flex-wrap:wrap}
@@ -173,8 +174,9 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 /* Client/Machine compact daily-use layout */
 .groupGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
 .groupCard{border-radius:18px;padding:9px;gap:7px;min-height:auto}
-.groupImage{height:82px;border-radius:14px;font-size:28px}
-.groupImage img{width:100%;height:100%;object-fit:cover;display:block}
+.groupImage{height:100px;border-radius:14px;font-size:28px}
+.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
+.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 .groupCard h3{font-size:15px;line-height:1.15;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .groupCard p{font-size:12px;line-height:1.25;margin:0}
 .contactBox{gap:7px;padding:6px;border-radius:12px;margin-top:2px}
@@ -200,7 +202,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .preview{height:120px;background-size:cover;background-position:center}
 @media(max-width:650px){
   .groupGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .groupImage{height:76px}
+  .groupImage{height:90px}
   .contactBox{display:none}
   #clientMachinesList{grid-template-columns:1fr}
   #clientMachinesList .item{grid-template-columns:58px 1fr}
@@ -2444,7 +2446,8 @@ body.draggingMachine{
   function showFault(){
     if(window.isAdmin && !window.isAdmin()){ return; }
     show('faultMachineView');
-    renderFault();
+    // Utiliser faultMachineRender si disponible (a les filtres), sinon renderFault
+    if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault();
   }
   function readRows(){
     return Array.from(document.querySelectorAll('#faultMachineRowsBox .faultMachineFaultRow')).map(r=>({
@@ -2480,7 +2483,7 @@ body.draggingMachine{
         
         if(a==='credentials') return openMachineCredentials(m.id);
         if(a==='edit') return openForm(m.id);
-        if(a==='delete'){ if(confirm('Supprimer cette machine ?')){ const db2=ensure(loadDb()); db2.faultMachines=db2.faultMachines.filter(x=>x.id!==m.id); saveDb(db2); renderFault(); } return; }
+        if(a==='delete'){ if(confirm('Supprimer cette machine ?')){ const db2=ensure(loadDb()); db2.faultMachines=db2.faultMachines.filter(x=>x.id!==m.id); saveDb(db2); if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault(); } return; }
         openForm(m.id);
       };
       grid.appendChild(card);
@@ -2498,13 +2501,13 @@ body.draggingMachine{
       if(e.target.closest&&e.target.closest('#openFaultMachineModule')){e.preventDefault();e.stopImmediatePropagation();showFault();}
       if(e.target.closest&&e.target.closest('#faultMachineCreateButton')){e.preventDefault();e.stopImmediatePropagation();openForm();}
     },true);
-    const search=$('faultMachineSearch'); if(search) search.addEventListener('input',renderFault);
+    const search=$('faultMachineSearch'); if(search) search.addEventListener('input',function(){ if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault(); });
     const cancel=$('faultMachineCancelButton'); if(cancel) cancel.onclick=()=>$('faultMachineDialog').close();
     const fcancel=$('faultMachineFaultCancelButton'); if(fcancel) fcancel.onclick=()=>$('faultMachineFaultDialog').close();
     const addFault=$('faultMachineAddFaultButton'); if(addFault) addFault.onclick=()=>addFaultRow();
     const img=$('faultMachineImageInput'); if(img) img.addEventListener('change',()=>{const file=img.files&&img.files[0]; if(!file){imgData='';return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(compressed){imgData=compressed; const p=$('faultMachineImagePreview'); if(p){p.style.backgroundImage='url('+compressed+')';p.classList.remove('hidden');}});}; r.readAsDataURL(file);});
     // Submit géré par $('faultMachineForm').onsubmit dans le script principal (évite double insertion)
-    const faultForm=$('faultMachineFaultForm'); if(faultForm) faultForm.addEventListener('submit',e=>{e.preventDefault(); const db=ensure(loadDb()); const m=db.faultMachines.find(x=>x.id===faultId); if(m){m.faults=readRows(); saveDb(db);} $('faultMachineFaultDialog').close(); renderFault();});
+    const faultForm=$('faultMachineFaultForm'); if(faultForm) faultForm.addEventListener('submit',e=>{e.preventDefault(); const db=ensure(loadDb()); const m=db.faultMachines.find(x=>x.id===faultId); if(m){m.faults=readRows(); saveDb(db);} $('faultMachineFaultDialog').close(); if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault();});
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
   window.faultMachineOpen=showFault;
@@ -4491,7 +4494,7 @@ function renderClientMachineModule(){
     const contacts=normalizeGroupContacts(g);
     const firstContact=contacts[0]||{};
     card.innerHTML=`
-      <div class="groupImage">${g.image?`<img src="${g.image}">`:'🏥'}</div>
+      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
       <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
       <p>${(g.groups||[]).length} ${T('groups')} · ${(g.machines||[]).length} ${T('machines')}</p>
       <div class="contactBox">
