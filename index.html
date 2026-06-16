@@ -1996,7 +1996,11 @@ body.draggingMachine{
           <h2 data-i="clientMachineManagement">Gestion clients / machines</h2>
           <p data-i="clientMachineManagementText">Module prêt. Nous ajouterons son contenu à l’étape suivante.</p>
         </button>
-        <!-- module fournisseurs supprimé -->
+        <button class="moduleCard" id="openSuppliersModule">
+          <div class="moduleIcon">🧰</div>
+          <h2 data-i="supplierPartsManagement">Gestion fournisseurs / pièces</h2>
+          <p data-i="supplierPartsManagementText">Fournisseurs, contacts et pièces de rechange.</p>
+        </button>
         <button class="moduleCard" id="openFaultMachineModule" type="button" onclick="faultMachineOpen(); return false;">
           <div class="moduleIcon">⚠️</div>
           <h2 data-i="faultMachineManagement">Gestion liste machines / pannes</h2>
@@ -2095,7 +2099,36 @@ body.draggingMachine{
   <div class="items" id="clientMachinesList"></div>
 </section>
 
-<!-- suppliersView supprimé -->
+<section id="suppliersView" class="hidden">
+  <!-- Barre d'action principale -->
+  <div class="toolbar moduleActionToolbar supplierTopActions">
+    <div class="actions moduleActionButtons oneButton">
+      <button class="btn primary" id="addSupplierBtn" data-i="addSupplier">+ Fournisseur</button>
+    </div>
+  </div>
+  <button class="btn secondary backSymbolBtn floatingBackBtn hidden" id="supplierUpBtn" title="Retour">←</button>
+
+  <!-- Racine : liste des fournisseurs -->
+  <div id="suppliersRoot">
+    <input class="search" id="supplierGlobalSearch" data-i-placeholder="searchSuppliers" placeholder="Rechercher fournisseur, téléphone, mail, pièce, modèle...">
+    <div class="supplierGrid" id="supplierGrid"></div>
+  </div>
+
+  <!-- Détail fournisseur : liste des pièces -->
+  <div id="supplierDetail" class="hidden">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons oneButton">
+        <button class="btn primary" id="addPartBtn" data-i="addPart">+ Pièce</button>
+      </div>
+    </div>
+    <div class="supplierDetailHeader">
+      <h2 id="supplierDetailTitle"></h2>
+      <p id="supplierDetailSub"></p>
+    </div>
+    <input class="search" id="partSearch" data-i-placeholder="searchParts" placeholder="Rechercher pièce, prix, modèle...">
+    <div class="partGrid" id="partGrid"></div>
+  </div>
+</section>
 
 
     <section id="faultMachineView" class="hidden">
@@ -2859,9 +2892,7 @@ function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appVi
 
 function renderAll(){
   if(!currentUser)return;
-  // Show stock module to admin and storekeeper (safe check)
-  // openStockMgmtModule supprimé
-  document.querySelectorAll('.adminOnly').forEach(e=>e.classList.toggle('hidden',!isAdmin()));renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel()}
+  document.querySelectorAll('.adminOnly').forEach(e=>e.classList.toggle('hidden',!isAdmin()));renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();renderSuppliersModule();}
 
 function openCar(carId){
   const car=db.cars.find(c=>c.id===carId);
