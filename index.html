@@ -2736,34 +2736,80 @@ function afterSuccessfulAuth(localUser){
 function secureLogin(){
   try{
     localStorage.removeItem('duke_security_lock');
-    var storedDb={};
-    try{ storedDb=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(e){}
-    if(!Array.isArray(storedDb.users)||!storedDb.users.length){
-      storedDb.users=[{username:'admin',password:'1234',role:'admin',main:true}];
-    }
-    var hasAdmin=storedDb.users.some(function(u){return u.username==='admin';});
-    if(!hasAdmin) storedDb.users.unshift({username:'admin',password:'1234',role:'admin',main:true});
-    localStorage.setItem(STORE,JSON.stringify(storedDb));
-    db.users=storedDb.users;
 
     var loginEl=document.getElementById('loginUser');
     var passEl=document.getElementById('loginPass');
     var loginVal=loginEl?loginEl.value.trim():'';
     var passwordVal=passEl?passEl.value:'';
-
-    var found=null;
-    for(var i=0;i<db.users.length;i++){
-      if(String(db.users[i].username)===loginVal && String(db.users[i].password)===passwordVal){
-        found=db.users[i]; break;
-      }
-    }
-    if(found){ afterSuccessfulAuth(found); return; }
-
     var h=document.getElementById('loginHelp');
-    if(h){ h.textContent='Identifiant ou mot de passe incorrect.'; h.style.color='#D33B4A'; h.style.fontWeight='800'; }
+
+    // Fonction de vérification du login sur une liste d'utilisateurs
+    function tryLogin(users){
+      // Toujours garantir l'existence du compte admin
+      var hasAdmin=users.some(function(u){return u.username==='admin';});
+      if(!hasAdmin) users.unshift({username:'admin',password:'1234',role:'admin',main:true});
+      var found=null;
+      for(var i=0;i<users.length;i++){
+        if(String(users[i].username)===loginVal && String(users[i].password)===passwordVal){
+          found=users[i]; break;
+        }
+      }
+      return found;
+    }
+
+    // 1. Essayer d'abord avec les données locales
+    var storedDb={};
+    try{ storedDb=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(e){}
+    var localUsers=Array.isArray(storedDb.users)?storedDb.users:[];
+    var found=tryLogin(localUsers);
+    if(found){
+      db.users=localUsers;
+      afterSuccessfulAuth(found);
+      return;
+    }
+
+    // 2. Si pas trouvé en local → essayer de charger depuis Firebase
+    // (cas d'un nouvel appareil où le localStorage est vide)
+    if(h){ h.textContent='Vérification en cours...'; h.style.color='#0A7CC2'; h.style.fontWeight='800'; }
+    if(loginEl) loginEl.disabled=true;
+    if(passEl) passEl.disabled=true;
+    var loginBtn=document.getElementById('loginBtn');
+    if(loginBtn) loginBtn.disabled=true;
+
+    function restoreLoginForm(msg, color){
+      if(loginEl) loginEl.disabled=false;
+      if(passEl) passEl.disabled=false;
+      if(loginBtn) loginBtn.disabled=false;
+      if(h){ h.textContent=msg; h.style.color=color||'#D33B4A'; h.style.fontWeight='800'; }
+    }
+
+    if(window._rtdb){
+      window._rtdb.ref('duke_main/users').once('value').then(function(snap){
+        var firebaseUsers=snap.val();
+        if(!Array.isArray(firebaseUsers)||!firebaseUsers.length){
+          restoreLoginForm('Identifiant ou mot de passe incorrect.');
+          return;
+        }
+        // Mettre à jour le localStorage avec les utilisateurs Firebase
+        storedDb.users=firebaseUsers;
+        localStorage.setItem(STORE, JSON.stringify(storedDb));
+        db.users=firebaseUsers;
+        var found2=tryLogin(firebaseUsers);
+        if(found2){
+          afterSuccessfulAuth(found2);
+        } else {
+          restoreLoginForm('Identifiant ou mot de passe incorrect.');
+        }
+      }).catch(function(){
+        restoreLoginForm('Identifiant ou mot de passe incorrect.');
+      });
+    } else {
+      // Firebase pas disponible
+      restoreLoginForm('Identifiant ou mot de passe incorrect.');
+    }
   }catch(err){
     var h=document.getElementById('loginHelp');
-    if(h){ h.textContent='Erreur JS: '+err.message; h.style.color='#D33B4A'; h.style.fontWeight='800'; }
+    if(h){ h.textContent='Erreur: '+err.message; h.style.color='#D33B4A'; h.style.fontWeight='800'; }
   }
 }
 async function forgotPassword(){
