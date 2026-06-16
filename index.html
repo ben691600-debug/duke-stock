@@ -1746,6 +1746,12 @@ body.draggingMachine{
   background:#fff!important;
   box-shadow:0 -12px 0 14px #eef8fd,0 16px 0 14px #eef8fd,0 18px 22px rgba(10,124,194,.12)!important;
 }
+#faultMachineView #faultMachineTypeFilterBar{
+  position:sticky!important;
+  top:282px!important;
+  z-index:2998!important;
+  background:#eef8fd!important;
+}
 #faultMachineView #faultMachineGrid{
   position:relative!important;
   z-index:1!important;
@@ -2142,7 +2148,12 @@ body.draggingMachine{
         </div>
       </div>
       <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher type, modèle, numéro ou panne...">
-      <div id="faultMachineTypeFilterBar" style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 4px;"></div>
+      <div id="faultMachineTypeFilterBar" style="display:flex;align-items:center;gap:8px;padding:8px 0 4px;position:sticky;top:274px;z-index:2998;background:#eef8fd;">
+        <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;flex-shrink:0;font-weight:700">🔽 Filtrage</button>
+        <select id="faultMachineTypeSelect" style="flex:1;padding:9px 12px;border-radius:14px;border:1.5px solid var(--line);font-size:14px;background:#fff;font-family:inherit;color:var(--dark)">
+          <option value="">Tous les types</option>
+        </select>
+      </div>
       <div class="groupGrid" id="faultMachineGrid"></div>
     </section>
 
@@ -4138,23 +4149,22 @@ function findGroupWithParent(groupId, node=db.clientRoot, parent=null){
 function moveGroupToParent(groupId){
   const src=findGroupWithParent(groupId);
   if(!src) return;
-  // Trouver le grand-parent (parent du parent actuel)
-  // Le parent est soit clientRoot soit un groupe — on cherche son propre parent
-  function findParentNode(targetNode, node=db.clientRoot, parent=null){
+  // Si le parent est déjà clientRoot, impossible de remonter
+  if(src.parent===db.clientRoot){ alert(T('moveGroupImpossible')); return; }
+  // Trouver le grand-parent du groupe (parent de src.parent)
+  function findParentOf(targetNode, node, parent){
     if(node===targetNode) return parent;
     for(const g of (node.groups||[])){
-      const found=findParentNode(targetNode, g, node);
+      const found=findParentOf(targetNode, g, node);
       if(found!==undefined) return found;
     }
     return undefined;
   }
-  const grandParent=findParentNode(src.parent);
-  // Si le parent est déjà clientRoot, on est déjà au niveau racine
-  if(src.parent===db.clientRoot){ alert(T('moveGroupImpossible')); return; }
+  const grandParent=findParentOf(src.parent, db.clientRoot, null);
+  const dest=(grandParent!=null)?grandParent:db.clientRoot;
   // Retirer du parent actuel
   src.parent.groups=(src.parent.groups||[]).filter(g=>g.id!==groupId);
-  // Ajouter au grand-parent (ou clientRoot si grandParent est null/undefined)
-  const dest=grandParent||db.clientRoot;
+  // Ajouter au niveau supérieur
   dest.groups=dest.groups||[];
   dest.groups.push(src.group);
   log('MOVE_CLIENT_GROUP_UP', src.group.name);
@@ -4527,7 +4537,7 @@ function renderClientMachineModule(){
     if(movingGroupId===g.id) card.classList.add('groupMoveSelected');
     const contacts=normalizeGroupContacts(g);
     const firstContact=contacts[0]||{};
-    const isNotRoot=clientPathIds.length>0;
+    const isNotRoot = (()=>{ const s=findGroupWithParent(g.id); return s && s.parent!==db.clientRoot; })();
     card.innerHTML=`
       <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
       <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
@@ -6060,30 +6070,26 @@ function faultMachineRender(){
 
   const q = ($('faultMachineSearch').value || '').toLowerCase().trim();
 
-  // Barre de filtres par type (dynamique, comme le filtre rôle)
-  const filterBar = $('faultMachineTypeFilterBar');
-  const types = Array.from(new Set(db.faultMachines.map(m=>(m.type||'').trim()).filter(Boolean))).sort();
-  if(filterBar){
-    // Conserver le filtre actif
-    var activeType = (filterBar.querySelector('.fmTypeBtn.active')||{}).dataset&&(filterBar.querySelector('.fmTypeBtn.active')).dataset.fmtype || '';
-    // Vérifier que le type actif existe encore
-    if(activeType && !types.includes(activeType)) activeType='';
-    filterBar.innerHTML='';
-    // Bouton "Tous"
-    var allBtn=document.createElement('button');
-    allBtn.type='button'; allBtn.className='btn roleFilterBtn fmTypeBtn'+(activeType===''?' active':''); allBtn.dataset.fmtype=''; allBtn.textContent='Tous';
-    allBtn.onclick=function(){filterBar.querySelectorAll('.fmTypeBtn').forEach(b=>b.classList.remove('active'));this.classList.add('active');faultMachineRender();};
-    filterBar.appendChild(allBtn);
-    // Un bouton par type existant
-    types.forEach(function(t){
-      var btn=document.createElement('button');
-      btn.type='button'; btn.className='btn roleFilterBtn fmTypeBtn'+(activeType===t?' active':''); btn.dataset.fmtype=t; btn.textContent=t;
-      btn.onclick=function(){filterBar.querySelectorAll('.fmTypeBtn').forEach(b=>b.classList.remove('active'));this.classList.add('active');faultMachineRender();};
-      filterBar.appendChild(btn);
-    });
+  // Peupler le select avec les types existants
+  const typeSelect = $('faultMachineTypeSelect');
+  if(typeSelect){
+    const types = Array.from(new Set(db.faultMachines.map(m=>(m.type||'').trim()).filter(Boolean))).sort();
+    const prevVal = typeSelect.value;
+    typeSelect.innerHTML = '<option value="">Tous les types</option>' +
+      types.map(t=>`<option value="${esc(t)}"${prevVal===t?' selected':''}>${esc(t)}</option>`).join('');
+    if(types.includes(prevVal)) typeSelect.value = prevVal;
   }
+  const selectedType = typeSelect ? typeSelect.value : '';
 
-  const selectedType = filterBar ? ((filterBar.querySelector('.fmTypeBtn.active')||{}).dataset&&(filterBar.querySelector('.fmTypeBtn.active')).dataset.fmtype||'') : '';
+  // Bouton "Filtrage" ouvre le select natif
+  const filterBtn = $('faultMachineFilterBtn');
+  if(filterBtn && !filterBtn._wired){
+    filterBtn._wired = true;
+    filterBtn.onclick = function(){
+      if(typeSelect){ typeSelect.focus(); try{ typeSelect.showPicker(); }catch(e){} }
+    };
+    typeSelect && typeSelect.addEventListener('change', function(){ faultMachineRender(); });
+  }
 
   db.faultMachines.filter(machine=>{
     if(selectedType && (machine.type||'').trim() !== selectedType) return false;
@@ -6123,6 +6129,12 @@ function faultMachineRender(){
     card.querySelector('[data-fm="faults"]').onclick = (ev)=>{
       ev.stopPropagation();
       faultMachineOpenFaults(machine.id);
+    };
+
+    const credFmBtn = card.querySelector('[data-fm="credentials"]');
+    if(credFmBtn) credFmBtn.onclick = (ev)=>{
+      ev.stopPropagation();
+      if(typeof openMachineCredentials==='function') openMachineCredentials(machine.id);
     };
 
     card.querySelector('[data-fm="edit"]').onclick = (ev)=>{
