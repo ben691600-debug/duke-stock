@@ -2002,62 +2002,12 @@ body.draggingMachine{
           <h2 data-i="faultMachineManagement">Gestion liste machines / pannes</h2>
           <p>Modèles machines et listes de pannes.</p>
         </button>
-        <button class="moduleCard" id="openStockMgmtModule" type="button" style="display:none">
-          <div class="moduleIcon">📦</div>
-          <h2>Gestion stock pièces</h2>
-          <p>Pièces de rechange, équipements et commandes.</p>
-        </button>
+        <!-- openStockMgmtModule supprimé -->
       </div>
 
     </section>
 
-    <section id="stockMgmtView" class="hidden">
-      <div class="toolbar">
-        <h2>📦 Gestion stock pièces</h2>
-      </div>
-      <!-- Tabs -->
-      <div class="stockMgmtTabs">
-        <button class="stockTab active" data-tab="parts">🔩 Pièces</button>
-        <button class="stockTab" data-tab="equipment">🖥 Équipements</button>
-        <button class="stockTab" data-tab="orders">📋 Commandes</button>
-      </div>
-      <!-- Search bar -->
-      <div style="padding:10px 0 6px">
-        <input id="stockSearchInput" type="search" placeholder="🔍 Rechercher..." style="width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:16px;box-sizing:border-box;background:white;font-size:14px">
-      </div>
-
-      <!-- Tab: Pièces -->
-      <div id="stockTabParts">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn primary" id="addStockPartBtn" style="flex:1">+ Ajouter pièce</button>
-        </div>
-        <div id="stockPartsList"></div>
-      </div>
-
-      <!-- Tab: Équipements -->
-      <div id="stockTabEquipment" style="display:none">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn primary" id="addStockEquipBtn" style="flex:1">+ Ajouter équipement</button>
-        </div>
-        <div id="stockEquipList"></div>
-      </div>
-
-      <!-- Tab: Commandes -->
-      <div id="stockTabOrders" style="display:none">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn primary" id="addStockOrderBtn" style="flex:1">+ Ouvrir une commande</button>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="orderStatusFilters">
-          <button class="btn mini orderFilter active" data-sf="all">Tout</button>
-          <button class="btn mini orderFilter" data-sf="pending_quote" style="background:#e3f0ff;color:#0A7CC2">🔵 En cours</button>
-          <button class="btn mini orderFilter" data-sf="pending_reception" style="background:#fff3e0;color:#e65100">🟠 En attente</button>
-          <button class="btn mini orderFilter" data-sf="received" style="background:#fce4ec;color:#c2185b">🌸 Réceptionné</button>
-          <button class="btn mini orderFilter" data-sf="paid_closed" style="background:#e8f5e9;color:#2e7d32">🟢 Fermé</button>
-        </div>
-        <div id="stockOrdersList"></div>
-      </div>
-    
-    </section>
+    <!-- stockMgmtView supprimé -->
 
     <section id="carsView" class="hidden">
       <div class="hero">
@@ -2443,7 +2393,7 @@ body.draggingMachine{
 <script id="faultMachineStandalonePatch">
 (function(){
   const STORE_KEY='duke_stock_manager_auth_v1';
-  const sectionIds=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView','stockMgmtView'];
+  const sectionIds=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'];
   const $=id=>document.getElementById(id);
   let editId=null, imgData='', faultId=null;
   function loadDb(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{};}catch(e){return {};}}
@@ -2806,7 +2756,7 @@ function translate(){document.documentElement.lang=lang;document.documentElement
 // ── Navigation history stack ─────────────────────────────
 var _navHistory=[];
 function _getCurrentView(){
-  var views=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView','stockMgmtView'];
+  var views=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'];
   for(var i=0;i<views.length;i++){var el=$(views[i]);if(el&&!el.classList.contains('hidden'))return views[i];}
   return 'moduleView';
 }
@@ -2823,7 +2773,7 @@ function show(view){
     });
     if(_navHistory.length>50) _navHistory.shift(); // cap history
   }
-  ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView','stockMgmtView'].forEach(id=>{if($(id)) $(id).classList.add('hidden')});
+  ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'].forEach(id=>{if($(id)) $(id).classList.add('hidden')});
   $(view).classList.remove('hidden');
   $('backBtn').classList.add('hidden');
   // Update back button visibility
@@ -2845,8 +2795,8 @@ function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appVi
 function renderAll(){
   if(!currentUser)return;
   // Show stock module to admin and storekeeper (safe check)
-  var _sm=document.getElementById('openStockMgmtModule');
-  if(_sm) _sm.style.display=(typeof canAccessStock==='function'&&canAccessStock())?'':'none';document.querySelectorAll('.adminOnly').forEach(e=>e.classList.toggle('hidden',!isAdmin()));renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel()}
+  // openStockMgmtModule supprimé
+  document.querySelectorAll('.adminOnly').forEach(e=>e.classList.toggle('hidden',!isAdmin()));renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel()}
 
 function openCar(carId){
   const car=db.cars.find(c=>c.id===carId);
@@ -3554,7 +3504,7 @@ function goBackFromLogo(){
     selected=null;show('carsView');
   } else if(!$('faultMachineView').classList.contains('hidden')){
     show('moduleView');
-  } else if(!$('stockMgmtView').classList.contains('hidden')){
+  } else if(false){
     show('moduleView');
   } else if(!$('carsView').classList.contains('hidden') || !$('clientsView').classList.contains('hidden') || false || !$('usersView').classList.contains('hidden') || !$('historyView').classList.contains('hidden')){
     selected=null;show('moduleView');
@@ -8336,7 +8286,7 @@ var _orderAttachments = [];
 // ── Open the module ───────────────────────────────────────
 window.openStockMgmt = function(){
   ensureStockDb();
-  show('stockMgmtView');
+  show('moduleView'); // stockMgmtView supprimé
   renderStockModule();
 };
 
@@ -8350,7 +8300,7 @@ function renderStockModule(){
 // ── Tab switching ─────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function(){
   // Module button
-  var modBtn = document.getElementById('openStockMgmtModule');
+  var modBtn = null; // openStockMgmtModule supprimé
   if(modBtn) modBtn.onclick = window.openStockMgmt;
 
   // Tabs
