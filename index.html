@@ -2567,30 +2567,39 @@ function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
     _rtdb=firebase.database();
-    // Lecture initiale au démarrage
+    // Lecture initiale : Firebase EST la source de vérité
+    // On charge toujours Firebase, même si localStorage est vide ou effacé
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
-      if(!remote||!remote._ts) return;
+      if(!remote) return; // Rien sur Firebase (première utilisation)
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
-      if((remote._ts||0)>(local._ts||0)){
+      const localEmpty = !local || !local.users || local.users.length===0;
+      const remoteNewer = (remote._ts||0) >= (local._ts||0);
+      // Charger Firebase si : localStorage vide OU Firebase plus récent
+      if(localEmpty || remoteNewer){
         var merged=mergeUsers(db.users||[], remote.users||[]);
         Object.assign(db, remote);
-        db.users=merged; // Fusion des utilisateurs locaux + Firebase
+        db.users=merged;
         localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: sync Firebase - '+merged.length+' utilisateurs');
+        console.log('Duke: données restaurées depuis Firebase - '+merged.length+' utilisateurs');
+        // Rafraîchir l'interface si l'utilisateur est déjà connecté
+        if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
       }
     }).catch(e=>console.warn('RTDB pull error',e));
     // Écoute en temps réel les mises à jour des autres appareils
     _rtdb.ref('duke_main').on('value',function(snap){
       if(_rtdbSyncing) return;
       const remote=snap.val();
-      if(!remote||!remote._ts) return;
+      if(!remote) return;
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
-      if((remote._ts||0)>(local._ts||0)){
+      const localEmpty = !local || !local.users || local.users.length===0;
+      const remoteNewer = (remote._ts||0) > (local._ts||0);
+      if(localEmpty || remoteNewer){
         var merged=mergeUsers(db.users||[], remote.users||[]);
         Object.assign(db, remote);
-        db.users=merged; // Fusion des utilisateurs
+        db.users=merged;
         localStorage.setItem(STORE, JSON.stringify(db));
+        if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
       }
     });
   }catch(e){console.warn('RTDB init error',e)}
