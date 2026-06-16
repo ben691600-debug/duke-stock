@@ -4134,6 +4134,34 @@ function findGroupWithParent(groupId, node=db.clientRoot, parent=null){
   return null;
 }
 
+// Déplacer un groupe vers son niveau parent (remonter d'un niveau)
+function moveGroupToParent(groupId){
+  const src=findGroupWithParent(groupId);
+  if(!src) return;
+  // Trouver le grand-parent (parent du parent actuel)
+  // Le parent est soit clientRoot soit un groupe — on cherche son propre parent
+  function findParentNode(targetNode, node=db.clientRoot, parent=null){
+    if(node===targetNode) return parent;
+    for(const g of (node.groups||[])){
+      const found=findParentNode(targetNode, g, node);
+      if(found!==undefined) return found;
+    }
+    return undefined;
+  }
+  const grandParent=findParentNode(src.parent);
+  // Si le parent est déjà clientRoot, on est déjà au niveau racine
+  if(src.parent===db.clientRoot){ alert(T('moveGroupImpossible')); return; }
+  // Retirer du parent actuel
+  src.parent.groups=(src.parent.groups||[]).filter(g=>g.id!==groupId);
+  // Ajouter au grand-parent (ou clientRoot si grandParent est null/undefined)
+  const dest=grandParent||db.clientRoot;
+  dest.groups=dest.groups||[];
+  dest.groups.push(src.group);
+  log('MOVE_CLIENT_GROUP_UP', src.group.name);
+  save();
+  renderClientMachineModule();
+}
+
 function findMachineWithParent(machineId, node=db.clientRoot){
   node.groups=node.groups||[];
   node.machines=node.machines||[];
@@ -4347,7 +4375,10 @@ function finishRealTouchGroupDrag(x,y){
     renderClientMachineModule();
   }
 
-  setTimeout(()=>{suppressNextGroupClick=false;},350);
+  // Réinitialiser le flag après un court délai pour éviter le faux-clic
+  setTimeout(()=>{suppressNextGroupClick=false;},400);
+  // Garantie : reset absolu après 1 seconde même si quelque chose a mal tourné
+  setTimeout(()=>{suppressNextGroupClick=false;},1000);
 }
 function cleanupRealTouchGroupDrag(resetClick=true){
   touchDragActive=false;
@@ -4362,7 +4393,10 @@ function cleanupRealTouchGroupDrag(resetClick=true){
   }
   document.querySelectorAll('.groupDropTarget').forEach(el=>el.classList.remove('groupDropTarget'));
   if($('groupMoveHelp')) $('groupMoveHelp').classList.add('hidden');
-  if(resetClick) setTimeout(()=>{suppressNextGroupClick=false;},250);
+  if(resetClick){
+    setTimeout(()=>{suppressNextGroupClick=false;},300);
+    setTimeout(()=>{suppressNextGroupClick=false;},800);
+  }
 }
 document.addEventListener('pointermove',ev=>{
   if(touchDragActive){
@@ -4489,10 +4523,11 @@ function renderClientMachineModule(){
     const card=document.createElement('div');
     card.className='groupCard';
     card.dataset.groupId=g.id;
-    card.draggable=!isClientUser();
+    card.draggable=isAdmin();
     if(movingGroupId===g.id) card.classList.add('groupMoveSelected');
     const contacts=normalizeGroupContacts(g);
     const firstContact=contacts[0]||{};
+    const isNotRoot=clientPathIds.length>0;
     card.innerHTML=`
       <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
       <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
@@ -4506,8 +4541,9 @@ function renderClientMachineModule(){
       </div>
       ${!isClientUser()?`<div class="groupActions">
         <button class="btn primary mini" data-act="open">${T('open')}</button>
-        ${contacts.length?`<button class="btn secondary mini" data-act="contact">📞 Contact</button>`:''}
-        <button class="btn secondary mini" data-act="edit">✏️</button>
+        ${contacts.length?`<button class="btn secondary mini" data-act="contact">📞</button>`:''}
+        ${isAdmin()?`<button class="btn secondary mini" data-act="edit">✏️</button>`:''}
+        ${isAdmin()&&isNotRoot?`<button class="btn secondary mini" data-act="moveup" title="Remonter au niveau supérieur">⬆️</button>`:''}
         ${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}
       </div>`:''}`;
     const groupOpenBtn=card.querySelector('[data-act=open]');
@@ -4516,6 +4552,8 @@ function renderClientMachineModule(){
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
     const groupEditBtn=card.querySelector('[data-act=edit]');
     if(groupEditBtn) groupEditBtn.onclick=(ev)=>{ev.stopPropagation();openEditClientGroup(g.id)};
+    const groupMoveUpBtn=card.querySelector('[data-act=moveup]');
+    if(groupMoveUpBtn) groupMoveUpBtn.onclick=(ev)=>{ev.stopPropagation();moveGroupToParent(g.id)};
     const groupDeleteBtn=card.querySelector('[data-act=delete]');
     if(groupDeleteBtn) groupDeleteBtn.onclick=(ev)=>{ev.stopPropagation();deleteClientGroup(g.id)};
     card.onclick=(ev)=>{
@@ -4530,7 +4568,7 @@ function renderClientMachineModule(){
     };
 
     card.addEventListener('dragstart',ev=>{
-      if(isClientUser()){ev.preventDefault();return;}
+      if(!isAdmin()){ev.preventDefault();return;}
       if(touchDragActive) { ev.preventDefault(); return; }
       dragGroupId=g.id;
       card.classList.add('groupDragSource');
@@ -4570,7 +4608,7 @@ function renderClientMachineModule(){
 
     card.addEventListener('contextmenu',ev=>{if(ev.target.closest&&ev.target.closest('.embeddedMachineQr')) return; ev.preventDefault();});
     card.addEventListener('pointerdown',ev=>{
-      if(isClientUser()) return;
+      if(!isAdmin()) return;
       if(ev.target.closest('button,.embeddedMachineQr')) return;
       ev.preventDefault();
       clearTimeout(longPressTimer);
@@ -4635,8 +4673,8 @@ function renderClientMachineModule(){
           <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="spare" title="Vue explosion / spare parts" aria-label="Vue explosion / spare parts">⚙️</button>
           <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="electrical" title="Schéma électrique" aria-label="Schéma électrique">⚡</button>
           <button class="btn secondary mini" type="button" data-act="clientReq" title="Demandes client" aria-label="Demandes client">🔔</button>
-          ${(typeof isAdmin==='function'&&(isAdmin()||isOperator()))?`<button class="btn secondary mini" type="button" data-act="machineCredentials" title="Acces machine" style="font-size:14px">🔐</button>`:''}
-          <button class="btn secondary mini" type="button" data-act="edit" title="Modifier" aria-label="Modifier">✏️</button>
+          ${(isAdmin()||isOperator())?`<button class="btn secondary mini" type="button" data-act="machineCredentials" title="Acces machine" style="font-size:14px">🔐</button>`:''}
+          ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="edit" title="Modifier" aria-label="Modifier">✏️</button>`:''}
           ${isAdmin()?`<button class="btn danger mini" type="button" data-act="delete" title="Supprimer" aria-label="Supprimer">🗑️</button>`:''}
         </div>`:''}
       </div>`;
@@ -4658,9 +4696,9 @@ function renderClientMachineModule(){
       };
     });
     card.dataset.machineId=m.id;
-    card.draggable=!isClientUser();
+    card.draggable=isAdmin();
     card.addEventListener('dragstart',ev=>{
-      if(isClientUser()){ev.preventDefault();return;}
+      if(!isAdmin()){ev.preventDefault();return;}
       if(touchMachineDragActive){ ev.preventDefault(); return; }
       dragMachineId=m.id;
       card.classList.add('machineDragSource');
@@ -4674,7 +4712,7 @@ function renderClientMachineModule(){
     });
     card.addEventListener('contextmenu',ev=>{if(ev.target.closest&&ev.target.closest('.embeddedMachineQr')) return; ev.preventDefault();});
     card.addEventListener('pointerdown',ev=>{
-      if(isClientUser()) return;
+      if(!isAdmin()) return;
       if(ev.target.closest('button,.embeddedMachineQr')) return;
       ev.preventDefault();
       clearTimeout(longPressTimer);
