@@ -2465,7 +2465,7 @@ body.draggingMachine{
     const cancel=$('faultMachineCancelButton'); if(cancel) cancel.onclick=()=>$('faultMachineDialog').close();
     const fcancel=$('faultMachineFaultCancelButton'); if(fcancel) fcancel.onclick=()=>$('faultMachineFaultDialog').close();
     const addFault=$('faultMachineAddFaultButton'); if(addFault) addFault.onclick=()=>addFaultRow();
-    const img=$('faultMachineImageInput'); if(img) img.addEventListener('change',()=>{const file=img.files&&img.files[0]; if(!file){imgData='';return;} const r=new FileReader(); r.onload=()=>{imgData=r.result; const p=$('faultMachineImagePreview'); if(p){p.style.backgroundImage='url('+imgData+')';p.classList.remove('hidden');}}; r.readAsDataURL(file);});
+    const img=$('faultMachineImageInput'); if(img) img.addEventListener('change',()=>{const file=img.files&&img.files[0]; if(!file){imgData='';return;} const r=new FileReader(); r.onload=()=>{compressImage(r.result,IMG_MAX,IMG_MAX,IMG_QUALITY,function(compressed){imgData=compressed; const p=$('faultMachineImagePreview'); if(p){p.style.backgroundImage='url('+compressed+')';p.classList.remove('hidden');}});}; r.readAsDataURL(file);});
     // Submit géré par $('faultMachineForm').onsubmit dans le script principal (évite double insertion)
     const faultForm=$('faultMachineFaultForm'); if(faultForm) faultForm.addEventListener('submit',e=>{e.preventDefault(); const db=ensure(loadDb()); const m=db.faultMachines.find(x=>x.id===faultId); if(m){m.faults=readRows(); saveDb(db);} $('faultMachineFaultDialog').close(); renderFault();});
   }
@@ -2563,6 +2563,41 @@ function mergeUsers(localUsers, remoteUsers){
   if(!hasAdmin) result.unshift({username:'admin',password:'1234',role:'admin',main:true});
   return result;
 }
+function compressImage(dataUrl, maxWidth, maxHeight, quality, callback){
+  // Compression universelle d'image avant stockage
+  // maxWidth/maxHeight: dimensions max en pixels
+  // quality: 0.0 à 1.0 (0.5 = bonne qualité, taille réduite)
+  if(!dataUrl || !dataUrl.startsWith('data:image')){
+    callback(dataUrl); return;
+  }
+  try{
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width, h=img.height;
+      // Calculer le ratio pour respecter les dimensions max
+      var ratio=Math.min(1, maxWidth/w, maxHeight/h);
+      var nw=Math.round(w*ratio), nh=Math.round(h*ratio);
+      var canvas=document.createElement('canvas');
+      canvas.width=nw; canvas.height=nh;
+      var ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,nw,nh);
+      // Toujours convertir en JPEG pour réduire la taille
+      var compressed=canvas.toDataURL('image/jpeg', quality);
+      // Si la compression n'aide pas (image déjà petite), garder l'original
+      callback(compressed.length < dataUrl.length ? compressed : dataUrl);
+    };
+    img.onerror=function(){ callback(dataUrl); };
+    img.src=dataUrl;
+  }catch(e){ callback(dataUrl); }
+}
+// Paramètres de compression : 800px max, qualité 60% → ~30-60KB par image
+var IMG_MAX=800, IMG_QUALITY=0.60;
+
+function mergeKeepingLocalImages(local, remote){
+  // Firebase contient maintenant toutes les données y compris les images compressées
+  // On fait un simple Object.assign pour récupérer tout depuis Firebase
+  Object.assign(local, remote);
+}
 function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
@@ -2577,12 +2612,12 @@ function initRTDB(){
       const remoteNewer = (remote._ts||0) >= (local._ts||0);
       // Charger Firebase si : localStorage vide OU Firebase plus récent
       if(localEmpty || remoteNewer){
+        // Fusionner en gardant les images locales (Firebase ne les stocke pas)
         var merged=mergeUsers(db.users||[], remote.users||[]);
-        Object.assign(db, remote);
+        mergeKeepingLocalImages(db, remote);
         db.users=merged;
         localStorage.setItem(STORE, JSON.stringify(db));
         console.log('Duke: données restaurées depuis Firebase - '+merged.length+' utilisateurs');
-        // Rafraîchir l'interface si l'utilisateur est déjà connecté
         if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
       }
     }).catch(e=>console.warn('RTDB pull error',e));
@@ -2596,7 +2631,7 @@ function initRTDB(){
       const remoteNewer = (remote._ts||0) > (local._ts||0);
       if(localEmpty || remoteNewer){
         var merged=mergeUsers(db.users||[], remote.users||[]);
-        Object.assign(db, remote);
+        mergeKeepingLocalImages(db, remote);
         db.users=merged;
         localStorage.setItem(STORE, JSON.stringify(db));
         if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
@@ -2604,13 +2639,34 @@ function initRTDB(){
     });
   }catch(e){console.warn('RTDB init error',e)}
 }
+function stripBase64Deep(obj){
+  // Supprime les images base64 des données avant envoi Firebase
+  // (trop volumineuses, provoquent des erreurs silencieuses)
+  if(Array.isArray(obj)){
+    return obj.map(function(item){ return stripBase64Deep(item); });
+  } else if(obj && typeof obj==='object'){
+    var out={};
+    Object.keys(obj).forEach(function(k){
+      var v=obj[k];
+      if(typeof v==='string' && v.startsWith('data:')){
+        out[k]=''; // Remplacer base64 par chaîne vide
+      } else {
+        out[k]=stripBase64Deep(v);
+      }
+    });
+    return out;
+  }
+  return obj;
+}
 function syncToRTDB(){
   if(!_rtdb) return;
   _rtdbSyncing=true;
-  // Sync TOUTES les données y compris les utilisateurs pour que les opérateurs
-  // puissent se connecter depuis leur téléphone
-  var dataToSync=Object.assign({},db);
-  _rtdb.ref('duke_main').update(dataToSync).catch(e=>console.warn('RTDB write error',e)).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
+  // Les images sont maintenant compressées à la source (~30-60KB chacune)
+  // On peut tout envoyer à Firebase sans dépasser la limite
+  var dataToSync=JSON.parse(JSON.stringify(db));
+  _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
+    console.warn('RTDB write error',e);
+  }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
 }
 // ─────────────────────────────────────────────────────────────────
 function loginLockInfo(){
@@ -4751,12 +4807,14 @@ function readImageInput(input, callback, previewId){
   if(!file){ callback(''); return; }
   const r=new FileReader();
   r.onload=()=>{
-    callback(r.result);
-    if(previewId){
-      const p=$(previewId);
-      p.style.backgroundImage=`url(${r.result})`;
-      p.classList.remove('hidden');
-    }
+    compressImage(r.result, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+      callback(compressed);
+      if(previewId){
+        const p=$(previewId);
+        p.style.backgroundImage=`url(${compressed})`;
+        p.classList.remove('hidden');
+      }
+    });
   };
   r.readAsDataURL(file);
 }
@@ -5499,7 +5557,18 @@ function openSupplier(id){selectedSupplierId=id;if($('partSearch')) $('partSearc
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{if(!$('supplierDetail').classList.contains('hidden')){selectedSupplierId=null;$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');}else{show('moduleView');}};
 if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{if(!requireAdminAccess())return;selectedSupplierId=null;if($('supplierGlobalSearch')) $('supplierGlobalSearch').value='';$('addSupplierBtn').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');$('supplierDetail').classList.add('hidden');$('suppliersRoot').classList.remove('hidden');if($('supplierUpBtn')) $('supplierUpBtn').classList.add('hidden');show('suppliersView');renderSuppliersModule();};
 
-function readSupplierImage(input,callback,previewId){const file=input.files[0];if(!file){callback('');return;}const r=new FileReader();r.onload=()=>{callback(r.result);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${r.result})`;p.classList.remove('hidden');}};r.readAsDataURL(file);}
+function readSupplierImage(input,callback,previewId){
+  const file=input.files[0];
+  if(!file){callback('');return;}
+  const r=new FileReader();
+  r.onload=()=>{
+    compressImage(r.result, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+      callback(compressed);
+      if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${compressed})`;p.classList.remove('hidden');}
+    });
+  };
+  r.readAsDataURL(file);
+}
 if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
 if($('supplierImageInput')) $('supplierImageInput').onchange=e=>readSupplierImage(e.target,v=>supplierImageData=v,'supplierPreview');
 if($('supplierForm')) $('supplierForm').onsubmit=e=>{
@@ -6040,12 +6109,13 @@ $('faultMachineAddFaultButton').onclick = ()=>faultMachineAddFaultRow();
 $('faultMachineImageInput').onchange = ev=>{
   const file = ev.target.files && ev.target.files[0];
   if(!file) return;
-
   const reader = new FileReader();
   reader.onload = ()=>{
-    faultMachineImageData = reader.result;
-    $('faultMachineImagePreview').style.backgroundImage = `url(${faultMachineImageData})`;
-    $('faultMachineImagePreview').classList.remove('hidden');
+    compressImage(reader.result, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+      faultMachineImageData = compressed;
+      $('faultMachineImagePreview').style.backgroundImage = `url(${compressed})`;
+      $('faultMachineImagePreview').classList.remove('hidden');
+    });
   };
   reader.readAsDataURL(file);
 };
@@ -6226,7 +6296,11 @@ translate();
         const file = input.files && input.files[0];
         if(!file || !String(file.type || '').startsWith('image/')) return;
         const reader = new FileReader();
-        reader.onload = function(){ saveImageToLibrary(reader.result, file.name || IMAGE_INPUTS[id].label, IMAGE_INPUTS[id].label); };
+        reader.onload = function(){
+          compressImage(reader.result, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+            saveImageToLibrary(compressed, file.name || IMAGE_INPUTS[id].label, IMAGE_INPUTS[id].label);
+          });
+        };
         reader.readAsDataURL(file);
       });
     });
@@ -6748,7 +6822,7 @@ translate();
     setTimeout(function(){ window.syncFaultMachineImagesFinal(); try{ if(typeof renderFault==='function') renderFault(); }catch(e){} },120);
   }, false);
   document.addEventListener('change', function(ev){
-    if(ev.target && ev.target.id==='faultMachineImageInput'){ var f=ev.target.files&&ev.target.files[0], p=document.getElementById('faultMachineImagePreview'); if(!f||!p)return; var r=new FileReader(); r.onload=function(){p.style.backgroundImage='url('+r.result+')';p.classList.remove('hidden');}; r.readAsDataURL(f); }
+    if(ev.target && ev.target.id==='faultMachineImageInput'){ var f=ev.target.files&&ev.target.files[0], p=document.getElementById('faultMachineImagePreview'); if(!f||!p)return; var r=new FileReader(); r.onload=function(){compressImage(r.result,IMG_MAX,IMG_MAX,IMG_QUALITY,function(compressed){p.style.backgroundImage='url('+compressed+')';p.classList.remove('hidden');});}; r.readAsDataURL(f); }
   }, true);
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', window.syncFaultMachineImagesFinal); else window.syncFaultMachineImagesFinal();
 })();
@@ -9039,22 +9113,23 @@ window.triggerStockPartImageUpload = function(partId){
     if(!file) return;
     var reader = new FileReader();
     reader.onload = function(){
-      var p = (db.stockParts||[]).find(function(x){return x.id===partId;});
-      if(p){
-        p.image = reader.result;
-        // Also update linked supplier part if same partNumber
-        if(p.partNumber){
-          (db.suppliers||[]).forEach(function(s){
-            (s.parts||[]).forEach(function(sp){
-              if((sp.partNumber||'').trim().toLowerCase()===(p.partNumber||'').trim().toLowerCase() && !sp.image){
-                sp.image = reader.result;
-              }
+      compressImage(reader.result, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+        var p = (db.stockParts||[]).find(function(x){return x.id===partId;});
+        if(p){
+          p.image = compressed;
+          if(p.partNumber){
+            (db.suppliers||[]).forEach(function(s){
+              (s.parts||[]).forEach(function(sp){
+                if((sp.partNumber||'').trim().toLowerCase()===(p.partNumber||'').trim().toLowerCase() && !sp.image){
+                  sp.image = compressed;
+                }
+              });
             });
-          });
+          }
+          save();
+          if(typeof renderStockParts==='function') renderStockParts();
         }
-        save();
-        if(typeof renderStockParts==='function') renderStockParts();
-      }
+      });
     };
     reader.readAsDataURL(file);
   };
