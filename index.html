@@ -3739,11 +3739,34 @@ $('operatorForm').onsubmit=e=>{
       existingCar.driver=username;
     }
   }
+  const isNewOperator = !editingOperatorUsername;
   editingOperatorUsername=null;
   save();
   $('newUser').disabled=false;
   $('operatorDialog').close();
   renderAll();
+  // After saving a new operator, offer to send the app download link
+  if(isNewOperator){
+    const opPhone=phone, opEmail=email, opName=username;
+    const appUrl='https://ben691600-debug.github.io/duke-stock-manager';
+    const appMsg='Bonjour '+opName+', vous êtes invité(e) à utiliser Duke Stock Manager. Téléchargez l\'application ici : '+appUrl;
+    // Show share dialog
+    $('shareAppDialog').showModal();
+    $('shareAppName').textContent=opName||'l\'opérateur';
+    $('shareAppSmsBtn').onclick=function(){
+      const smsHref='sms:'+(opPhone||'')+'?body='+encodeURIComponent(appMsg);
+      window.open(smsHref,'_blank');
+      $('shareAppDialog').close();
+    };
+    $('shareAppEmailBtn').onclick=function(){
+      const mailHref='mailto:'+(opEmail||'')+'?subject='+encodeURIComponent('Duke Stock Manager - Lien de téléchargement')+'&body='+encodeURIComponent(appMsg);
+      window.open(mailHref,'_blank');
+      $('shareAppDialog').close();
+    };
+    $('shareAppSkipBtn').onclick=function(){
+      $('shareAppDialog').close();
+    };
+  }
 };
 $('clearHistory').onclick=()=>{if(confirm(T('confirmClear'))){db.history=[];save();renderAll()}};
 document.querySelectorAll('.close').forEach(b=>b.onclick=()=>{if($('newUser')) $('newUser').disabled=false;editingCarId=null;b.closest('dialog').close();});
@@ -9374,6 +9397,22 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 })();
 </script>
+
+<!-- Dialog: envoyer lien téléchargement app -->
+<dialog class="modal" id="shareAppDialog" style="max-width:min(94vw,420px);border-radius:28px;padding:0;border:0;box-shadow:0 25px 70px rgba(0,0,0,.25)">
+  <div style="padding:26px 22px 20px;text-align:center">
+    <div style="font-size:44px;margin-bottom:8px">📲</div>
+    <h2 style="margin:0 0 8px;color:#0A7CC2;font-size:20px">Partager l'application</h2>
+    <p style="margin:0 0 20px;color:#6f7b87;font-size:14px;line-height:1.45">
+      Voulez-vous envoyer le lien de téléchargement de Duke Stock Manager à <strong id="shareAppName"></strong> ?
+    </p>
+    <div style="display:grid;gap:10px">
+      <button id="shareAppSmsBtn" style="min-height:52px;border-radius:18px;border:0;background:#0A7CC2;color:white;font-weight:900;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">💬 Envoyer par SMS</button>
+      <button id="shareAppEmailBtn" style="min-height:52px;border-radius:18px;border:0;background:#e8f0fe;color:#0A7CC2;font-weight:900;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">✉️ Envoyer par Email</button>
+      <button id="shareAppSkipBtn" style="min-height:44px;border-radius:18px;border:0;background:#f0f2f5;color:#6f7b87;font-weight:800;font-size:14px;cursor:pointer">Ignorer</button>
+    </div>
+  </div>
+</dialog>
 
 <button id="universalBackBtn">← <span id="universalBackLabel">Retour</span></button>
 
