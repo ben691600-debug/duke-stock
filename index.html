@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v1.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2797,8 +2797,16 @@ var IMG_MAX=800, IMG_QUALITY=0.60;
 
 function mergeKeepingLocalImages(local, remote){
   // Firebase contient maintenant toutes les données y compris les images compressées
-  // On fait un simple Object.assign pour récupérer tout depuis Firebase
-  Object.assign(local, remote);
+  // CORRECTIF CRITIQUE : on ne copie que les clés réellement présentes sur "remote" et
+  // dont la valeur n'est pas null/undefined. Sans ce filtre, Object.assign(local, remote)
+  // écrasait des tableaux locaux valides (ex: cars, clientRoot...) par "undefined" dès que
+  // Firebase ne contenait pas encore ce champ (cas typique après un échec de sync /
+  // PERMISSION_DENIED), ce qui faisait disparaître les véhicules nouvellement créés.
+  if(!remote || typeof remote!=='object') return;
+  Object.keys(remote).forEach(function(k){
+    var v=remote[k];
+    if(v!==undefined && v!==null) local[k]=v;
+  });
 }
 function initRTDB(){
   try{
@@ -3146,8 +3154,35 @@ setInterval(checkSessionTimeout,60000);
   });
 })();
 
-function load(){let d;try{d=JSON.parse(localStorage.getItem(STORE))}catch(e){} if(!d){d={users:[{username:'admin',password:'123Soleil?!',role:'admin',main:true}],cars:[],clientRoot:{groups:[],machines:[]},history:[]};localStorage.setItem(STORE,JSON.stringify(d))} return d}
-function save(){db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();} let db=load();
+function load(){
+  let d;try{d=JSON.parse(localStorage.getItem(STORE))}catch(e){}
+  if(!d){d={users:[{username:'admin',password:'123Soleil?!',role:'admin',main:true}],cars:[],clientRoot:{groups:[],machines:[]},history:[]};localStorage.setItem(STORE,JSON.stringify(d))}
+  // CORRECTIF CRITIQUE : garantir que les tableaux/objets essentiels existent toujours,
+  // même si le localStorage contient une ancienne sauvegarde partielle (ou une donnée
+  // venue d'un merge Firebase incomplet). Sans ça, db.cars pouvait être undefined et
+  // faire planter silencieusement la création d'opérateur/véhicule (onsubmit interrompu
+  // avant le save()).
+  if(!Array.isArray(d.users)) d.users=[{username:'admin',password:'123Soleil?!',role:'admin',main:true}];
+  if(!Array.isArray(d.cars)) d.cars=[];
+  if(!d.clientRoot || typeof d.clientRoot!=='object') d.clientRoot={groups:[],machines:[]};
+  if(!Array.isArray(d.clientRoot.groups)) d.clientRoot.groups=[];
+  if(!Array.isArray(d.clientRoot.machines)) d.clientRoot.machines=[];
+  if(!Array.isArray(d.history)) d.history=[];
+  return d;
+}
+function save(){
+  // CORRECTIF CRITIQUE : re-garantir les tableaux essentiels juste avant la sauvegarde,
+  // car un merge Firebase (mergeKeepingLocalImages / onAuthStateChanged) peut survenir
+  // entre le chargement initial et un save() ultérieur.
+  if(!Array.isArray(db.cars)) db.cars=[];
+  if(!Array.isArray(db.users)) db.users=[];
+  if(!db.clientRoot || typeof db.clientRoot!=='object') db.clientRoot={groups:[],machines:[]};
+  if(!Array.isArray(db.clientRoot.groups)) db.clientRoot.groups=[];
+  if(!Array.isArray(db.clientRoot.machines)) db.clientRoot.machines=[];
+  if(!Array.isArray(db.history)) db.history=[];
+  db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();
+}
+let db=load();
 // ── Système de corbeille ────────────────────────────────────────
 // Toute suppression normale dans l'app passe par moveToTrash() au lieu d'un .filter() direct.
 // L'élément reste dans db.trash (donc toujours présent sur Firebase) jusqu'à un vidage explicite par l'admin.
@@ -4341,6 +4376,7 @@ $('operatorForm').onsubmit=e=>{
   }
   // Auto-create vehicle if operator has a plate and car doesn't exist yet
   if(role==='operator' && vehiclePlate){
+    if(!Array.isArray(db.cars)) db.cars=[]; // garde-fou : évite un crash si db.cars est undefined
     const existingCar=db.cars.find(c=>
       (c.plate||'').trim().toLowerCase()===(vehiclePlate||'').trim().toLowerCase() ||
       (c.driver||'').trim().toLowerCase()===(username||'').trim().toLowerCase()

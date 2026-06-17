@@ -1,5 +1,5 @@
 // Duke Stock Manager - Service Worker v5 - NETWORK FIRST + gestion de mise à jour propre
-const CACHE_NAME = 'duke-stock-v5';
+const CACHE_NAME = 'duke-stock-v6';
 
 // Installation : on NE saute plus l'attente automatiquement.
 // Le nouveau SW reste en "waiting" tant que l'utilisateur n'a pas validé la mise à jour
