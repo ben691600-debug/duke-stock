@@ -2615,14 +2615,18 @@ function initFirebaseSecurity(){
   if(firebaseReady && firebaseAuth){
     if(firebaseAuth.currentUser){
       _firebaseAuthReady = true;
+      if(st){ st.textContent='Sécurité Firebase active (déjà connecté)'; st.className='securityStatus ok'; }
       initRTDB();
     } else {
+      if(st){ st.textContent='Connexion au cloud en cours...'; st.className='securityStatus warn'; }
       firebaseAuth.signInAnonymously().then(function(){
         _firebaseAuthReady = true;
+        if(st){ st.textContent='✅ Sécurité Firebase active (session anonyme OK)'; st.className='securityStatus ok'; }
         initRTDB();
       }).catch(function(e){
         console.warn('Connexion anonyme Firebase échouée', e);
         _firebaseAuthReady = false;
+        if(st){ st.textContent='❌ Connexion anonyme refusée ('+(e&&e.code?e.code:'erreur inconnue')+') - active "Anonyme" dans Firebase Authentication'; st.className='securityStatus warn'; }
         // On tente quand même initRTDB : si les règles n'exigent pas auth, ça fonctionnera.
         initRTDB();
       });
@@ -2863,6 +2867,33 @@ function stripBase64Deep(obj){
   }
   return obj;
 }
+// Bannière discrète pour rendre visibles les erreurs de sync Firebase, même sans console développeur.
+function showSyncBanner(msg, isError){
+  try{
+    var b = document.getElementById('syncStatusBanner');
+    if(!b){
+      b = document.createElement('div');
+      b.id = 'syncStatusBanner';
+      b.style.position='fixed';
+      b.style.bottom='10px';
+      b.style.left='10px';
+      b.style.right='10px';
+      b.style.zIndex='99999';
+      b.style.padding='10px 14px';
+      b.style.borderRadius='12px';
+      b.style.fontSize='13px';
+      b.style.fontWeight='800';
+      b.style.boxShadow='0 4px 16px rgba(0,0,0,.25)';
+      document.body.appendChild(b);
+    }
+    b.textContent = msg;
+    b.style.background = isError ? '#fde2e1' : '#e3f7e8';
+    b.style.color = isError ? '#c0392b' : '#1e7a34';
+    b.style.display='block';
+    clearTimeout(b._hideTimer);
+    b._hideTimer = setTimeout(function(){ b.style.display='none'; }, 6000);
+  }catch(e){}
+}
 function syncToRTDB(){
   if(!_rtdb){
     // CORRECTIF : si Firebase (ou la connexion anonyme) n'est pas encore prêt au moment
@@ -2907,11 +2938,13 @@ function syncToRTDB(){
       var remoteHasData = remote && ((remote.users&&remote.users.length>1) || (remote.clientRoot&&((remote.clientRoot.groups||[]).length||(remote.clientRoot.machines||[]).length)) || (remote.cars&&remote.cars.length) || (remote.faultMachines&&remote.faultMachines.length));
       if(remoteHasData){
         console.warn('Duke: écriture Firebase ANNULÉE - la base locale semble vide alors que Firebase contient des données. Protection anti-écrasement activée.');
+        showSyncBanner('⚠️ Sauvegarde cloud annulée par sécurité (données locales vides détectées)', true);
         _rtdbSyncing=false;
         return;
       }
       _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
         console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
+        showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
         setTimeout(syncToRTDB, 2000);
       }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
     }).catch(function(e){
@@ -2924,8 +2957,11 @@ function syncToRTDB(){
     });
     return;
   }
-  _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
+  _rtdb.ref('duke_main').set(dataToSync).then(function(){
+    showSyncBanner('☁️ Sauvegardé sur le cloud', false);
+  }).catch(function(e){
     console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
+    showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
     setTimeout(syncToRTDB, 2000);
   }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
 }
