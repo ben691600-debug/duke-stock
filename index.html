@@ -2631,7 +2631,7 @@ function initFirebaseSecurity(){
 }
 
 // ── Firebase Realtime Database Sync ──────────────────────────────
-let _rtdb=null, _rtdbSyncing=false;
+let _rtdb=null, _rtdbSyncing=false, _syncRetryCount=0;
 // SÉCURITÉ CRITIQUE : empêche toute écriture vers Firebase avant que la lecture initiale soit terminée.
 // Sans cette protection, une base locale vide (après réinstallation, suppression du cache, ou nouvel appareil)
 // pourrait écraser définitivement les données distantes avant même de les avoir récupérées.
@@ -2859,7 +2859,22 @@ function stripBase64Deep(obj){
   return obj;
 }
 function syncToRTDB(){
-  if(!_rtdb) return;
+  if(!_rtdb){
+    // CORRECTIF : si Firebase (ou la connexion anonyme) n'est pas encore prêt au moment
+    // d'une sauvegarde (ex: ajout d'une machine juste après le login), on ne doit PAS
+    // abandonner silencieusement, sinon cette modification ne sera jamais envoyée au cloud.
+    // On retente automatiquement pendant 30 secondes.
+    _syncRetryCount = (_syncRetryCount||0) + 1;
+    if(_syncRetryCount <= 30){
+      console.warn('Duke: _rtdb pas encore prêt, nouvelle tentative de sync dans 1s ('+_syncRetryCount+'/30).');
+      setTimeout(syncToRTDB, 1000);
+    } else {
+      console.warn('Duke: abandon de la sync après 30 tentatives - Firebase semble indisponible.');
+      _syncRetryCount = 0;
+    }
+    return;
+  }
+  _syncRetryCount = 0;
   // PROTECTION CRITIQUE #1 : ne jamais écrire vers Firebase avant que la lecture initiale soit terminée.
   // Sinon une base locale vide (après suppression du cache / réinstallation) écraserait les vraies données distantes.
   if(!_initialPullDone){
@@ -2886,15 +2901,23 @@ function syncToRTDB(){
         _rtdbSyncing=false;
         return;
       }
-      _rtdb.ref('duke_main').set(dataToSync).catch(function(e){console.warn('RTDB write error',e);}).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
-    }).catch(function(){
-      // En cas d'erreur de vérification, on n'écrase pas par précaution
+      _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
+        console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
+        setTimeout(syncToRTDB, 2000);
+      }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
+    }).catch(function(e){
+      // CORRECTIF : en cas d'erreur de vérification (ex: PERMISSION_DENIED transitoire pendant
+      // l'établissement de la session anonyme), on ne doit pas perdre la modification.
+      // On retente la sync complète un peu plus tard plutôt que d'abandonner silencieusement.
+      console.warn('Duke: vérification anti-écrasement échouée, nouvelle tentative dans 2s.', e);
       _rtdbSyncing=false;
+      setTimeout(syncToRTDB, 2000);
     });
     return;
   }
   _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
-    console.warn('RTDB write error',e);
+    console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
+    setTimeout(syncToRTDB, 2000);
   }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
 }
 // ─────────────────────────────────────────────────────────────────
