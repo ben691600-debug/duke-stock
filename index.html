@@ -2864,6 +2864,11 @@ function secureLogin(){
     var localUsers=Array.isArray(storedDb.users)?storedDb.users:[];
     var found=tryLogin(localUsers);
     if(found){
+      // CORRECTIF CRITIQUE : recharger l'objet db COMPLET depuis localStorage (pas seulement users).
+      // Sans cela, si Firebase avait déjà restauré les données dans localStorage en arrière-plan
+      // (clientRoot, faultMachines, cars...) pendant que la variable db en mémoire restait vide,
+      // le login utilisait l'ancienne db vide et l'app paraissait vide malgré des données présentes.
+      Object.assign(db, storedDb);
       db.users=localUsers;
       afterSuccessfulAuth(found);
       return;
@@ -2885,15 +2890,19 @@ function secureLogin(){
     }
 
     if(window._rtdb){
-      window._rtdb.ref('duke_main/users').once('value').then(function(snap){
-        var firebaseUsers=snap.val();
-        if(!Array.isArray(firebaseUsers)||!firebaseUsers.length){
+      window._rtdb.ref('duke_main').once('value').then(function(snap){
+        var remoteDb=snap.val();
+        var firebaseUsers=remoteDb && Array.isArray(remoteDb.users) ? remoteDb.users : null;
+        if(!firebaseUsers || !firebaseUsers.length){
           restoreLoginForm('Identifiant ou mot de passe incorrect.');
           return;
         }
-        // Mettre à jour le localStorage avec les utilisateurs Firebase
+        // CORRECTIF CRITIQUE : restaurer TOUTES les données (clientRoot, faultMachines, cars, etc.),
+        // pas seulement la liste des utilisateurs. Sinon l'app affiche un compte valide mais vide.
+        Object.assign(storedDb, remoteDb);
         storedDb.users=firebaseUsers;
         localStorage.setItem(STORE, JSON.stringify(storedDb));
+        Object.assign(db, storedDb);
         db.users=firebaseUsers;
         var found2=tryLogin(firebaseUsers);
         if(found2){
