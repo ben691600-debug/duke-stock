@@ -2789,6 +2789,11 @@ function restoreFromCloud(){
     }
     rtdb.ref('duke_main').once('value').then(function(snap){
       var remote = snap.val();
+      console.log('Duke RESTORE DEBUG: reçu depuis Firebase -',
+        'groupes racine:', (remote && remote.clientRoot && remote.clientRoot.groups ? remote.clientRoot.groups.length : 'undefined'),
+        '| machines racine:', (remote && remote.clientRoot && remote.clientRoot.machines ? remote.clientRoot.machines.length : 'undefined'),
+        '| clientRoot existe:', !!(remote && remote.clientRoot),
+        '| clés reçues:', remote ? Object.keys(remote) : []);
       if(!remote){
         setHelp('Aucune donnée trouvée sur le cloud Firebase.', true);
         if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
@@ -2886,6 +2891,10 @@ function syncToRTDB(){
   // Les images sont maintenant compressées à la source (~30-60KB chacune)
   // On peut tout envoyer à Firebase sans dépasser la limite
   var dataToSync=JSON.parse(JSON.stringify(db));
+  console.log('Duke SYNC DEBUG: envoi vers Firebase -',
+    'groupes racine:', (dataToSync.clientRoot && dataToSync.clientRoot.groups ? dataToSync.clientRoot.groups.length : 'undefined'),
+    '| machines racine:', (dataToSync.clientRoot && dataToSync.clientRoot.machines ? dataToSync.clientRoot.machines.length : 'undefined'),
+    '| clientRoot existe:', !!dataToSync.clientRoot);
   // PROTECTION CRITIQUE #2 : empêcher l'écrasement si la base locale semble anormalement vide
   // alors qu'on s'attendrait à avoir des données (admin seul + aucune machine/groupe/client).
   var looksEmpty = (!dataToSync.users || dataToSync.users.length<=1) &&
