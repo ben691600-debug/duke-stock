@@ -2148,11 +2148,13 @@ body.draggingMachine{
         </div>
       </div>
       <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher type, modèle, numéro ou panne...">
-      <div id="faultMachineTypeFilterBar" style="display:flex;align-items:center;gap:8px;padding:8px 0 4px;position:sticky;top:274px;z-index:2998;background:#eef8fd;">
-        <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;flex-shrink:0;font-weight:700">🔽 Filtrage</button>
-        <select id="faultMachineTypeSelect" style="flex:1;padding:9px 12px;border-radius:14px;border:1.5px solid var(--line);font-size:14px;background:#fff;font-family:inherit;color:var(--dark)">
-          <option value="">Tous les types</option>
-        </select>
+      <div id="faultMachineTypeFilterBar" style="display:flex;align-items:center;padding:8px 0 4px;position:sticky;top:274px;z-index:2998;background:#eef8fd;">
+        <div style="position:relative;display:inline-block">
+          <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;font-weight:700">🔽 Filtrage</button>
+          <select id="faultMachineTypeSelect" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer">
+            <option value="">Tous les types</option>
+          </select>
+        </div>
       </div>
       <div class="groupGrid" id="faultMachineGrid"></div>
     </section>
@@ -2282,6 +2284,7 @@ body.draggingMachine{
 
 <dialog class="modal" id="clientMachineDialog"><form id="clientMachineForm">
   <h2 data-i="addMachine">Ajouter une machine</h2>
+  <label><span>Type de machine</span><select id="machineTypeClient"><option value="">Choisir un type...</option></select></label>
   <label><span data-i="model">Modèle</span><select id="machineModelClient" required><option value="">Choisir un modèle...</option></select></label>
   <label><span data-i="serialNumber">Numéro de série</span><input id="machineSerialClient" required placeholder="SN-..."></label>
   <div class="linkedMachineImageInfo">Image reprise automatiquement depuis la gestion liste machine panne.</div>
@@ -2415,12 +2418,19 @@ body.draggingMachine{
   <div class="preview hidden" id="faultMachineImagePreview"></div>
 
   <label><span>Type de machine</span>
-    <input id="faultMachineTypeInput" required placeholder="Ex: Autoclave / Washer / Printer" list="faultMachineTypeList" autocomplete="off">
-    <datalist id="faultMachineTypeList"></datalist>
+    <select id="faultMachineTypeSelect2" onchange="faultMachineTypeSelectChanged()">
+      <option value="">— Choisir un type —</option>
+      <option value="__new__">+ Ajouter un nouveau type...</option>
+    </select>
+    <input id="faultMachineTypeInput" required placeholder="Nom du nouveau type" style="display:none;margin-top:8px">
   </label>
 
   <label><span data-i="machineModel">Modèle machine</span>
-    <input id="faultMachineModelInput" required placeholder="Ex: VS 3/2 / AX350 / J850">
+    <select id="faultMachineModelSelect2" onchange="faultMachineModelSelectChanged()">
+      <option value="">— Choisir un modèle —</option>
+      <option value="__new__">+ Ajouter un nouveau modèle...</option>
+    </select>
+    <input id="faultMachineModelInput" required placeholder="Nom du nouveau modèle" style="display:none;margin-top:8px">
   </label>
 
   <div class="formActions">
@@ -5106,10 +5116,55 @@ function getFaultMachineModelsList(){
   });
   return out.sort((a,b)=>a.localeCompare(b));
 }
+function getFaultMachineTypesList(){
+  try{
+    const fresh = loadDb();
+    if(fresh && Array.isArray(fresh.faultMachines)) db.faultMachines = fresh.faultMachines;
+  }catch(e){}
+  const seen = new Set();
+  const out = [];
+  (db.faultMachines || []).forEach(m=>{
+    const type = String(m && m.type ? m.type : '').trim();
+    if(!type) return;
+    const key = type.toLowerCase();
+    if(seen.has(key)) return;
+    seen.add(key);
+    out.push(type);
+  });
+  return out.sort((a,b)=>a.localeCompare(b));
+}
+function getFaultMachineModelsForType(type){
+  try{
+    const fresh = loadDb();
+    if(fresh && Array.isArray(fresh.faultMachines)) db.faultMachines = fresh.faultMachines;
+  }catch(e){}
+  const seen = new Set();
+  const out = [];
+  (db.faultMachines || []).forEach(m=>{
+    if(type && String(m && m.type ? m.type : '').trim() !== type) return;
+    const model = String(m && m.model ? m.model : '').trim();
+    if(!model) return;
+    const key = model.toLowerCase();
+    if(seen.has(key)) return;
+    seen.add(key);
+    out.push(model);
+  });
+  return out.sort((a,b)=>a.localeCompare(b));
+}
+function populateMachineTypeSelect(selected){
+  const sel = $('machineTypeClient');
+  if(!sel) return;
+  const types = getFaultMachineTypesList();
+  const current = String(selected || sel.value || '').trim();
+  sel.innerHTML = '<option value="">Choisir un type...</option>' + types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  if(current && types.includes(current)) sel.value = current;
+}
 function populateMachineModelSelect(selected){
   const sel = $('machineModelClient');
   if(!sel) return;
-  const models = getFaultMachineModelsList();
+  const typeSel = $('machineTypeClient');
+  const activeType = typeSel ? typeSel.value.trim() : '';
+  const models = activeType ? getFaultMachineModelsForType(activeType) : getFaultMachineModelsList();
   const current = String(selected || sel.value || '').trim();
   sel.innerHTML = '<option value="">Choisir un modèle...</option>' + models.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
   if(current){
@@ -5118,6 +5173,12 @@ function populateMachineModelSelect(selected){
     sel.value = current;
   }
 }
+// Trouver le type d'une machine à partir de son modèle (pour pré-sélectionner en édition)
+function findFaultMachineTypeForModel(model){
+  const m=(db.faultMachines||[]).find(x=>(x.model||'').trim().toLowerCase()===(model||'').trim().toLowerCase());
+  return m ? (m.type||'') : '';
+}
+if($('machineTypeClient')) $('machineTypeClient').onchange = function(){ populateMachineModelSelect(''); };
 function populatePartModelsSelect(selectedModels){
   const sel = $('partModelsInput');
   if(!sel) return;
@@ -5185,6 +5246,7 @@ function updateClientMachineImageFromModel(){
 $('addMachineBtn').onclick=()=>{
   editingMachineId=null; clientMachineImage='';
   $('clientMachineForm').reset();
+  populateMachineTypeSelect('');
   populateMachineModelSelect('');
   $('clientMachineDialog').querySelector('h2').textContent=T('addMachine');
   $('machineClientPreview').classList.add('hidden');
@@ -5251,6 +5313,8 @@ function openEditClientMachine(mid){
   clientMachineImage=resolveClientMachineImage(machine);
   $('clientMachineForm').reset();
   $('clientMachineDialog').querySelector('h2').textContent='✏️ ' + T('addMachine');
+  const machineType = findFaultMachineTypeForModel(machine.model||'');
+  populateMachineTypeSelect(machineType);
   populateMachineModelSelect(machine.model||'');
   $('machineSerialClient').value=machine.serial||'';
   if(clientMachineImage){
@@ -6017,6 +6081,64 @@ function faultMachineOpen(){
   faultMachineRender();
 }
 
+function faultMachineGetTypes(){
+  return Array.from(new Set((db.faultMachines||[]).map(m=>(m.type||'').trim()).filter(Boolean))).sort();
+}
+function faultMachineGetModelsForType(type){
+  return Array.from(new Set((db.faultMachines||[])
+    .filter(m=>(m.type||'').trim()===type)
+    .map(m=>(m.model||'').trim())
+    .filter(Boolean))).sort();
+}
+function faultMachineTypeSelectChanged(){
+  const sel = $('faultMachineTypeSelect2');
+  const input = $('faultMachineTypeInput');
+  if(sel.value==='__new__'){
+    input.style.display='';
+    input.value='';
+    input.focus();
+  }else{
+    input.style.display='none';
+    input.value=sel.value;
+  }
+  // Mettre à jour la liste des modèles disponibles pour ce type
+  faultMachinePopulateModelSelect(sel.value==='__new__'?'':sel.value, '');
+}
+function faultMachinePopulateModelSelect(type, currentModel){
+  const modelSel = $('faultMachineModelSelect2');
+  const modelInput = $('faultMachineModelInput');
+  if(!modelSel) return;
+  const models = type ? faultMachineGetModelsForType(type) : [];
+  modelSel.innerHTML = '<option value="">— Choisir un modèle —</option>' +
+    models.map(m=>`<option value="${esc(m)}"${currentModel===m?' selected':''}>${esc(m)}</option>`).join('') +
+    '<option value="__new__">+ Ajouter un nouveau modèle...</option>';
+  if(currentModel && !models.includes(currentModel)){
+    modelSel.value='__new__';
+    modelInput.style.display='';
+    modelInput.value=currentModel;
+  }else if(currentModel){
+    modelSel.value=currentModel;
+    modelInput.style.display='none';
+    modelInput.value=currentModel;
+  }else{
+    modelSel.value='';
+    modelInput.style.display='none';
+    modelInput.value='';
+  }
+}
+function faultMachineModelSelectChanged(){
+  const sel = $('faultMachineModelSelect2');
+  const input = $('faultMachineModelInput');
+  if(sel.value==='__new__'){
+    input.style.display='';
+    input.value='';
+    input.focus();
+  }else{
+    input.style.display='none';
+    input.value=sel.value;
+  }
+}
+
 function faultMachineOpenForm(machineId=null){
   if(!isAdmin()){show('moduleView');return;}
   faultMachineEnsureDb();
@@ -6031,18 +6153,24 @@ function faultMachineOpenForm(machineId=null){
   preview.style.backgroundImage = '';
   preview.classList.add('hidden');
 
-  // Alimenter la datalist avec les types existants
-  const dl = $('faultMachineTypeList');
-  if(dl){
-    const types = Array.from(new Set((db.faultMachines||[]).map(m=>(m.type||'').trim()).filter(Boolean))).sort();
-    dl.innerHTML = types.map(t=>`<option value="${esc(t)}">`).join('');
-  }
+  // Peupler le select des types existants
+  const typeSel = $('faultMachineTypeSelect2');
+  const typeInput = $('faultMachineTypeInput');
+  const types = faultMachineGetTypes();
+  typeSel.innerHTML = '<option value="">— Choisir un type —</option>' +
+    types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('') +
+    '<option value="__new__">+ Ajouter un nouveau type...</option>';
 
   if(machineId){
     const machine = db.faultMachines.find(x=>x.id===machineId);
     if(machine){
-      $('faultMachineTypeInput').value = machine.type || '';
-      $('faultMachineModelInput').value = machine.model || '';
+      const mtype=machine.type||'', mmodel=machine.model||'';
+      if(types.includes(mtype)){
+        typeSel.value=mtype; typeInput.style.display='none'; typeInput.value=mtype;
+      }else{
+        typeSel.value='__new__'; typeInput.style.display=''; typeInput.value=mtype;
+      }
+      faultMachinePopulateModelSelect(mtype, mmodel);
       faultMachineImageData = machine.image || '';
 
       if(faultMachineImageData){
@@ -6050,6 +6178,11 @@ function faultMachineOpenForm(machineId=null){
         preview.classList.remove('hidden');
       }
     }
+  }else{
+    typeSel.value='';
+    typeInput.style.display='none';
+    typeInput.value='';
+    faultMachinePopulateModelSelect('', '');
   }
 
   $('faultMachineDialog').showModal();
@@ -6081,14 +6214,17 @@ function faultMachineRender(){
   }
   const selectedType = typeSelect ? typeSelect.value : '';
 
-  // Bouton "Filtrage" ouvre le select natif
+  // Bouton "Filtrage" ouvre le select natif et affiche le filtre actif
   const filterBtn = $('faultMachineFilterBtn');
-  if(filterBtn && !filterBtn._wired){
-    filterBtn._wired = true;
-    filterBtn.onclick = function(){
-      if(typeSelect){ typeSelect.focus(); try{ typeSelect.showPicker(); }catch(e){} }
-    };
-    typeSelect && typeSelect.addEventListener('change', function(){ faultMachineRender(); });
+  if(filterBtn){
+    filterBtn.textContent = selectedType ? `🔽 ${selectedType}` : '🔽 Filtrage';
+    if(!filterBtn._wired){
+      filterBtn._wired = true;
+      filterBtn.onclick = function(){
+        if(typeSelect){ typeSelect.focus(); try{ typeSelect.showPicker(); }catch(e){} }
+      };
+      typeSelect && typeSelect.addEventListener('change', function(){ faultMachineRender(); });
+    }
   }
 
   db.faultMachines.filter(machine=>{
