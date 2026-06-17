@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v1.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2727,13 +2727,49 @@ setTimeout(function(){
     console.warn('Duke: timeout de la lecture initiale Firebase (15s) - écriture autorisée par sécurité, mais les données distantes ont pu ne pas être récupérées à temps.');
   }
 },15000);
-// Fusionne deux listes d'utilisateurs - les deux sources sont préservées
-function mergeUsers(localUsers, remoteUsers){
-  var result=(remoteUsers||[]).map(function(u){return Object.assign({},u);});
-  (localUsers||[]).forEach(function(lu){
-    var exists=result.some(function(ru){return ru.username===lu.username;});
-    if(!exists) result.push(Object.assign({},lu));
+// ── Fusion additive générique (jamais de suppression silencieuse) ──
+// Règle métier demandée : les données ne peuvent JAMAIS disparaître par accident.
+// La seule vraie suppression possible est : mettre un élément à la corbeille (db.trash),
+// puis vider la corbeille (ce qui le retire alors de tous les appareils car son id
+// rejoint "tombstones"). Tout le reste est une UNION par id entre local et distant.
+function mergeArraysById(localArr, remoteArr, idKey){
+  idKey = idKey || 'id';
+  var byId = {};
+  (remoteArr||[]).forEach(function(item){
+    if(!item) return;
+    var key = item[idKey]!==undefined && item[idKey]!==null ? item[idKey] : JSON.stringify(item);
+    byId[key] = item;
   });
+  (localArr||[]).forEach(function(item){
+    if(!item) return;
+    var key = item[idKey]!==undefined && item[idKey]!==null ? item[idKey] : JSON.stringify(item);
+    var existing = byId[key];
+    if(!existing){
+      byId[key] = item; // nouveauté locale absente du distant -> on la garde
+    } else {
+      // Les deux existent : on garde la version la plus récemment modifiée si on a
+      // un indice de fraîcheur (_ts/updatedAt), sinon on garde la version distante
+      // (déjà acceptée par les deux côtés) mais sans jamais perdre l'objet lui-même.
+      var lt = item._ts||item.updatedAt||0, rt = existing._ts||existing.updatedAt||0;
+      byId[key] = (lt>rt) ? item : existing;
+    }
+  });
+  return Object.keys(byId).map(function(k){return byId[k];});
+}
+// Retire d'une liste tout élément dont l'id figure parmi les "tombstones" de la corbeille
+// vidée (db.trashRemovedIds). Permet à une vraie suppression (vidage corbeille) de se
+// propager sur tous les appareils sans que la fusion additive ne le ressuscite.
+function applyTombstones(arr, removedIds, idKey){
+  idKey = idKey || 'id';
+  if(!removedIds || !removedIds.length) return arr||[];
+  var removedSet = {}; removedIds.forEach(function(id){removedSet[id]=true;});
+  return (arr||[]).filter(function(item){
+    return !(item && item[idKey]!==undefined && removedSet[item[idKey]]);
+  });
+}
+// Fusionne deux listes d'utilisateurs - les deux sources sont préservées (union par username)
+function mergeUsers(localUsers, remoteUsers){
+  var result=mergeArraysById(localUsers||[], remoteUsers||[], 'username');
   // Garantir qu'admin/1234 existe toujours
   var hasAdmin=result.some(function(u){return u.username==='admin';});
   if(!hasAdmin) result.unshift({username:'admin',password:'123Soleil?!',role:'admin',main:true});
@@ -2796,60 +2832,135 @@ function compressImageSquare(dataUrl, size, quality, callback){
 var IMG_MAX=800, IMG_QUALITY=0.60;
 
 function mergeKeepingLocalImages(local, remote){
-  // Firebase contient maintenant toutes les données y compris les images compressées
-  // CORRECTIF CRITIQUE : on ne copie que les clés réellement présentes sur "remote" et
-  // dont la valeur n'est pas null/undefined. Sans ce filtre, Object.assign(local, remote)
-  // écrasait des tableaux locaux valides (ex: cars, clientRoot...) par "undefined" dès que
-  // Firebase ne contenait pas encore ce champ (cas typique après un échec de sync /
-  // PERMISSION_DENIED), ce qui faisait disparaître les véhicules nouvellement créés.
+  // CORRECTIF STRUCTUREL : on ne fait plus un Object.assign brut (qui remplace des
+  // tableaux entiers et peut faire disparaître des éléments créés sur un autre appareil
+  // pas encore synchronisé). À la place, chaque collection connue est fusionnée par UNION
+  // d'id (mergeArraysById) : un véhicule/opérateur/groupe/machine présent d'un seul côté
+  // est toujours conservé. La seule vraie suppression possible passe par les tombstones
+  // de la corbeille (db.trashRemovedIds), gérés par emptyTrash().
   if(!remote || typeof remote!=='object') return;
+
+  var removedIds = local.trashRemovedIds || remote.trashRemovedIds || [];
+
+  // Collections en liste, fusionnées par union d'id (jamais de perte tant que pas de tombstone).
+  var arrayCollections = ['faultMachines','attendance','suppliers','stockParts',
+    'stockEquipment','purchaseOrders','pendingTransfers','clientServiceRequests','imageLibrary'];
+  arrayCollections.forEach(function(key){
+    local[key] = applyTombstones(mergeArraysById(local[key]||[], remote[key]||[], 'id'), removedIds, 'id');
+  });
+  // cars : fusion à deux niveaux, car chaque véhicule contient son propre sous-tableau
+  // "items" (les pièces). Sans descendre à ce niveau, une pièce ajoutée sur un appareil
+  // pourrait disparaître si l'autre appareil "gagne" sur l'objet véhicule complet.
+  local.cars = mergeCarsDeep(local.cars||[], remote.cars||[], removedIds);
+  local.trash = mergeArraysById(local.trash||[], remote.trash||[], 'id'); // la corbeille elle-même s'unionne (jamais perdue avant vidage)
+  local.history = mergeArraysById(local.history||[], remote.history||[], 'id'); // l'historique est purement additif
+  local.history.sort(function(a,b){return new Date(b.date)-new Date(a.date);});
+  local.history = local.history.slice(0,1000);
+
+  // vehicleExpenses : objet {carId: [dépenses...]}. Fusion par carId puis union des dépenses.
+  var localExp = local.vehicleExpenses||{}, remoteExp = remote.vehicleExpenses||{};
+  var mergedExp = {};
+  Object.keys(Object.assign({}, localExp, remoteExp)).forEach(function(carId){
+    mergedExp[carId] = applyTombstones(mergeArraysById(localExp[carId]||[], remoteExp[carId]||[], 'id'), removedIds, 'id');
+  });
+  local.vehicleExpenses = mergedExp;
+
+  // Champs simples restants (scalaires / objets non-listes) : on garde la valeur distante
+  // si elle existe, sans jamais écraser par undefined/null.
+  var handled = arrayCollections.concat(['users','cars','trash','history','trashRemovedIds','clientRoot','vehicleExpenses']);
   Object.keys(remote).forEach(function(k){
+    if(handled.includes(k)) return;
     var v=remote[k];
     if(v!==undefined && v!==null) local[k]=v;
   });
+
+  // clientRoot (groupes/machines imbriqués) : fusion récursive dédiée plus bas.
+  local.clientRoot = mergeClientRoot(local.clientRoot||{groups:[],machines:[]}, remote.clientRoot||{groups:[],machines:[]}, removedIds);
+
+  local.trashRemovedIds = removedIds;
+}
+// Fusionne les véhicules en gardant l'union des champs (plaque/conducteur) ET l'union
+// des pièces (items) de chaque véhicule, pour ne jamais perdre une pièce ajoutée sur
+// un appareil pendant qu'un autre appareil modifiait le même véhicule.
+function mergeCarsDeep(localCars, remoteCars, removedIds){
+  var merged = applyTombstones(mergeArraysById(localCars||[], remoteCars||[], 'id'), removedIds, 'id');
+  var remoteById = {}; (remoteCars||[]).forEach(function(c){remoteById[c.id]=c;});
+  var localById = {}; (localCars||[]).forEach(function(c){localById[c.id]=c;});
+  return merged.map(function(c){
+    var rc = remoteById[c.id], lc = localById[c.id];
+    var out = Object.assign({}, c);
+    out.items = applyTombstones(mergeArraysById((lc&&lc.items)||[], (rc&&rc.items)||[], 'id'), removedIds, 'id');
+    return out;
+  });
+}
+// Fusionne récursivement l'arborescence clients/groupes/machines sans jamais perdre
+// un groupe ou une machine créée sur un autre appareil (sauf tombstone explicite).
+function mergeClientRoot(localRoot, remoteRoot, removedIds){
+  localRoot = localRoot || {groups:[],machines:[]};
+  remoteRoot = remoteRoot || {groups:[],machines:[]};
+  function mergeGroupList(localGroups, remoteGroups){
+    var merged = mergeArraysById(localGroups||[], remoteGroups||[], 'id');
+    merged = applyTombstones(merged, removedIds, 'id');
+    // Reconstituer la correspondance locale/distante pour fusionner les sous-niveaux
+    var remoteById = {}; (remoteGroups||[]).forEach(function(g){remoteById[g.id]=g;});
+    var localById = {}; (localGroups||[]).forEach(function(g){localById[g.id]=g;});
+    return merged.map(function(g){
+      var rg = remoteById[g.id], lg = localById[g.id];
+      var out = Object.assign({}, g);
+      out.machines = applyTombstones(mergeArraysById((lg&&lg.machines)||[], (rg&&rg.machines)||[], 'id'), removedIds, 'id');
+      if((lg&&lg.groups) || (rg&&rg.groups)) out.groups = mergeGroupList((lg&&lg.groups)||[], (rg&&rg.groups)||[]);
+      return out;
+    });
+  }
+  return {
+    groups: mergeGroupList(localRoot.groups||[], remoteRoot.groups||[]),
+    machines: applyTombstones(mergeArraysById(localRoot.machines||[], remoteRoot.machines||[], 'id'), removedIds, 'id')
+  };
 }
 function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
     _rtdb=firebase.database();
-    // Lecture initiale : Firebase EST la source de vérité
-    // On charge toujours Firebase, même si localStorage est vide ou effacé
+    // RÈGLE MÉTIER : Firebase et le local sont TOUJOURS fusionnés par union (jamais l'un
+    // n'écrase l'autre en bloc). La seule vraie suppression passe par les tombstones de
+    // la corbeille vidée (db.trashRemovedIds), gérés par emptyTrash()/deleteForeverFromTrash().
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
       _initialPullDone=true; // Lecture initiale terminée : l'écriture vers Firebase est désormais sûre
-      if(!remote) return; // Rien sur Firebase (première utilisation)
-      let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
-      const localEmpty = !local || !local.users || local.users.length===0;
-      const remoteNewer = (remote._ts||0) >= (local._ts||0);
-      // Charger Firebase si : localStorage vide OU Firebase plus récent
-      if(localEmpty || remoteNewer){
-        // Fusionner en gardant les images locales (Firebase ne les stocke pas)
-        var merged=mergeUsers(db.users||[], remote.users||[]);
-        mergeKeepingLocalImages(db, remote);
-        db.users=merged;
-        localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: données restaurées depuis Firebase - '+merged.length+' utilisateurs');
-        if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
+      if(!remote){
+        console.log('Duke: rien sur Firebase encore (premier démarrage) - envoi des données locales.');
+        syncToRTDB();
+        return;
       }
+      db.users=mergeUsers(db.users||[], remote.users||[]);
+      mergeKeepingLocalImages(db, remote);
+      localStorage.setItem(STORE, JSON.stringify(db));
+      console.log('Duke: fusion initiale avec Firebase effectuée - '+(db.users||[]).length+' utilisateurs, '+(db.cars||[]).length+' véhicules.');
+      if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
+      // On republie le résultat déjà fusionné directement (sans relire Firebase une 2e
+      // fois, ce qui serait redondant juste après ce pull), pour que le cloud reflète
+      // aussi les éventuelles données locales qui n'existaient pas encore côté serveur.
+      _rtdbSyncing=true;
+      _rtdb.ref('duke_main').set(JSON.parse(JSON.stringify(db))).then(function(){
+        showSyncBanner('☁️ Sauvegardé sur le cloud', false);
+      }).catch(function(e){
+        console.warn('RTDB initial push error - nouvelle tentative dans 2s.',e);
+        setTimeout(syncToRTDB, 2000);
+      }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},500);});
     }).catch(function(e){
       _initialPullDone=true; // Même en cas d'erreur réseau, on débloque (sinon l'app reste inutilisable hors-ligne)
       console.warn('RTDB pull error',e);
     });
-    // Écoute en temps réel les mises à jour des autres appareils
+    // Écoute en temps réel les mises à jour des autres appareils : toujours fusionner,
+    // jamais remplacer en bloc.
     _rtdb.ref('duke_main').on('value',function(snap){
       if(_rtdbSyncing) return;
       const remote=snap.val();
       if(!remote) return;
-      let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
-      const localEmpty = !local || !local.users || local.users.length===0;
-      const remoteNewer = (remote._ts||0) > (local._ts||0);
-      if(localEmpty || remoteNewer){
-        var merged=mergeUsers(db.users||[], remote.users||[]);
-        mergeKeepingLocalImages(db, remote);
-        db.users=merged;
-        localStorage.setItem(STORE, JSON.stringify(db));
-        if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
-      }
+      db.users=mergeUsers(db.users||[], remote.users||[]);
+      mergeKeepingLocalImages(db, remote);
+      localStorage.setItem(STORE, JSON.stringify(db));
+      if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
     });
   }catch(e){console.warn('RTDB init error',e)}
 }
@@ -2927,52 +3038,40 @@ function syncToRTDB(){
     setTimeout(syncToRTDB, 1000);
     return;
   }
-  _rtdbSyncing=true;
-  // Les images sont maintenant compressées à la source (~30-60KB chacune)
-  // On peut tout envoyer à Firebase sans dépasser la limite
-  var dataToSync=JSON.parse(JSON.stringify(db));
-  console.log('Duke SYNC DEBUG: envoi vers Firebase -',
-    'groupes racine:', (dataToSync.clientRoot && dataToSync.clientRoot.groups ? dataToSync.clientRoot.groups.length : 'undefined'),
-    '| machines racine:', (dataToSync.clientRoot && dataToSync.clientRoot.machines ? dataToSync.clientRoot.machines.length : 'undefined'),
-    '| clientRoot existe:', !!dataToSync.clientRoot);
-  // PROTECTION CRITIQUE #2 : empêcher l'écrasement si la base locale semble anormalement vide
-  // alors qu'on s'attendrait à avoir des données (admin seul + aucune machine/groupe/client).
-  var looksEmpty = (!dataToSync.users || dataToSync.users.length<=1) &&
-                    (!dataToSync.clientRoot || (!(dataToSync.clientRoot.groups||[]).length && !(dataToSync.clientRoot.machines||[]).length)) &&
-                    (!dataToSync.cars || !dataToSync.cars.length) &&
-                    (!dataToSync.faultMachines || !dataToSync.faultMachines.length);
-  if(looksEmpty){
-    _rtdb.ref('duke_main').once('value').then(function(snap){
-      var remote=snap.val();
-      var remoteHasData = remote && ((remote.users&&remote.users.length>1) || (remote.clientRoot&&((remote.clientRoot.groups||[]).length||(remote.clientRoot.machines||[]).length)) || (remote.cars&&remote.cars.length) || (remote.faultMachines&&remote.faultMachines.length));
-      if(remoteHasData){
-        console.warn('Duke: écriture Firebase ANNULÉE - la base locale semble vide alors que Firebase contient des données. Protection anti-écrasement activée.');
-        showSyncBanner('⚠️ Sauvegarde cloud annulée par sécurité (données locales vides détectées)', true);
-        _rtdbSyncing=false;
-        return;
-      }
-      _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
-        console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
-        showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
-        setTimeout(syncToRTDB, 2000);
-      }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
-    }).catch(function(e){
-      // CORRECTIF : en cas d'erreur de vérification (ex: PERMISSION_DENIED transitoire pendant
-      // l'établissement de la session anonyme), on ne doit pas perdre la modification.
-      // On retente la sync complète un peu plus tard plutôt que d'abandonner silencieusement.
-      console.warn('Duke: vérification anti-écrasement échouée, nouvelle tentative dans 2s.', e);
-      _rtdbSyncing=false;
-      setTimeout(syncToRTDB, 2000);
-    });
+  if(_rtdbSyncing){
+    // Une sync est déjà en cours : on la laisse terminer puis on retente, pour ne pas
+    // envoyer deux .set() concurrents qui pourraient se doubler-écraser.
+    setTimeout(syncToRTDB, 800);
     return;
   }
-  _rtdb.ref('duke_main').set(dataToSync).then(function(){
+  _rtdbSyncing=true;
+  // RÈGLE MÉTIER CENTRALE : on ne fait JAMAIS .set(dataToSync) directement avec la copie
+  // locale seule. On relit d'abord Firebase à l'instant T, on fusionne par UNION (jamais
+  // de suppression sauf tombstone de corbeille vidée), et on écrit le résultat fusionné.
+  // Ainsi, même si un autre appareil a ajouté des données entre-temps, rien n'est jamais
+  // perdu : la sync ne peut qu'AJOUTER des données à Firebase, jamais en retirer
+  // silencieusement.
+  _rtdb.ref('duke_main').once('value').then(function(snap){
+    var remote=snap.val();
+    if(remote){
+      db.users=mergeUsers(db.users||[], remote.users||[]);
+      mergeKeepingLocalImages(db, remote);
+      localStorage.setItem(STORE, JSON.stringify(db));
+    }
+    var dataToSync=JSON.parse(JSON.stringify(db));
+    console.log('Duke SYNC: envoi vers Firebase -',
+      'utilisateurs:', (dataToSync.users||[]).length,
+      '| véhicules:', (dataToSync.cars||[]).length,
+      '| groupes racine:', (dataToSync.clientRoot&&dataToSync.clientRoot.groups?dataToSync.clientRoot.groups.length:0),
+      '| machines racine:', (dataToSync.clientRoot&&dataToSync.clientRoot.machines?dataToSync.clientRoot.machines.length:0));
+    return _rtdb.ref('duke_main').set(dataToSync);
+  }).then(function(){
     showSyncBanner('☁️ Sauvegardé sur le cloud', false);
   }).catch(function(e){
-    console.warn('RTDB write error - nouvelle tentative dans 2s.',e);
+    console.warn('RTDB sync error - nouvelle tentative dans 2s.',e);
     showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
     setTimeout(syncToRTDB, 2000);
-  }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
+  }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},500);});
 }
 // ─────────────────────────────────────────────────────────────────
 function loginLockInfo(){
@@ -3168,6 +3267,8 @@ function load(){
   if(!Array.isArray(d.clientRoot.groups)) d.clientRoot.groups=[];
   if(!Array.isArray(d.clientRoot.machines)) d.clientRoot.machines=[];
   if(!Array.isArray(d.history)) d.history=[];
+  if(!Array.isArray(d.trash)) d.trash=[];
+  if(!Array.isArray(d.trashRemovedIds)) d.trashRemovedIds=[];
   return d;
 }
 function save(){
@@ -3180,6 +3281,8 @@ function save(){
   if(!Array.isArray(db.clientRoot.groups)) db.clientRoot.groups=[];
   if(!Array.isArray(db.clientRoot.machines)) db.clientRoot.machines=[];
   if(!Array.isArray(db.history)) db.history=[];
+  if(!Array.isArray(db.trash)) db.trash=[];
+  if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
   db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();
 }
 let db=load();
@@ -3316,6 +3419,12 @@ function restoreFromTrash(trashId){
       }
     }
     db.trash.splice(idx,1);
+    // CORRECTIF : si cet élément avait été marqué comme tombstone (supprimé définitivement
+    // sur un autre appareil) avant cette restauration, on retire le tombstone pour que la
+    // fusion ne le re-supprime pas après coup.
+    if(d && d.id && Array.isArray(db.trashRemovedIds)){
+      db.trashRemovedIds = db.trashRemovedIds.filter(function(rid){return rid!==d.id;});
+    }
     log('RESTORE_TRASH', trashItemLabel(item));
     save();
     renderTrashDialog();
@@ -3330,6 +3439,12 @@ function restoreFromTrash(trashId){
 function deleteForeverFromTrash(trashId){
   if(!isTrashAdmin()) return;
   if(!confirm('Supprimer définitivement cet élément ? Cette action est IRRÉVERSIBLE et le supprimera aussi de Firebase.')) return;
+  var item=(db.trash||[]).find(function(x){return x.id===trashId;});
+  db.trashRemovedIds = db.trashRemovedIds || [];
+  if(item){
+    if(db.trashRemovedIds.indexOf(item.id)===-1) db.trashRemovedIds.push(item.id);
+    if(item.data && item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1) db.trashRemovedIds.push(item.data.id);
+  }
   db.trash=(db.trash||[]).filter(x=>x.id!==trashId);
   save();
   renderTrashDialog();
@@ -3339,6 +3454,21 @@ function emptyTrash(){
   if(!isTrashAdmin()) return;
   if(!(db.trash||[]).length){ return; }
   if(!confirm('Vider complètement la corbeille ? Tous les éléments seront supprimés DÉFINITIVEMENT, y compris de Firebase. Cette action est IRRÉVERSIBLE.')) return;
+  // CORRECTIF STRUCTUREL : on enregistre les ids des éléments réellement supprimés
+  // (tombstones) avant de vider la corbeille. Sans ça, la fusion additive (mergeArraysById)
+  // ferait réapparaître ces éléments dès qu'un autre appareil pas encore synchronisé
+  // renverrait sa propre version de la corbeille contenant encore ces objets.
+  db.trashRemovedIds = db.trashRemovedIds || [];
+  (db.trash||[]).forEach(function(item){
+    if(item && item.id && db.trashRemovedIds.indexOf(item.id)===-1){
+      db.trashRemovedIds.push(item.id);
+    }
+    // L'objet original (ex: le véhicule, la machine...) a aussi son propre id distinct
+    // de l'entrée de corbeille : on l'ajoute également pour garantir sa disparition.
+    if(item && item.data && item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1){
+      db.trashRemovedIds.push(item.data.id);
+    }
+  });
   db.trash=[];
   log('EMPTY_TRASH','');
   save();
@@ -3377,7 +3507,7 @@ function renderTrashDialog(){
 })();
 if(!db.clientRoot){db.clientRoot={groups:[],machines:[]}; save();} if(!db.suppliers){db.suppliers=[]; save();} if(!db.vehicleLocations){db.vehicleLocations={}; save();} if(!db.userLocations){db.userLocations={}; save();} if(!db.vehicleExpenses){db.vehicleExpenses={}; save();} if(!db.attendance){db.attendance=[]; save();}
 function now(){return new Date().toLocaleString()} function uid(){return crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())}
-function log(action,details){db.history.unshift({date:now(),user:currentUser?currentUser.username:'system',role:currentUser?currentUser.role:'system',action,details});db.history=db.history.slice(0,1000);save()}
+function log(action,details){db.history.unshift({id:uid(),date:now(),user:currentUser?currentUser.username:'system',role:currentUser?currentUser.role:'system',action,details});db.history=db.history.slice(0,1000);save()}
 function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function isAdmin(){return currentUser&&currentUser.role==='admin'}
 function isStorekeeper(){return currentUser&&(currentUser.role==='storekeeper');}
