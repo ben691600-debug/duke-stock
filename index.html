@@ -1945,7 +1945,6 @@ body.draggingMachine{
       <label><span data-i="password">Mot de passe</span><input id="loginPass" type="password" autocomplete="current-password" value=""></label>
       <button class="btn primary" id="loginBtn" data-i="login" onclick="secureLogin()">Connexion</button>
       <button class="forgotBtn" type="button" id="forgotPasswordBtn" data-i="forgotPassword">Mot de passe oublié ?</button>
-      <button class="btn secondary" type="button" id="restoreFromCloudBtn" style="width:100%;margin-top:10px" onclick="restoreFromCloud()">🔄 Restaurer mes données (Cloud)</button>
       <p class="smallNote" id="loginHelp"></p>
       <p class="securityStatus" id="securityStatus">Sécurité Firebase : à configurer</p>
     </div>
@@ -2779,85 +2778,9 @@ function initRTDB(){
     });
   }catch(e){console.warn('RTDB init error',e)}
 }
-// ── Restauration manuelle depuis Firebase (bouton sur l'écran de connexion) ──
-// Force la lecture de Firebase et écrase le localStorage local avec les données du cloud.
-// Utile après une réinstallation de l'app ou un effacement des données locales.
-function restoreFromCloud(){
-  var btn=document.getElementById('restoreFromCloudBtn');
-  var help=document.getElementById('loginHelp');
-  function setHelp(msg, isError){
-    if(help){ help.textContent=msg; help.style.color = isError ? '#c0392b' : '#0A7CC2'; }
-  }
-  if(!firebaseReady || !window.firebase || !firebase.database){
-    setHelp('Firebase non disponible. Vérifie ta connexion internet.', true);
-    return;
-  }
-  if(btn){ btn.disabled=true; btn.textContent='⏳ Restauration en cours...'; }
-  setHelp('Connexion au cloud en cours, merci de patienter...', false);
-
-  function doRead(){
-    var rtdb;
-    try{ rtdb = firebase.database(); }catch(e){
-      setHelp('Impossible de contacter Firebase.', true);
-      if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-      return;
-    }
-    rtdb.ref('duke_main').once('value').then(function(snap){
-      var remote = snap.val();
-      console.log('Duke RESTORE DEBUG: reçu depuis Firebase -',
-        'groupes racine:', (remote && remote.clientRoot && remote.clientRoot.groups ? remote.clientRoot.groups.length : 'undefined'),
-        '| machines racine:', (remote && remote.clientRoot && remote.clientRoot.machines ? remote.clientRoot.machines.length : 'undefined'),
-        '| clientRoot existe:', !!(remote && remote.clientRoot),
-        '| clés reçues:', remote ? Object.keys(remote) : []);
-      if(!remote){
-        setHelp('Aucune donnée trouvée sur le cloud Firebase.', true);
-        if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-        return;
-      }
-      // On écrase complètement le localStorage avec les données distantes (le cloud est la référence)
-      try{
-        var existing; try{existing=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){existing={}}
-        var merged = Object.assign({}, remote);
-        // Garantir qu'admin/1234 existe toujours, même si le cloud ne le contient pas
-        merged.users = mergeUsers(existing.users||[], remote.users||[]);
-        localStorage.setItem(STORE, JSON.stringify(merged));
-        // Débloque immédiatement l'écriture future vers Firebase
-        _initialPullDone = true;
-        setHelp('✅ Données restaurées avec succès depuis le cloud ! Tu peux te connecter.', false);
-      }catch(e){
-        console.warn('Erreur restauration', e);
-        setHelp('Erreur lors de la restauration des données.', true);
-      }
-      if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-    }).catch(function(e){
-      console.warn('Erreur lecture Firebase', e);
-      if(e && e.code === 'PERMISSION_DENIED'){
-        setHelp('Accès refusé par Firebase (règles de sécurité). Réessaie dans un instant.', true);
-      } else {
-        setHelp('Erreur de connexion à Firebase. Vérifie ta connexion internet.', true);
-      }
-      if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-    });
-  }
-
-  // Les règles Firebase exigent une session authentifiée (même anonyme) pour lire la base.
-  // On s'assure donc qu'une session anonyme est active avant de tenter la lecture.
-  if(firebaseAuth && firebaseAuth.currentUser){
-    doRead();
-  } else if(firebaseAuth){
-    firebaseAuth.signInAnonymously().then(function(){
-      _firebaseAuthReady = true;
-      doRead();
-    }).catch(function(e){
-      console.warn('Connexion anonyme échouée', e);
-      setHelp('Impossible de s\'authentifier auprès de Firebase. Vérifie que la connexion anonyme est activée dans la console Firebase (Authentication > Sign-in method > Anonyme).', true);
-      if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-    });
-  } else {
-    setHelp('Firebase Auth non initialisé.', true);
-    if(btn){ btn.disabled=false; btn.textContent='🔄 Restaurer mes données (Cloud)'; }
-  }
-}
+// La restauration depuis Firebase est désormais entièrement automatique (voir initRTDB ci-dessus) :
+// dès que l'app démarre et que Firebase est authentifié, les données du cloud sont chargées
+// automatiquement si le stockage local est vide ou périmé. Aucune action manuelle n'est requise.
 
 function stripBase64Deep(obj){
   // Supprime les images base64 des données avant envoi Firebase
