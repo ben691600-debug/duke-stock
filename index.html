@@ -8335,6 +8335,69 @@ html { overscroll-behavior: none; }
   #clientMachinesList .machineQrInline .embeddedMachineQr { width: 40px !important; height: 40px !important; }
   .vehicleCompactCard { padding: 14px !important; }
 }
+
+/* ══════════════════════════════════════════
+   CORRECTIF EN-TÊTE : éviter que les boutons
+   (langue / corbeille / paramètres / déconnexion)
+   n'empiètent sur le logo Duke à gauche.
+   ══════════════════════════════════════════ */
+.top {
+  grid-template-columns: minmax(120px,1fr) auto !important;
+}
+.brand img {
+  flex-shrink: 0 !important;
+}
+.brand h1, .brand p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.headerTopRow {
+  flex-wrap: nowrap;
+  gap: 6px !important;
+  flex-shrink: 0;
+}
+.headerTopRow .btn {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  font-size: 18px !important;
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .top {
+    grid-template-columns: minmax(90px,1fr) auto !important;
+    gap: 8px !important;
+    padding: 8px 10px 10px !important;
+  }
+  .brand img {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  .brand h1 {
+    font-size: 16px !important;
+  }
+  .headerTopRow {
+    gap: 5px !important;
+  }
+  .headerTopRow .btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    font-size: 15px !important;
+    border-radius: 12px !important;
+  }
+}
+@media (max-width: 360px) {
+  .brand h1 { font-size: 14px !important; }
+  .brand p { display: none !important; }
+  .headerTopRow .btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    font-size: 13px !important;
+  }
+}
 </style></style>
 <script id="duke-top-height-tracker">
 (function(){
