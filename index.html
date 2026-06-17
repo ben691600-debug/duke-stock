@@ -2612,6 +2612,20 @@ function initFirebaseSecurity(){
 
 // ── Firebase Realtime Database Sync ──────────────────────────────
 let _rtdb=null, _rtdbSyncing=false;
+// SÉCURITÉ CRITIQUE : empêche toute écriture vers Firebase avant que la lecture initiale soit terminée.
+// Sans cette protection, une base locale vide (après réinstallation, suppression du cache, ou nouvel appareil)
+// pourrait écraser définitivement les données distantes avant même de les avoir récupérées.
+let _initialPullDone=false;
+let _initialPullTimedOut=false;
+// Sécurité supplémentaire : si la lecture initiale prend trop de temps (réseau lent),
+// on autorise quand même l'écriture après 15s pour ne pas bloquer l'usage hors-ligne,
+// mais on log un avertissement clair.
+setTimeout(function(){
+  if(!_initialPullDone){
+    _initialPullTimedOut=true;
+    console.warn('Duke: timeout de la lecture initiale Firebase (15s) - écriture autorisée par sécurité, mais les données distantes ont pu ne pas être récupérées à temps.');
+  }
+},15000);
 // Fusionne deux listes d'utilisateurs - les deux sources sont préservées
 function mergeUsers(localUsers, remoteUsers){
   var result=(remoteUsers||[]).map(function(u){return Object.assign({},u);});
@@ -2693,6 +2707,7 @@ function initRTDB(){
     // On charge toujours Firebase, même si localStorage est vide ou effacé
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
+      _initialPullDone=true; // Lecture initiale terminée : l'écriture vers Firebase est désormais sûre
       if(!remote) return; // Rien sur Firebase (première utilisation)
       let local; try{local=JSON.parse(localStorage.getItem(STORE)||'{}')}catch(e){local={}}
       const localEmpty = !local || !local.users || local.users.length===0;
@@ -2707,7 +2722,10 @@ function initRTDB(){
         console.log('Duke: données restaurées depuis Firebase - '+merged.length+' utilisateurs');
         if(typeof renderAll === 'function' && typeof currentUser !== 'undefined' && currentUser) renderAll();
       }
-    }).catch(e=>console.warn('RTDB pull error',e));
+    }).catch(function(e){
+      _initialPullDone=true; // Même en cas d'erreur réseau, on débloque (sinon l'app reste inutilisable hors-ligne)
+      console.warn('RTDB pull error',e);
+    });
     // Écoute en temps réel les mises à jour des autres appareils
     _rtdb.ref('duke_main').on('value',function(snap){
       if(_rtdbSyncing) return;
@@ -2747,10 +2765,39 @@ function stripBase64Deep(obj){
 }
 function syncToRTDB(){
   if(!_rtdb) return;
+  // PROTECTION CRITIQUE #1 : ne jamais écrire vers Firebase avant que la lecture initiale soit terminée.
+  // Sinon une base locale vide (après suppression du cache / réinstallation) écraserait les vraies données distantes.
+  if(!_initialPullDone){
+    console.warn('Duke: écriture Firebase bloquée - lecture initiale pas encore terminée. Nouvelle tentative dans 1s.');
+    setTimeout(syncToRTDB, 1000);
+    return;
+  }
   _rtdbSyncing=true;
   // Les images sont maintenant compressées à la source (~30-60KB chacune)
   // On peut tout envoyer à Firebase sans dépasser la limite
   var dataToSync=JSON.parse(JSON.stringify(db));
+  // PROTECTION CRITIQUE #2 : empêcher l'écrasement si la base locale semble anormalement vide
+  // alors qu'on s'attendrait à avoir des données (admin seul + aucune machine/groupe/client).
+  var looksEmpty = (!dataToSync.users || dataToSync.users.length<=1) &&
+                    (!dataToSync.clientRoot || (!(dataToSync.clientRoot.groups||[]).length && !(dataToSync.clientRoot.machines||[]).length)) &&
+                    (!dataToSync.cars || !dataToSync.cars.length) &&
+                    (!dataToSync.faultMachines || !dataToSync.faultMachines.length);
+  if(looksEmpty){
+    _rtdb.ref('duke_main').once('value').then(function(snap){
+      var remote=snap.val();
+      var remoteHasData = remote && ((remote.users&&remote.users.length>1) || (remote.clientRoot&&((remote.clientRoot.groups||[]).length||(remote.clientRoot.machines||[]).length)) || (remote.cars&&remote.cars.length) || (remote.faultMachines&&remote.faultMachines.length));
+      if(remoteHasData){
+        console.warn('Duke: écriture Firebase ANNULÉE - la base locale semble vide alors que Firebase contient des données. Protection anti-écrasement activée.');
+        _rtdbSyncing=false;
+        return;
+      }
+      _rtdb.ref('duke_main').set(dataToSync).catch(function(e){console.warn('RTDB write error',e);}).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
+    }).catch(function(){
+      // En cas d'erreur de vérification, on n'écrase pas par précaution
+      _rtdbSyncing=false;
+    });
+    return;
+  }
   _rtdb.ref('duke_main').set(dataToSync).catch(function(e){
     console.warn('RTDB write error',e);
   }).finally(function(){setTimeout(function(){_rtdbSyncing=false;},2000);});
