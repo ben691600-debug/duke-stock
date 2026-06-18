@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2913,7 +2913,11 @@ function processSyncQueue(){
       for(var i=0;i<remoteArr.length;i++){
         var item=remoteArr[i];
         if(!item || item[idKey]===undefined) continue;
-        var isTombstoned = removedIdSet[item[idKey]] || (item.username && removedIdSet[item.username]);
+        // Un élément est considéré comme légitimement supprimé (tombstoné) s'il a été
+        // retiré via la corbeille, qu'il soit identifié par son id technique OU par son
+        // username (cas des opérateurs créés avant l'ajout d'un id stable). On vérifie
+        // donc les deux clés possibles, pas uniquement idKey.
+        var isTombstoned = removedIdSet[item[idKey]] || (item.id && removedIdSet[item.id]) || (item.username && removedIdSet[item.username]);
         if(!localKeys[item[idKey]] && !isTombstoned) return item;
       }
       return null;
@@ -2941,6 +2945,15 @@ function processSyncQueue(){
     }
     console.warn('Duke RTDB sync error - nouvelle tentative.', e);
     showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
+    // CORRECTIF : si l'erreur est un refus de permission, c'est que la session Firebase
+    // anonyme (requise par les règles "auth != null") a été perdue. On tente de la
+    // rétablir automatiquement avant le prochain essai, plutôt que de réessayer en boucle
+    // avec une session invalide qui échouera systématiquement.
+    if(e && e.code==='PERMISSION_DENIED' && firebaseAuth && !firebaseAuth.currentUser){
+      firebaseAuth.signInAnonymously().catch(function(authErr){
+        console.warn('Duke: échec de la reconnexion anonyme Firebase', authErr);
+      });
+    }
     _syncQueued=true; // on remet la demande en file pour réessayer
   }).finally(function(){
     _syncInFlight=false;
@@ -4276,7 +4289,14 @@ if($('forgotPasswordBtn')) $('forgotPasswordBtn').onclick=forgotPassword;
 initFirebaseSecurity();
 document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;localStorage.setItem(LANG,lang);translate();openApp()});
 $('langBtn').onclick=()=>{$('appView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');};
-$('logoutBtn').onclick=async()=>{log('LOGOUT',currentUser.username);try{if(firebaseReady&&firebaseAuth)await firebaseAuth.signOut()}catch(e){} currentUser=null;selected=null;localStorage.removeItem('duke_session_started');localStorage.removeItem('duke_current_user');$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('loginPass').value='';var _ub=document.getElementById('universalBackBtn');if(_ub){_ub.classList.remove('visible');var _av=document.getElementById('appView');if(_av)_av.classList.remove('appView-hasback');}};
+$('logoutBtn').onclick=async()=>{log('LOGOUT',currentUser.username);
+  // CORRECTIF CRITIQUE : on ne ferme JAMAIS la session Firebase anonyme ici. Cette session
+  // est un mécanisme technique requis par les règles de sécurité (auth != null) pour que
+  // TOUTE synchronisation cloud fonctionne, et est totalement indépendante du système de
+  // connexion propre à l'application (admin/opérateur). Un firebaseAuth.signOut() ici
+  // fermait cette session technique, ce qui bloquait silencieusement (PERMISSION_DENIED)
+  // toute sauvegarde cloud jusqu'au prochain rechargement complet de la page.
+  currentUser=null;selected=null;localStorage.removeItem('duke_session_started');localStorage.removeItem('duke_current_user');$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('loginPass').value='';var _ub=document.getElementById('universalBackBtn');if(_ub){_ub.classList.remove('visible');var _av=document.getElementById('appView');if(_av)_av.classList.remove('appView-hasback');}};
 function navClearHistory(){ _navHistory=[]; }
 function goBackFromLogo(){
   if(!$('stockView').classList.contains('hidden')){
