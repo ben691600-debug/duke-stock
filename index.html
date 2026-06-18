@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -211,8 +211,8 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .groupGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px}
 .groupCard{position:relative;background:white;border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:14px;cursor:pointer;display:grid;gap:10px}
 .groupImage{width:100%;height:160px;border-radius:18px;background:#f5f9fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-weight:800;padding:10px;box-sizing:border-box}
-.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
-.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
+.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:transparent}
+.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:transparent}
 .groupCard h3{margin:0;color:var(--blue)}
 .groupCard p{margin:2px 0;color:#6f7b87;font-size:14px}
 .groupActions{display:flex;gap:8px;flex-wrap:wrap}
@@ -236,8 +236,8 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .groupGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
 .groupCard{border-radius:18px;padding:9px;gap:7px;min-height:auto}
 .groupImage{height:140px;border-radius:14px;font-size:28px;padding:8px;box-sizing:border-box}
-.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
-.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
+.groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:transparent}
+.groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:transparent}
 .groupCard h3{font-size:15px;line-height:1.15;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .groupCard p{font-size:12px;line-height:1.25;margin:0}
 .contactBox{gap:7px;padding:6px;border-radius:12px;margin-top:2px}
