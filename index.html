@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2797,6 +2797,16 @@ function mergeDbWithRemote(localDb, remoteDb){
   var removedIds=(localDb.trashRemovedIds||[]).concat(remoteDb.trashRemovedIds||[]);
   // dédoublonnage simple des tombstones
   removedIds = removedIds.filter(function(id,i){return removedIds.indexOf(id)===i;});
+  // CORRECTIF CRITIQUE : si un utilisateur existe ACTUELLEMENT en local avec un id stable
+  // (preuve qu'il a été créé/recréé volontairement après une éventuelle suppression passée),
+  // on retire son nom de la liste des tombstones avant la fusion. Sans cela, un nom d'usager
+  // supprimé une fois restait bloqué pour toujours, même après recréation explicite par
+  // l'administrateur avec un nouvel id - corrigeant rétroactivement les cas déjà bloqués.
+  if(Array.isArray(localDb.users)){
+    var liveUsernames={};
+    localDb.users.forEach(function(u){ if(u && u.id && u.username) liveUsernames[u.username]=true; });
+    removedIds = removedIds.filter(function(id){ return !liveUsernames[id]; });
+  }
   var merged = deepMerge(remoteDb, localDb, removedIds);
   merged.trashRemovedIds = removedIds;
   // CORRECTIF : guérison des doublons d'opérateurs déjà créés avant l'ajout d'un id
@@ -4479,6 +4489,16 @@ $('operatorForm').onsubmit=e=>{
     }
   } else {
     if(db.users.some(u=>u.username===username)){alert(T('userExists'));return}
+    // CORRECTIF CRITIQUE : si ce nom d'utilisateur a été définitivement supprimé par le passé
+    // (vidage de corbeille), son nom reste pour toujours dans trashRemovedIds en tant que
+    // tombstone. Sans ce correctif, recréer un opérateur avec EXACTEMENT le même nom (même
+    // avec un nouvel id technique différent) serait silencieusement filtré pour toujours par
+    // la fusion Firebase, qui le considère comme "déjà supprimé" - alors que l'admin vient
+    // justement de décider explicitement de le recréer. La création volontaire d'un nouvel
+    // utilisateur doit donc annuler toute ancienne suppression définitive de ce même nom.
+    if(Array.isArray(db.trashRemovedIds) && db.trashRemovedIds.includes(username)){
+      db.trashRemovedIds = db.trashRemovedIds.filter(id=>id!==username);
+    }
     db.users.push({id:uid(),username,password,phone,email,role,vehiclePlate,assignedGroupId});
     log('ADD_OPERATOR',username);
   }
