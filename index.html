@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2868,16 +2868,45 @@ function initRTDB(){
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
       _initialPullDone=true;
+      // CORRECTIF CRITIQUE : Firebase doit être l'UNIQUE source de vérité. Si cet
+      // appareil n'a jamais encore été authentifié face à CE Firebase (premier
+      // chargement de l'app sur ce téléphone/navigateur, ou localStorage jamais
+      // marqué), et que Firebase a déjà des données, on REMPLACE intégralement la
+      // base locale au lieu de la fusionner. Sans ce remplacement, d'anciens essais
+      // restés dans le localStorage d'un téléphone (tests précédents, démos...)
+      // pouvaient se mélanger silencieusement aux vraies données de l'entreprise dès
+      // la première ouverture de l'app sur cet appareil - ce qui ne doit JAMAIS arriver.
+      var alreadyAuthoritative = localStorage.getItem('duke_firebase_authoritative')==='1';
       if(remote){
-        mergeDbWithRemote(db, remote);
+        if(!alreadyAuthoritative){
+          console.log('Duke: première connexion de cet appareil à Firebase - remplacement intégral des données locales par celles du cloud (aucune ancienne donnée locale ne sera conservée).');
+          Object.keys(db).forEach(function(k){ delete db[k]; });
+          Object.assign(db, remote);
+          if(!Array.isArray(db.users)) db.users=[{username:'admin',password:'123Soleil?!',role:'admin',main:true}];
+          if(!Array.isArray(db.cars)) db.cars=[];
+          if(!db.clientRoot || typeof db.clientRoot!=='object') db.clientRoot={groups:[],machines:[]};
+          if(!Array.isArray(db.clientRoot.groups)) db.clientRoot.groups=[];
+          if(!Array.isArray(db.clientRoot.machines)) db.clientRoot.machines=[];
+          if(!Array.isArray(db.history)) db.history=[];
+          if(!Array.isArray(db.trash)) db.trash=[];
+          if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+        } else {
+          mergeDbWithRemote(db, remote);
+        }
+        localStorage.setItem('duke_firebase_authoritative','1');
         localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: fusion initiale avec Firebase - '+(db.users||[]).length+' utilisateurs, '+(db.cars||[]).length+' véhicules.');
+        console.log('Duke: synchronisation initiale avec Firebase - '+(db.users||[]).length+' utilisateurs, '+(db.cars||[]).length+' véhicules.');
         if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
       } else {
+        // Firebase est réellement vide : on marque tout de même cet appareil comme
+        // "autoritatif" pour que ses propres données (créées localement) deviennent
+        // la base de départ légitime du Firebase, repeuplée juste après.
+        localStorage.setItem('duke_firebase_authoritative','1');
         console.log('Duke: Firebase vide (premier démarrage ou données effacées) - envoi des données locales.');
       }
       // Republie systématiquement après le premier pull : si Firebase était vide ou
-      // incomplet, ceci le repeuple avec les données locales sans jamais rien effacer.
+      // incomplet, ceci le repeuple avec les données locales (désormais alignées sur
+      // le cloud) sans jamais rien effacer côté Firebase.
       queueSyncToRTDB();
     }).catch(function(e){
       _initialPullDone=true; // Même en cas d'erreur réseau, on débloque l'usage hors-ligne.
