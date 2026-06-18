@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2726,13 +2726,22 @@ function isPlainObject(v){ return v && typeof v==='object' && !Array.isArray(v);
 // conservé ; un élément présent des deux côtés est fusionné récursivement (deepMerge)
 // pour ne perdre aucune sous-donnée (ex: les "items" d'un véhicule, les "machines"
 // d'un groupe, etc.), sans avoir besoin de connaître la structure à l'avance.
+// Détermine la clé d'identité d'un élément pour la fusion : "id" s'il existe, sinon
+// "username" (cas des opérateurs créés avant l'ajout du champ id), sinon aucune clé
+// stable disponible.
+function itemIdentityKey(item){
+  if(!isPlainObject(item)) return undefined;
+  if(item.id!==undefined && item.id!==null) return 'id:'+item.id;
+  if(item.username!==undefined && item.username!==null) return 'username:'+item.username;
+  return undefined;
+}
 function mergeArrayByIdGeneric(localArr, remoteArr, removedIds){
   localArr = Array.isArray(localArr) ? localArr : [];
   remoteArr = Array.isArray(remoteArr) ? remoteArr : [];
-  var hasIds = localArr.every(function(x){return isPlainObject(x)&&x.id!==undefined;}) &&
-               remoteArr.every(function(x){return isPlainObject(x)&&x.id!==undefined;});
-  if(!hasIds){
-    // Tableau de valeurs simples (ou sans id stable) : union par égalité JSON,
+  var hasStableKeys = localArr.every(function(x){return itemIdentityKey(x)!==undefined;}) &&
+                       remoteArr.every(function(x){return itemIdentityKey(x)!==undefined;});
+  if(!hasStableKeys){
+    // Tableau de valeurs simples (ou sans identité stable) : union par égalité JSON,
     // toujours additive, jamais de perte.
     var seen={}, out=[];
     remoteArr.concat(localArr).forEach(function(item){
@@ -2741,15 +2750,16 @@ function mergeArrayByIdGeneric(localArr, remoteArr, removedIds){
     });
     return out;
   }
-  var byId={};
-  remoteArr.forEach(function(item){ byId[item.id]=item; });
+  var byKey={};
+  remoteArr.forEach(function(item){ byKey[itemIdentityKey(item)]=item; });
   localArr.forEach(function(item){
-    var existing=byId[item.id];
-    byId[item.id] = existing ? deepMerge(existing, item, removedIds) : item;
+    var key=itemIdentityKey(item);
+    var existing=byKey[key];
+    byKey[key] = existing ? deepMerge(existing, item, removedIds) : item;
   });
   var removedSet={}; (removedIds||[]).forEach(function(id){removedSet[id]=true;});
-  return Object.keys(byId).map(function(k){return byId[k];}).filter(function(item){
-    return !removedSet[item.id];
+  return Object.keys(byKey).map(function(k){return byKey[k];}).filter(function(item){
+    return !removedSet[item.id] && !(item.username && removedSet[item.username]);
   });
 }
 
@@ -2789,8 +2799,28 @@ function mergeDbWithRemote(localDb, remoteDb){
   removedIds = removedIds.filter(function(id,i){return removedIds.indexOf(id)===i;});
   var merged = deepMerge(remoteDb, localDb, removedIds);
   merged.trashRemovedIds = removedIds;
+  // CORRECTIF : guérison des doublons d'opérateurs déjà créés avant l'ajout d'un id
+  // stable sur chaque utilisateur (cause historique du bug "3 Benjamin identiques").
+  // On déduplique systématiquement par username, en fusionnant les champs des
+  // doublons entre eux pour ne perdre aucune information.
+  if(Array.isArray(merged.users)) merged.users = dedupUsersByUsername(merged.users, removedIds);
   Object.keys(merged).forEach(function(k){ localDb[k]=merged[k]; });
   return localDb;
+}
+function dedupUsersByUsername(users, removedIds){
+  var removedSet={}; (removedIds||[]).forEach(function(id){removedSet[id]=true;});
+  var byUsername={}, order=[];
+  users.forEach(function(u){
+    if(!u || !u.username) return;
+    if(removedSet[u.username] || (u.id && removedSet[u.id])) return; // tombstone : ne jamais ressusciter
+    if(byUsername[u.username]){
+      byUsername[u.username]=deepMerge(byUsername[u.username], u, []);
+    } else {
+      byUsername[u.username]=u;
+      order.push(u.username);
+    }
+  });
+  return order.map(function(name){return byUsername[name];});
 }
 
 // ── File d'attente de synchronisation séquentielle ──────────────────
@@ -3169,6 +3199,7 @@ function load(){
   // faire planter silencieusement la création d'opérateur/véhicule (onsubmit interrompu
   // avant le save()).
   if(!Array.isArray(d.users)) d.users=[{username:'admin',password:'123Soleil?!',role:'admin',main:true}];
+  d.users = dedupUsersByUsername(d.users);
   if(!Array.isArray(d.cars)) d.cars=[];
   if(!d.clientRoot || typeof d.clientRoot!=='object') d.clientRoot={groups:[],machines:[]};
   if(!Array.isArray(d.clientRoot.groups)) d.clientRoot.groups=[];
@@ -3370,10 +3401,17 @@ function emptyTrash(){
     if(item && item.id && db.trashRemovedIds.indexOf(item.id)===-1){
       db.trashRemovedIds.push(item.id);
     }
-    // L'objet original (ex: le véhicule, la machine...) a aussi son propre id distinct
-    // de l'entrée de corbeille : on l'ajoute également pour garantir sa disparition.
-    if(item && item.data && item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1){
-      db.trashRemovedIds.push(item.data.id);
+    // L'objet original (ex: le véhicule, la machine, l'opérateur...) a aussi son propre
+    // id distinct de l'entrée de corbeille : on l'ajoute également pour garantir sa
+    // disparition. Pour les opérateurs créés avant l'ajout d'un id stable, on utilise
+    // leur username comme clé de tombstone (voir itemIdentityKey/dedupUsersByUsername).
+    if(item && item.data){
+      if(item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1){
+        db.trashRemovedIds.push(item.data.id);
+      }
+      if(!item.data.id && item.data.username && db.trashRemovedIds.indexOf(item.data.username)===-1){
+        db.trashRemovedIds.push(item.data.username);
+      }
     }
   });
   db.trash=[];
@@ -4408,7 +4446,7 @@ $('operatorForm').onsubmit=e=>{
     }
   } else {
     if(db.users.some(u=>u.username===username)){alert(T('userExists'));return}
-    db.users.push({username,password,phone,email,role,vehiclePlate,assignedGroupId});
+    db.users.push({id:uid(),username,password,phone,email,role,vehiclePlate,assignedGroupId});
     log('ADD_OPERATOR',username);
   }
   // Auto-create vehicle if operator has a plate and car doesn't exist yet
