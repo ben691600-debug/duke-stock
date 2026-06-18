@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -210,7 +210,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .clientPath button{padding:7px 10px;border-radius:12px}
 .groupGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px}
 .groupCard{position:relative;background:white;border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:14px;cursor:pointer;display:grid;gap:10px}
-.groupImage{width:100%;height:130px;border-radius:18px;background:#f5f9fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-weight:800}
+.groupImage{width:100%;height:160px;border-radius:18px;background:#f5f9fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-weight:800;padding:10px;box-sizing:border-box}
 .groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
 .groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 .groupCard h3{margin:0;color:var(--blue)}
@@ -235,7 +235,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 /* Client/Machine compact daily-use layout */
 .groupGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
 .groupCard{border-radius:18px;padding:9px;gap:7px;min-height:auto}
-.groupImage{height:100px;border-radius:14px;font-size:28px}
+.groupImage{height:140px;border-radius:14px;font-size:28px;padding:8px;box-sizing:border-box}
 .groupImage img{width:100%;height:100%;object-fit:contain;display:block;background:#fff}
 .groupImageInner{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#fff}
 .groupCard h3{font-size:15px;line-height:1.15;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -263,7 +263,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .preview{height:120px;background-size:cover;background-position:center}
 @media(max-width:650px){
   .groupGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .groupImage{height:90px}
+  .groupImage{height:130px}
   .contactBox{display:none}
   #clientMachinesList{grid-template-columns:1fr}
   #clientMachinesList .item{grid-template-columns:58px 1fr}
