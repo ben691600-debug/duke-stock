@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3082,48 +3082,185 @@ function compressImageSquare(dataUrl, size, quality, callback){
     img.src=dataUrl;
   }catch(e){ callback(dataUrl); }
 }
-// Paramètres de compression : 800px max, qualité 60% → ~30-60KB par image
-var IMG_MAX=800, IMG_QUALITY=0.60;
+// Paramètres de compression : 800px max, qualité 75%
+var IMG_MAX=800, IMG_QUALITY=0.75;
 
-// Suppression automatique du fond blanc/clair des images uploadées (logos, etc.).
-// Rend transparents tous les pixels proches du blanc (seuil réglable) afin que les
-// logos s'affichent proprement sur n'importe quelle couleur de fond dans l'app,
-// sans rectangle blanc ou noir parasite visible derrière.
-function removeWhiteBackground(dataUrl, callback, threshold){
-  threshold = threshold || 230; // pixels RGB tous >= seuil → considérés comme fond blanc
-  if(!dataUrl || !dataUrl.startsWith('data:image')){ callback(dataUrl); return; }
-  try{
+// ── Cropeur d'image interactif ─────────────────────────────────────────────
+// Ouvre une modale permettant à l'utilisateur de cadrer l'image (déplacer +
+// zoomer) avant validation. Produit toujours un carré de taille fixe (400px),
+// quelle que soit la taille ou le format de l'image source.
+// Appelé par readImageInput() à chaque upload d'image dans l'app.
+(function(){
+  var _cropCallback=null, _cropImg=null;
+  var _drag=false, _lastX=0, _lastY=0;
+  var _pinchDist=0;
+  var _state={x:0,y:0,scale:1};
+  var CROP_SIZE=400;
+
+  function buildCropper(){
+    if(document.getElementById('imageCropModal')) return;
+    var style=document.createElement('style');
+    style.textContent=`
+      #imageCropModal{display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+      #imageCropModal.open{display:flex;}
+      #imageCropWrap{position:relative;width:300px;height:300px;border-radius:18px;overflow:hidden;background:#111;touch-action:none;cursor:grab;box-shadow:0 0 0 3px #fff3;}
+      #imageCropWrap:active{cursor:grabbing;}
+      #imageCropCanvas{position:absolute;top:0;left:0;transform-origin:top left;}
+      #imageCropOverlay{position:absolute;inset:0;border:3px solid rgba(255,255,255,.6);border-radius:18px;pointer-events:none;box-shadow:inset 0 0 0 9999px rgba(0,0,0,.25);}
+      #imageCropGrid{position:absolute;inset:0;pointer-events:none;background:
+        repeating-linear-gradient(0deg,transparent,transparent 99px,rgba(255,255,255,.2) 99px,rgba(255,255,255,.2) 100px),
+        repeating-linear-gradient(90deg,transparent,transparent 99px,rgba(255,255,255,.2) 99px,rgba(255,255,255,.2) 100px);}
+      #imageCropHint{color:#ccc;font-size:13px;text-align:center;max-width:280px;}
+      #imageCropActions{display:flex;gap:14px;}
+      #imageCropCancel{background:#fff2;color:#fff;border:none;border-radius:14px;padding:13px 26px;font-size:15px;font-weight:700;cursor:pointer;}
+      #imageCropOk{background:#1a7ad4;color:#fff;border:none;border-radius:14px;padding:13px 26px;font-size:15px;font-weight:800;cursor:pointer;}
+      #imageCropZoom{display:flex;align-items:center;gap:10px;color:#fff;}
+      #imageCropZoomRange{width:160px;accent-color:#1a7ad4;}
+    `;
+    document.head.appendChild(style);
+
+    var m=document.createElement('div');
+    m.id='imageCropModal';
+    m.innerHTML=`
+      <div id="imageCropHint">📐 Déplace et zoom pour cadrer l'image</div>
+      <div id="imageCropWrap">
+        <canvas id="imageCropCanvas"></canvas>
+        <div id="imageCropGrid"></div>
+        <div id="imageCropOverlay"></div>
+      </div>
+      <div id="imageCropZoom">🔍 <input type="range" id="imageCropZoomRange" min="0.5" max="5" step="0.01" value="1"></div>
+      <div id="imageCropActions">
+        <button id="imageCropCancel">Annuler</button>
+        <button id="imageCropOk">✓ Valider</button>
+      </div>`;
+    document.body.appendChild(m);
+
+    var wrap=document.getElementById('imageCropWrap');
+    var zoomRange=document.getElementById('imageCropZoomRange');
+
+    function draw(){
+      var canvas=document.getElementById('imageCropCanvas');
+      if(!canvas||!_cropImg) return;
+      var ratio=300/CROP_SIZE;
+      canvas.width=_cropImg.width;
+      canvas.height=_cropImg.height;
+      canvas.style.width=(_cropImg.width*_state.scale*ratio)+'px';
+      canvas.style.height=(_cropImg.height*_state.scale*ratio)+'px';
+      canvas.style.left=(_state.x*ratio)+'px';
+      canvas.style.top=(_state.y*ratio)+'px';
+      var ctx=canvas.getContext('2d');
+      ctx.drawImage(_cropImg,0,0);
+    }
+
+    function clamp(){
+      var ratio=300/CROP_SIZE;
+      var iw=_cropImg.width*_state.scale*ratio;
+      var ih=_cropImg.height*_state.scale*ratio;
+      if(iw>=300){ _state.x=Math.min(0,Math.max(300-iw,_state.x)); }
+      else { _state.x=(300-iw)/2; }
+      if(ih>=300){ _state.y=Math.min(0,Math.max(300-ih,_state.y)); }
+      else { _state.y=(300-ih)/2; }
+    }
+
+    // Mouse
+    wrap.addEventListener('mousedown',function(e){_drag=true;_lastX=e.clientX;_lastY=e.clientY;e.preventDefault();});
+    window.addEventListener('mousemove',function(e){
+      if(!_drag) return;
+      _state.x+=e.clientX-_lastX; _state.y+=e.clientY-_lastY;
+      _lastX=e.clientX; _lastY=e.clientY;
+      clamp(); draw();
+    });
+    window.addEventListener('mouseup',function(){_drag=false;});
+    wrap.addEventListener('wheel',function(e){
+      e.preventDefault();
+      _state.scale=Math.max(0.5,Math.min(5,_state.scale*(e.deltaY<0?1.1:0.9)));
+      zoomRange.value=_state.scale;
+      clamp(); draw();
+    },{passive:false});
+
+    // Touch
+    wrap.addEventListener('touchstart',function(e){
+      if(e.touches.length===1){_drag=true;_lastX=e.touches[0].clientX;_lastY=e.touches[0].clientY;}
+      else if(e.touches.length===2){
+        _pinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      }
+      e.preventDefault();
+    },{passive:false});
+    wrap.addEventListener('touchmove',function(e){
+      if(e.touches.length===1 && _drag){
+        _state.x+=e.touches[0].clientX-_lastX; _state.y+=e.touches[0].clientY-_lastY;
+        _lastX=e.touches[0].clientX; _lastY=e.touches[0].clientY;
+      } else if(e.touches.length===2){
+        var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+        _state.scale=Math.max(0.5,Math.min(5,_state.scale*(d/_pinchDist)));
+        _pinchDist=d;
+        zoomRange.value=_state.scale;
+      }
+      clamp(); draw(); e.preventDefault();
+    },{passive:false});
+    wrap.addEventListener('touchend',function(){_drag=false;});
+
+    // Zoom slider
+    zoomRange.addEventListener('input',function(){
+      _state.scale=parseFloat(zoomRange.value);
+      clamp(); draw();
+    });
+
+    document.getElementById('imageCropOk').onclick=function(){
+      var out=document.createElement('canvas');
+      out.width=CROP_SIZE; out.height=CROP_SIZE;
+      var ctx=out.getContext('2d');
+      // Calcule la zone source correspondant à la fenêtre de 300px dans l'espace image
+      var ratio=CROP_SIZE/300;
+      var sx=-_state.x/(_state.scale*(300/CROP_SIZE));
+      var sy=-_state.y/(_state.scale*(300/CROP_SIZE));
+      var sw=CROP_SIZE/_state.scale;
+      var sh=CROP_SIZE/_state.scale;
+      ctx.drawImage(_cropImg,sx,sy,sw,sh,0,0,CROP_SIZE,CROP_SIZE);
+      var result=out.toDataURL('image/jpeg',IMG_QUALITY);
+      m.classList.remove('open');
+      if(_cropCallback) _cropCallback(result);
+    };
+    document.getElementById('imageCropCancel').onclick=function(){
+      m.classList.remove('open');
+      if(_cropCallback) _cropCallback('');
+    };
+  }
+
+  // Point d'entrée public
+  window.openImageCropper=function(dataUrl, callback){
+    buildCropper();
+    _cropCallback=callback;
     var img=new Image();
     img.onload=function(){
-      var canvas=document.createElement('canvas');
+      _cropImg=img;
+      // Zoom initial : l'image remplit le cadre entièrement
+      var ratio=300/CROP_SIZE;
+      var scaleW=CROP_SIZE/img.width;
+      var scaleH=CROP_SIZE/img.height;
+      _state.scale=Math.max(scaleW,scaleH);
+      _state.x=0; _state.y=0;
+      document.getElementById('imageCropZoomRange').value=_state.scale;
+      // Clamp initial
+      var iw=img.width*_state.scale*ratio;
+      var ih=img.height*_state.scale*ratio;
+      _state.x=(300-iw)/2; _state.y=(300-ih)/2;
+      var c=document.getElementById('imageCropCanvas');
+      c.getContext('2d').drawImage(img,0,0);
+      // Redraw
+      var canvas=document.getElementById('imageCropCanvas');
       canvas.width=img.width; canvas.height=img.height;
-      var ctx=canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(img,0,0);
-      var imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
-      var data=imageData.data;
-      for(var i=0;i<data.length;i+=4){
-        var r=data[i], g=data[i+1], b=data[i+2];
-        // Pixel considéré "fond blanc" si R, G et B sont tous proches du blanc
-        // ET si la saturation est faible (pour ne pas supprimer des couleurs claires
-        // légitimes comme le jaune pâle ou le rose clair d'un logo).
-        var isWhiteish = r>=threshold && g>=threshold && b>=threshold;
-        var saturation = Math.max(r,g,b)-Math.min(r,g,b);
-        if(isWhiteish && saturation<40){
-          // Fondu progressif sur les bords (anti-aliasing) : plus le pixel est proche
-          // du blanc pur, plus il devient transparent.
-          var whiteness=Math.min(r,g,b);
-          data[i+3]=Math.round(Math.max(0, 255-(whiteness-threshold)*255/(255-threshold)));
-        }
-      }
-      ctx.putImageData(imageData,0,0);
-      callback(canvas.toDataURL('image/png'));
+      canvas.style.width=(img.width*_state.scale*ratio)+'px';
+      canvas.style.height=(img.height*_state.scale*ratio)+'px';
+      canvas.style.left=(_state.x*ratio)+'px';
+      canvas.style.top=(_state.y*ratio)+'px';
+      canvas.getContext('2d').drawImage(img,0,0);
+      document.getElementById('imageCropModal').classList.add('open');
     };
-    img.onerror=function(){ callback(dataUrl); };
-    img.crossOrigin='anonymous';
     img.src=dataUrl;
-  }catch(e){ callback(dataUrl); }
-}
+  };
+})();
+// ── Fin cropeur ────────────────────────────────────────────────────────────
 
 function stripBase64Deep(obj){
   // Supprime les images base64 des données avant envoi Firebase
@@ -5715,21 +5852,15 @@ function readImageInput(input, callback, previewId, mode){
   if(!file){ callback(''); return; }
   const r=new FileReader();
   r.onload=()=>{
-    // Suppression automatique du fond blanc avant compression : rend les logos
-    // propres sur n'importe quel fond, sans rectangle blanc ou noir parasite.
-    removeWhiteBackground(r.result, function(cleaned){
-      const done=function(compressed){
-        callback(compressed);
-        if(previewId){
-          const p=$(previewId);
-          p.style.backgroundImage=`url(${compressed})`;
-          p.classList.remove('hidden');
-        }
-      };
-      if(mode==='square'){
-        compressImageSquare(cleaned, 400, IMG_QUALITY, done);
-      } else {
-        compressImage(cleaned, IMG_MAX, IMG_MAX, IMG_QUALITY, done);
+    // Ouvre le cropeur interactif : l'utilisateur cadre l'image lui-même avant
+    // validation. Produit toujours un carré 400×400 de taille standard, quelle
+    // que soit la taille ou le fond de l'image source.
+    openImageCropper(r.result, function(cropped){
+      if(!cropped){ input.value=''; return; } // annulé
+      callback(cropped);
+      if(previewId){
+        const p=$(previewId);
+        if(p){ p.style.backgroundImage=`url(${cropped})`; p.classList.remove('hidden'); }
       }
     });
   };
