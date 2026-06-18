@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2792,21 +2792,42 @@ function deepMerge(remote, local, removedIds){
 // tombstones de la corbeille vidée (un id présent dans trashRemovedIds disparaît
 // définitivement de toutes les listes, même si un appareil pas encore synchronisé
 // le renvoie). Le résultat est appliqué directement sur l'objet "db" en mémoire.
+// Parcourt récursivement n'importe quelle structure (objets/tableaux imbriqués) et
+// collecte tous les identifiants (id, ou username s'il n'y a pas d'id) actuellement
+// présents. Sert à savoir, avant fusion, quels éléments existent VRAIMENT en local
+// maintenant - peu importe où ils se trouvent dans l'arbre (cars, clientRoot, users,
+// faultMachines, suppliers/parts, etc).
+function collectAllLiveIds(node, out){
+  out = out || {};
+  if(Array.isArray(node)){
+    node.forEach(function(item){ collectAllLiveIds(item, out); });
+  } else if(isPlainObject(node)){
+    if(node.id!==undefined && node.id!==null) out[node.id]=true;
+    else if(node.username!==undefined && node.username!==null) out[node.username]=true;
+    Object.keys(node).forEach(function(k){
+      // La corbeille elle-même ne compte JAMAIS comme une "présence vivante" de ses
+      // contenus : un élément qui y est encore (pas restauré) doit rester tombstoné.
+      if(k==='trash') return;
+      collectAllLiveIds(node[k], out);
+    });
+  }
+  return out;
+}
 function mergeDbWithRemote(localDb, remoteDb){
   if(!remoteDb || typeof remoteDb!=='object') return localDb;
   var removedIds=(localDb.trashRemovedIds||[]).concat(remoteDb.trashRemovedIds||[]);
   // dédoublonnage simple des tombstones
   removedIds = removedIds.filter(function(id,i){return removedIds.indexOf(id)===i;});
-  // CORRECTIF CRITIQUE : si un utilisateur existe ACTUELLEMENT en local avec un id stable
-  // (preuve qu'il a été créé/recréé volontairement après une éventuelle suppression passée),
-  // on retire son nom de la liste des tombstones avant la fusion. Sans cela, un nom d'usager
-  // supprimé une fois restait bloqué pour toujours, même après recréation explicite par
-  // l'administrateur avec un nouvel id - corrigeant rétroactivement les cas déjà bloqués.
-  if(Array.isArray(localDb.users)){
-    var liveUsernames={};
-    localDb.users.forEach(function(u){ if(u && u.id && u.username) liveUsernames[u.username]=true; });
-    removedIds = removedIds.filter(function(id){ return !liveUsernames[id]; });
-  }
+  // CORRECTIF CRITIQUE (généralisé à TOUTE l'application, pas seulement aux opérateurs) :
+  // si un élément (véhicule, machine, groupe client, opérateur, fournisseur, pièce...)
+  // existe ACTUELLEMENT en local avec son id, c'est la preuve qu'il a été intentionnellement
+  // restauré depuis la corbeille ou recréé - on retire alors son tombstone avant la fusion.
+  // Sans cela, restaurer un élément depuis la corbeille fonctionnait localement, mais la
+  // synchronisation suivante relisait l'ancien tombstone encore présent côté Firebase (qui
+  // n'avait pas encore reçu la restauration) et le réintroduisait dans removedIds par
+  // l'union des deux côtés - annulant silencieusement la restauration au prochain cycle.
+  var liveIds = collectAllLiveIds(localDb);
+  removedIds = removedIds.filter(function(id){ return !liveIds[id]; });
   var merged = deepMerge(remoteDb, localDb, removedIds);
   merged.trashRemovedIds = removedIds;
   // CORRECTIF : guérison des doublons d'opérateurs déjà créés avant l'ajout d'un id
@@ -3047,7 +3068,7 @@ function showSyncBanner(msg, isError){
       b = document.createElement('div');
       b.id = 'syncStatusBanner';
       b.style.position='fixed';
-      b.style.bottom='10px';
+      b.style.top='10px';
       b.style.left='10px';
       b.style.right='10px';
       b.style.zIndex='99999';
