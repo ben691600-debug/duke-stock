@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3293,6 +3293,19 @@ function moveToTrash(type, data, restoreInfo){
     deletedAt: Date.now(),
     deletedBy: (currentUser && currentUser.username) || 'inconnu'
   });
+  // CORRECTIF STRUCTUREL : la corbeille est un état "mis de côté, en attente de décision",
+  // pas une simple zone de transit. Dès qu'un élément y est déplacé, il doit immédiatement
+  // devenir invisible PARTOUT, y compris après une synchronisation avec un autre appareil
+  // qui n'a pas encore cette suppression. On enregistre donc un tombstone réversible tout
+  // de suite (pas seulement au vidage définitif de la corbeille), pour empêcher la fusion
+  // additive (deepMerge) de le faire réapparaître depuis une version Firebase périmée.
+  // Ce tombstone est retiré par restoreFromTrash() si l'élément est restauré, ou confirmé
+  // définitivement par emptyTrash()/deleteForeverFromTrash() (déjà présent, aucun effet).
+  db.trashRemovedIds = db.trashRemovedIds || [];
+  if(data){
+    if(data.id && db.trashRemovedIds.indexOf(data.id)===-1) db.trashRemovedIds.push(data.id);
+    if(!data.id && data.username && db.trashRemovedIds.indexOf(data.username)===-1) db.trashRemovedIds.push(data.username);
+  }
 }
 function isTrashAdmin(){ return typeof isAdmin==='function' ? isAdmin() : (currentUser && currentUser.role==='admin'); }
 
@@ -3413,11 +3426,14 @@ function restoreFromTrash(trashId){
       }
     }
     db.trash.splice(idx,1);
-    // CORRECTIF : si cet élément avait été marqué comme tombstone (supprimé définitivement
-    // sur un autre appareil) avant cette restauration, on retire le tombstone pour que la
-    // fusion ne le re-supprime pas après coup.
-    if(d && d.id && Array.isArray(db.trashRemovedIds)){
-      db.trashRemovedIds = db.trashRemovedIds.filter(function(rid){return rid!==d.id;});
+    // CORRECTIF : on retire le tombstone créé par moveToTrash() (ou un éventuel tombstone
+    // définitif venu d'un autre appareil) pour que la fusion ne re-supprime pas l'élément
+    // qu'on vient de restaurer. On vérifie les deux clés possibles (id technique, ou
+    // username pour les anciens opérateurs sans id).
+    if(d && Array.isArray(db.trashRemovedIds)){
+      db.trashRemovedIds = db.trashRemovedIds.filter(function(rid){
+        return rid!==d.id && rid!==d.username;
+      });
     }
     log('RESTORE_TRASH', trashItemLabel(item));
     save();
