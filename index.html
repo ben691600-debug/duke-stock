@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3030,8 +3030,12 @@ function compressImage(dataUrl, maxWidth, maxHeight, quality, callback){
       var canvas=document.createElement('canvas');
       canvas.width=nw; canvas.height=nh;
       var ctx=canvas.getContext('2d');
+      ctx.clearRect(0,0,nw,nh);
       ctx.drawImage(img,0,0,nw,nh);
-      var compressed=canvas.toDataURL('image/jpeg', quality);
+      // PNG si transparence détectée, JPEG sinon
+      var hasTransparency=false;
+      try{ var d=ctx.getImageData(0,0,nw,nh).data; for(var i=3;i<d.length;i+=4){if(d[i]<250){hasTransparency=true;break;}} }catch(e){}
+      var compressed = hasTransparency ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality);
       callback(compressed.length < dataUrl.length ? compressed : dataUrl);
     };
     img.onerror=function(){ callback(dataUrl); };
@@ -3040,7 +3044,7 @@ function compressImage(dataUrl, maxWidth, maxHeight, quality, callback){
 }
 
 // Compression avec recadrage carré centré (pour les images de groupes/fournisseurs)
-// Résultat : image carrée qui remplit toujours parfaitement son cadre
+// Résultat : image carrée qui préserve la transparence (PNG) pour les logos sur fond transparent.
 function compressImageSquare(dataUrl, size, quality, callback){
   if(!dataUrl || !dataUrl.startsWith('data:image')){
     callback(dataUrl); return;
@@ -3057,19 +3061,69 @@ function compressImageSquare(dataUrl, size, quality, callback){
       var canvas=document.createElement('canvas');
       canvas.width=out; canvas.height=out;
       var ctx=canvas.getContext('2d');
-      // Fond blanc pour les PNG transparents
-      ctx.fillStyle='#ffffff';
-      ctx.fillRect(0,0,out,out);
+      // PAS de remplissage blanc : on laisse le fond transparent pour que les logos
+      // (PNG avec fond blanc intégré ou transparent) s'affichent sans rectangle parasite.
+      ctx.clearRect(0,0,out,out);
       ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
-      var compressed=canvas.toDataURL('image/jpeg', quality);
+      // Détecte si l'image a des pixels transparents pour choisir le format de sortie :
+      // PNG conserve la transparence, JPEG force tout en blanc/noir.
+      var hasTransparency = false;
+      try{
+        var d=ctx.getImageData(0,0,out,out).data;
+        for(var i=3;i<d.length;i+=4){ if(d[i]<250){ hasTransparency=true; break; } }
+      }catch(e){}
+      var compressed = hasTransparency
+        ? canvas.toDataURL('image/png')
+        : canvas.toDataURL('image/jpeg', quality);
       callback(compressed);
     };
     img.onerror=function(){ callback(dataUrl); };
+    img.crossOrigin='anonymous';
     img.src=dataUrl;
   }catch(e){ callback(dataUrl); }
 }
 // Paramètres de compression : 800px max, qualité 60% → ~30-60KB par image
 var IMG_MAX=800, IMG_QUALITY=0.60;
+
+// Suppression automatique du fond blanc/clair des images uploadées (logos, etc.).
+// Rend transparents tous les pixels proches du blanc (seuil réglable) afin que les
+// logos s'affichent proprement sur n'importe quelle couleur de fond dans l'app,
+// sans rectangle blanc ou noir parasite visible derrière.
+function removeWhiteBackground(dataUrl, callback, threshold){
+  threshold = threshold || 230; // pixels RGB tous >= seuil → considérés comme fond blanc
+  if(!dataUrl || !dataUrl.startsWith('data:image')){ callback(dataUrl); return; }
+  try{
+    var img=new Image();
+    img.onload=function(){
+      var canvas=document.createElement('canvas');
+      canvas.width=img.width; canvas.height=img.height;
+      var ctx=canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img,0,0);
+      var imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+      var data=imageData.data;
+      for(var i=0;i<data.length;i+=4){
+        var r=data[i], g=data[i+1], b=data[i+2];
+        // Pixel considéré "fond blanc" si R, G et B sont tous proches du blanc
+        // ET si la saturation est faible (pour ne pas supprimer des couleurs claires
+        // légitimes comme le jaune pâle ou le rose clair d'un logo).
+        var isWhiteish = r>=threshold && g>=threshold && b>=threshold;
+        var saturation = Math.max(r,g,b)-Math.min(r,g,b);
+        if(isWhiteish && saturation<40){
+          // Fondu progressif sur les bords (anti-aliasing) : plus le pixel est proche
+          // du blanc pur, plus il devient transparent.
+          var whiteness=Math.min(r,g,b);
+          data[i+3]=Math.round(Math.max(0, 255-(whiteness-threshold)*255/(255-threshold)));
+        }
+      }
+      ctx.putImageData(imageData,0,0);
+      callback(canvas.toDataURL('image/png'));
+    };
+    img.onerror=function(){ callback(dataUrl); };
+    img.crossOrigin='anonymous';
+    img.src=dataUrl;
+  }catch(e){ callback(dataUrl); }
+}
 
 function stripBase64Deep(obj){
   // Supprime les images base64 des données avant envoi Firebase
@@ -5661,19 +5715,23 @@ function readImageInput(input, callback, previewId, mode){
   if(!file){ callback(''); return; }
   const r=new FileReader();
   r.onload=()=>{
-    const done=function(compressed){
-      callback(compressed);
-      if(previewId){
-        const p=$(previewId);
-        p.style.backgroundImage=`url(${compressed})`;
-        p.classList.remove('hidden');
+    // Suppression automatique du fond blanc avant compression : rend les logos
+    // propres sur n'importe quel fond, sans rectangle blanc ou noir parasite.
+    removeWhiteBackground(r.result, function(cleaned){
+      const done=function(compressed){
+        callback(compressed);
+        if(previewId){
+          const p=$(previewId);
+          p.style.backgroundImage=`url(${compressed})`;
+          p.classList.remove('hidden');
+        }
+      };
+      if(mode==='square'){
+        compressImageSquare(cleaned, 400, IMG_QUALITY, done);
+      } else {
+        compressImage(cleaned, IMG_MAX, IMG_MAX, IMG_QUALITY, done);
       }
-    };
-    if(mode==='square'){
-      compressImageSquare(r.result, 400, IMG_QUALITY, done);
-    } else {
-      compressImage(r.result, IMG_MAX, IMG_MAX, IMG_QUALITY, done);
-    }
+    });
   };
   r.readAsDataURL(file);
 }
