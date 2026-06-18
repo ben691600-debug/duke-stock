@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2888,6 +2888,34 @@ function processSyncQueue(){
       localStorage.setItem(STORE, JSON.stringify(db));
     }
     var dataToSync=JSON.parse(JSON.stringify(db));
+    // GARDE-FOU CRITIQUE : après fusion, on vérifie qu'aucun utilisateur/véhicule présent
+    // sur Firebase n'a disparu de dataToSync SANS raison légitime (c-à-d sans figurer dans
+    // trashRemovedIds, qui est la seule façon autorisée de faire disparaître un élément).
+    // Si malgré toutes les protections un état périmé arrivait jusqu'ici (ex: ancien onglet
+    // /PWA pas encore rechargé avec une version antérieure du code), cette dernière
+    // vérification bloque l'écriture plutôt que de risquer une perte de données.
+    var removedIdSet={}; (dataToSync.trashRemovedIds||[]).forEach(function(id){removedIdSet[id]=true;});
+    function findUnexplainedLoss(remoteArr, localArr, idKey){
+      if(!Array.isArray(remoteArr)) return null;
+      var localKeys={}; (localArr||[]).forEach(function(item){
+        if(item && item[idKey]!==undefined) localKeys[item[idKey]]=true;
+      });
+      for(var i=0;i<remoteArr.length;i++){
+        var item=remoteArr[i];
+        if(!item || item[idKey]===undefined) continue;
+        var isTombstoned = removedIdSet[item[idKey]] || (item.username && removedIdSet[item.username]);
+        if(!localKeys[item[idKey]] && !isTombstoned) return item;
+      }
+      return null;
+    }
+    var lostUser = findUnexplainedLoss(remote&&remote.users, dataToSync.users, 'username');
+    var lostCar = findUnexplainedLoss(remote&&remote.cars, dataToSync.cars, 'id');
+    if(lostUser || lostCar){
+      var lostDesc = lostUser ? ('utilisateur "'+lostUser.username+'"') : ('véhicule "'+(lostCar.plate||lostCar.id)+'"');
+      console.error('Duke SYNC ANNULÉE PAR SÉCURITÉ : le '+lostDesc+' existe sur Firebase mais a disparu localement sans passer par la corbeille. Rechargez la page pour repartir d\'un état à jour.');
+      showSyncBanner('⚠️ Sauvegarde annulée par sécurité (perte de données détectée) - rechargez la page', true);
+      throw new Error('SYNC_BLOCKED_DATA_LOSS_PREVENTION');
+    }
     console.log('Duke SYNC: envoi vers Firebase -',
       'utilisateurs:', (dataToSync.users||[]).length,
       '| véhicules:', (dataToSync.cars||[]).length,
@@ -2896,6 +2924,11 @@ function processSyncQueue(){
   }).then(function(){
     showSyncBanner('☁️ Sauvegardé sur le cloud', false);
   }).catch(function(e){
+    if(e && e.message==='SYNC_BLOCKED_DATA_LOSS_PREVENTION'){
+      // Ne pas remettre en file : il faut un rechargement manuel pour repartir d'un état sain,
+      // sinon on boucle indéfiniment sur le même blocage.
+      return;
+    }
     console.warn('Duke RTDB sync error - nouvelle tentative.', e);
     showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
     _syncQueued=true; // on remet la demande en file pour réessayer
