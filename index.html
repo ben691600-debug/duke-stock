@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2908,6 +2908,7 @@ function processSyncQueue(){
   if(!_initialPullDone){ setTimeout(processSyncQueue, 1000); return; }
   _syncQueued=false;
   _syncInFlight=true;
+  showSyncBanner('☁️ Sauvegarde en cours...', false);
   // RÈGLE MÉTIER CENTRALE : on ne fait JAMAIS .set(db) avec la copie locale seule. On
   // relit Firebase à l'instant T, on fusionne par UNION récursive (deepMerge), et on
   // écrit le résultat fusionné. La sync ne peut donc qu'AJOUTER des données à Firebase,
@@ -3060,31 +3061,48 @@ function stripBase64Deep(obj){
   }
   return obj;
 }
-// Bannière discrète pour rendre visibles les erreurs de sync Firebase, même sans console développeur.
+// Petit indicateur discret de synchronisation (rond flottant dans un coin), plutôt
+// qu'une bannière de texte qui s'affichait à chaque sauvegarde et gênait l'usage.
+// États : gris (inactif) → tourne (sync en cours) → vert bref (succès) → rouge fixe (erreur).
+// Le message complet reste consultable via l'attribut title (info-bulle au survol/appui long).
 function showSyncBanner(msg, isError){
   try{
-    var b = document.getElementById('syncStatusBanner');
+    var b = document.getElementById('syncStatusDot');
     if(!b){
       b = document.createElement('div');
-      b.id = 'syncStatusBanner';
+      b.id = 'syncStatusDot';
       b.style.position='fixed';
       b.style.top='10px';
-      b.style.left='10px';
       b.style.right='10px';
+      b.style.width='16px';
+      b.style.height='16px';
+      b.style.borderRadius='50%';
       b.style.zIndex='99999';
-      b.style.padding='10px 14px';
-      b.style.borderRadius='12px';
-      b.style.fontSize='13px';
-      b.style.fontWeight='800';
-      b.style.boxShadow='0 4px 16px rgba(0,0,0,.25)';
+      b.style.boxShadow='0 2px 8px rgba(0,0,0,.25)';
+      b.style.transition='background .3s';
+      b.style.cursor='default';
       document.body.appendChild(b);
+      if(!document.getElementById('syncDotSpinKeyframes')){
+        var style=document.createElement('style');
+        style.id='syncDotSpinKeyframes';
+        style.textContent='@keyframes syncDotSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}} #syncStatusDot.spinning{background:conic-gradient(#bbb,#1e7a34);animation:syncDotSpin 0.9s linear infinite;}';
+        document.head.appendChild(style);
+      }
     }
-    b.textContent = msg;
-    b.style.background = isError ? '#fde2e1' : '#e3f7e8';
-    b.style.color = isError ? '#c0392b' : '#1e7a34';
-    b.style.display='block';
+    b.title = msg||'';
     clearTimeout(b._hideTimer);
-    b._hideTimer = setTimeout(function(){ b.style.display='none'; }, 6000);
+    var isSyncing = /tentative|sauvegard.*\.\.\./i.test(msg||'') && !isError;
+    if(isError){
+      b.classList.remove('spinning');
+      b.style.background='#c0392b';
+    } else if(isSyncing){
+      b.classList.add('spinning');
+    } else {
+      // succès : flash vert bref puis retour au gris neutre
+      b.classList.remove('spinning');
+      b.style.background='#1e7a34';
+      b._hideTimer=setTimeout(function(){ b.style.background='#cfd8dc'; }, 1500);
+    }
   }catch(e){}
 }
 // ─────────────────────────────────────────────────────────────────

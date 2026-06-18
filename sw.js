@@ -1,11 +1,11 @@
 // Duke Stock Manager - Service Worker v8 - NETWORK FIRST + activation automatique des mises à jour
-const CACHE_NAME = 'duke-stock-v16';
+const CACHE_NAME = 'duke-stock-v17';
 
-// Installation : on active IMMÉDIATEMENT le nouveau SW dès qu'il est installé,
-// pour que les mises à jour (correctifs de sync, etc.) s'appliquent automatiquement
-// sans dépendre d'un clic utilisateur sur une bannière qui peut être manquée.
+// Installation : on NE prend PAS le contrôle automatiquement. Le nouveau SW reste en
+// attente ('waiting') jusqu'à ce que l'utilisateur clique explicitement sur le bouton
+// de mise à jour affiché dans l'application, qui envoie le message SKIP_WAITING.
 self.addEventListener('install', event => {
-  self.skipWaiting();
+  // (volontairement vide : pas de self.skipWaiting() ici)
 });
 
 // Conservé pour compatibilité si la page envoie encore ce message.
