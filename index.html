@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v2.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2535,7 +2535,7 @@ body.draggingMachine{
   const $=id=>document.getElementById(id);
   let editId=null, imgData='', faultId=null;
   function loadDb(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{};}catch(e){return {};}}
-  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); try{ if(typeof db!=='undefined' && db) Object.assign(db,d); }catch(e){} }
+  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); try{ if(typeof db!=='undefined' && db && typeof mergeDbWithRemote==='function') mergeDbWithRemote(db,d); else if(typeof db!=='undefined' && db) Object.assign(db,d); }catch(e){} }
   function ensure(db){
     db.faultMachines = Array.isArray(db.faultMachines) ? db.faultMachines : [];
     return db;
@@ -3072,12 +3072,10 @@ function secureLogin(){
     var localUsers=Array.isArray(storedDb.users)?storedDb.users:[];
     var found=tryLogin(localUsers);
     if(found){
-      // CORRECTIF CRITIQUE : recharger l'objet db COMPLET depuis localStorage (pas seulement users).
-      // Sans cela, si Firebase avait déjà restauré les données dans localStorage en arrière-plan
-      // (clientRoot, faultMachines, cars...) pendant que la variable db en mémoire restait vide,
-      // le login utilisait l'ancienne db vide et l'app paraissait vide malgré des données présentes.
-      Object.assign(db, storedDb);
-      db.users=localUsers;
+      // CORRECTIF CRITIQUE : fusionner l'objet db COMPLET avec localStorage (pas seulement users),
+      // via mergeDbWithRemote plutôt qu'un Object.assign brut qui écraserait des données en
+      // mémoire potentiellement plus récentes que ce qui a été persisté dans localStorage.
+      mergeDbWithRemote(db, storedDb);
       afterSuccessfulAuth(found);
       return;
     }
@@ -3105,14 +3103,16 @@ function secureLogin(){
           restoreLoginForm('Identifiant ou mot de passe incorrect.');
           return;
         }
-        // CORRECTIF CRITIQUE : restaurer TOUTES les données (clientRoot, faultMachines, cars, etc.),
-        // pas seulement la liste des utilisateurs. Sinon l'app affiche un compte valide mais vide.
-        Object.assign(storedDb, remoteDb);
-        storedDb.users=firebaseUsers;
+        // CORRECTIF CRITIQUE : restaurer TOUTES les données (clientRoot, faultMachines, cars, etc.)
+        // via une fusion sûre (mergeDbWithRemote), jamais un Object.assign brut. Un Object.assign
+        // direct écrasait silencieusement tout le contenu local (y compris un opérateur tout juste
+        // créé) par une version Firebase potentiellement périmée/pas encore synchronisée, ce qui
+        // causait sa disparition après reconnexion.
+        mergeDbWithRemote(storedDb, remoteDb);
         localStorage.setItem(STORE, JSON.stringify(storedDb));
-        Object.assign(db, storedDb);
-        db.users=firebaseUsers;
-        var found2=tryLogin(firebaseUsers);
+        mergeDbWithRemote(db, storedDb);
+        var firebaseUsers2=storedDb.users||[];
+        var found2=tryLogin(firebaseUsers2);
         if(found2){
           afterSuccessfulAuth(found2);
         } else {
@@ -7228,7 +7228,7 @@ translate();
   const $ = id => document.getElementById(id);
   function norm(s){return String(s||'').toLowerCase().replace(/[\s_\-\/]+/g,'').replace(/[^a-z0-9א-ת]/g,'');}
   function loadDb(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{};}catch(e){return {};}}
-  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); if(typeof db!=='undefined' && db) Object.assign(db,d);}
+  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); if(typeof db!=='undefined' && db){ if(typeof mergeDbWithRemote==='function') mergeDbWithRemote(db,d); else Object.assign(db,d); } }
   function uid(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():('doc_'+Date.now()+'_'+Math.random().toString(16).slice(2));}
   function openIdb(){
     return new Promise((resolve,reject)=>{
@@ -7686,7 +7686,7 @@ translate();
 (function(){
   var STORE='duke_stock_manager_auth_v1';
   function readStore(){try{return JSON.parse(localStorage.getItem(STORE))||{};}catch(e){return {};}}
-  function writeStore(d){localStorage.setItem(STORE, JSON.stringify(d)); try{ if(typeof db!=='undefined' && db) Object.assign(db,d); }catch(e){} }
+  function writeStore(d){localStorage.setItem(STORE, JSON.stringify(d)); try{ if(typeof window.db!=='undefined' && window.db && typeof window.mergeDbWithRemote==='function') window.mergeDbWithRemote(window.db,d); else if(typeof db!=='undefined' && db) Object.assign(db,d); }catch(e){} }
   function norm(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
   function syncClientImages(d){
     d=d||readStore();
