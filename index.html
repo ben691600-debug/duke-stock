@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2589,6 +2589,13 @@ body.draggingMachine{
     });
   }
   function openForm(id=null){
+    // Déléguer à faultMachineOpenForm() du module principal qui peuple correctement
+    // les selects en cascade (type → modèle) avec les données existantes de Firebase.
+    if(typeof faultMachineOpenForm==='function'){
+      faultMachineOpenForm(id);
+      return;
+    }
+    // Fallback minimal si le module principal n'est pas encore chargé
     const form=$('faultMachineForm'); if(!form) return;
     editId=id; imgData=''; form.reset();
     const prev=$('faultMachineImagePreview'); if(prev){prev.style.backgroundImage='';prev.classList.add('hidden');}
