@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2215,14 +2215,14 @@ body.draggingMachine{
           <button class="btn primary" id="faultMachineCreateButton" type="button" data-i="faultMachineManagementBtn" onclick="faultMachineOpenForm(); return false;">+ Ajouter machine</button>
         </div>
       </div>
-      <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher type, modèle, numéro ou panne...">
-      <div id="faultMachineTypeFilterBar" style="display:flex;align-items:center;padding:8px 0 4px;position:sticky;top:274px;z-index:2998;background:#eef8fd;">
-        <div style="position:relative;display:inline-block">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div style="position:relative;display:inline-block;flex-shrink:0">
           <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;font-weight:700">🔽 Filtrage</button>
           <select id="faultMachineTypeSelect" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer">
             <option value="">Tous les types</option>
           </select>
         </div>
+        <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher..." style="flex:1;min-width:0;margin:0">
       </div>
       <div class="groupGrid" id="faultMachineGrid"></div>
     </section>
