@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2564,15 +2564,19 @@ body.draggingMachine{
     if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault();
   }
   function readRows(){
+    // Déléguer à la fonction du module principal pour lire les bonnes classes CSS
+    if(typeof faultMachineReadFaultRows==='function') return faultMachineReadFaultRows();
     return Array.from(document.querySelectorAll('#faultMachineRowsBox .faultMachineFaultRow')).map(r=>({
-      number:(r.querySelector('[data-field="number"]')||{}).value||'',
-      text:(r.querySelector('[data-field="text"]')||{}).value||''
+      number:(r.querySelector('.faultMachineFaultNumber')||r.querySelector('[data-field="number"]')||{}).value||'',
+      text:(r.querySelector('.faultMachineFaultText')||r.querySelector('[data-field="text"]')||{}).value||''
     })).filter(x=>x.number||x.text);
   }
   function addFaultRow(number='',text=''){
+    // Déléguer au module principal qui crée les bonnes classes CSS
+    if(typeof faultMachineAddFaultRow==='function'){ faultMachineAddFaultRow(number,text); return; }
     const box=$('faultMachineRowsBox'); if(!box) return;
     const row=document.createElement('div'); row.className='faultMachineFaultRow';
-    row.innerHTML='<input data-field="number" placeholder="Code" value="'+esc(number)+'"><input data-field="text" data-i-placeholder="descriptionFault" placeholder="Description panne" value="'+esc(text)+'"><button type="button" class="btn danger">×</button>';
+    row.innerHTML='<input class="faultMachineFaultNumber" placeholder="06" value="'+esc(number)+'"><input class="faultMachineFaultText" placeholder="Description panne" value="'+esc(text)+'"><button type="button" class="btn danger">🗑️</button>';
     row.querySelector('button').onclick=()=>row.remove(); box.appendChild(row);
   }
   function openFaultRows(id){
@@ -2625,7 +2629,8 @@ body.draggingMachine{
     const search=$('faultMachineSearch'); if(search) search.addEventListener('input',function(){ if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault(); });
     const cancel=$('faultMachineCancelButton'); if(cancel) cancel.onclick=()=>$('faultMachineDialog').close();
     const fcancel=$('faultMachineFaultCancelButton'); if(fcancel) fcancel.onclick=()=>$('faultMachineFaultDialog').close();
-    const addFault=$('faultMachineAddFaultButton'); if(addFault) addFault.onclick=()=>addFaultRow();
+    // NE PAS assigner addFaultButton ici — le module principal (ligne ~7356) le gère
+    // avec faultMachineAddFaultRow() qui utilise les bonnes classes CSS.
     const img=$('faultMachineImageInput'); if(img) img.addEventListener('change',()=>{const file=img.files&&img.files[0]; if(!file){imgData='';return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(compressed){imgData=compressed; const p=$('faultMachineImagePreview'); if(p){p.style.backgroundImage='url('+compressed+')';p.classList.remove('hidden');}});}; r.readAsDataURL(file);});
     // Submit du formulaire de pannes géré uniquement par le module principal (faultMachineFaultForm.onsubmit)
     // pour éviter le double traitement et la perte de pannes multiples.
@@ -7750,15 +7755,30 @@ translate();
       const type=($('faultMachineTypeInput')||{}).value||'';
       if(!model) return;
       if(!Object.values(docDraft).some(Boolean)) return;
-      const d=loadDb(); d.faultMachines=d.faultMachines||[];
-      let m=findFaultByModel(d,model,type);
-      if(!m){m={id:uid(), type:type, model:model, image:'', faults:[], docs:{}}; d.faultMachines.unshift(m);}
-      m.docs=m.docs||{};
       try{
-        for(const [k] of DOCS){ if(docDraft[k]&&docDraft[k].file) m.docs[k]=await putBlob(docDraft[k].file); }
-        saveDb(d);
+        if(typeof db==='undefined'||!db) return;
+        db.faultMachines = db.faultMachines||[];
+        let m=findFaultByModel(db,model,type);
+        if(!m){m={id:(crypto&&crypto.randomUUID)?crypto.randomUUID():('fm_'+Date.now()),type:type,model:model,image:'',faults:[],docs:{}}; db.faultMachines.unshift(m);}
+        m.docs=m.docs||{};
+        for(const [k] of DOCS){
+          if(docDraft[k]&&docDraft[k].file){
+            const result = await putBlob(docDraft[k].file);
+            if(result.data && result.data.length > 8*1024*1024){
+              alert('Document trop volumineux ('+Math.round(result.data.length/1024/1024)+'MB max 8MB). Compresse le PDF.');
+              continue;
+            }
+            m.docs[k]=result;
+          }
+        }
+        localStorage.setItem(STORE_KEY, JSON.stringify(db));
+        if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+        else if(typeof save==='function') save();
         alert(T('docSaved'));
-      }catch(e){alert('Impossible d’enregistrer le document. Vérifie l’espace libre du téléphone ou utilise un fichier plus léger.');}
+      }catch(e){
+        console.error('Doc save error',e);
+        alert('Erreur enregistrement : '+(e&&e.message?e.message:'erreur inconnue'));
+      }
       docDraft={manual:null,spare:null,electrical:null};
       refreshFaultDocPanel();
       if(typeof faultMachineRender==='function') try{faultMachineRender();}catch(e){}
