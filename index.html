@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2627,8 +2627,8 @@ body.draggingMachine{
     const fcancel=$('faultMachineFaultCancelButton'); if(fcancel) fcancel.onclick=()=>$('faultMachineFaultDialog').close();
     const addFault=$('faultMachineAddFaultButton'); if(addFault) addFault.onclick=()=>addFaultRow();
     const img=$('faultMachineImageInput'); if(img) img.addEventListener('change',()=>{const file=img.files&&img.files[0]; if(!file){imgData='';return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(compressed){imgData=compressed; const p=$('faultMachineImagePreview'); if(p){p.style.backgroundImage='url('+compressed+')';p.classList.remove('hidden');}});}; r.readAsDataURL(file);});
-    // Submit géré par $('faultMachineForm').onsubmit dans le script principal (évite double insertion)
-    const faultForm=$('faultMachineFaultForm'); if(faultForm) faultForm.addEventListener('submit',e=>{e.preventDefault(); const db=ensure(loadDb()); const m=db.faultMachines.find(x=>x.id===faultId); if(m){m.faults=readRows(); saveDb(db);} $('faultMachineFaultDialog').close(); if(typeof faultMachineRender==='function') faultMachineRender(); else renderFault();});
+    // Submit du formulaire de pannes géré uniquement par le module principal (faultMachineFaultForm.onsubmit)
+    // pour éviter le double traitement et la perte de pannes multiples.
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
   window.faultMachineOpen=showFault;
@@ -2910,8 +2910,10 @@ function initRTDB(){
     // (suppressions en attente) par-dessus, puis on sauvegarde dans localStorage.
     function applyFirebaseData(remote, isInitial){
       if(!remote) return;
-      // Sauvegarder les tombstones locaux avant remplacement (ils sont notre seule
-      // contribution locale légitime — tout le reste vient de Firebase)
+      // Préserver les données locales non encore envoyées à Firebase :
+      // faultMachines (pannes + documents) sont souvent modifiées juste avant
+      // qu'un sync ne parte, et le listener temps réel peut arriver avant la sync.
+      var localFaultMachines = (_syncQueued || _syncInFlight) ? (db.faultMachines||null) : null;
       var localTombstones = (db.trashRemovedIds||[]).slice();
       // Remplacer intégralement db par Firebase
       Object.keys(db).forEach(function(k){ delete db[k]; });
@@ -2925,6 +2927,23 @@ function initRTDB(){
       if(!Array.isArray(db.history)) db.history=[];
       if(!Array.isArray(db.trash)) db.trash=[];
       if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+      // Restaurer les faultMachines locales si une sync est en attente
+      // (elles contiennent les pannes/docs tout juste sauvegardés, pas encore sur Firebase)
+      if(localFaultMachines && localFaultMachines.length > 0){
+        // Fusionner : garder la version locale pour les machines qu'on vient de modifier,
+        // et ajouter les machines Firebase qu'on n'a pas localement.
+        var localById = {};
+        localFaultMachines.forEach(function(m){ if(m&&m.id) localById[m.id]=m; });
+        db.faultMachines = (db.faultMachines||[]).map(function(m){
+          return (m&&m.id&&localById[m.id]) ? localById[m.id] : m;
+        });
+        // Ajouter les machines locales absentes de Firebase (nouvellement créées)
+        localFaultMachines.forEach(function(m){
+          if(m&&m.id&&!db.faultMachines.find(function(x){return x.id===m.id;})){
+            db.faultMachines.push(m);
+          }
+        });
+      }
       // Fusionner les tombstones : union des tombstones Firebase + locaux
       localTombstones.forEach(function(id){
         if(db.trashRemovedIds.indexOf(id)===-1) db.trashRemovedIds.push(id);
