@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3000,9 +3000,32 @@ function processSyncQueue(){
     if(lostUser || lostCar){
       var lostDesc = lostUser ? ('utilisateur "'+lostUser.username+'"') : ('véhicule "'+(lostCar.plate||lostCar.id)+'"');
       console.error('Duke SYNC ANNULÉE PAR SÉCURITÉ : le '+lostDesc+' existe sur Firebase mais a disparu localement sans passer par la corbeille. Rechargez la page pour repartir d\'un état à jour.');
-      showSyncBanner('⚠️ Sauvegarde annulée par sécurité (perte de données détectée) - rechargez la page', true);
+      showSyncBanner('⚠️ Sauvegarde annulée par sécurité - rechargez la page', true);
       throw new Error('SYNC_BLOCKED_DATA_LOSS_PREVENTION');
     }
+    // CORRECTIF SYNC : s'assurer que dataToSync contient bien les trashRemovedIds à jour
+    // et que clientServiceRequests ne contient pas d'appels orphelins (machine supprimée).
+    // Cela garantit que même si l'autre téléphone avait une ancienne version, l'écriture
+    // sur Firebase propagera correctement les suppressions.
+    dataToSync.trashRemovedIds = db.trashRemovedIds || [];
+    if(Array.isArray(dataToSync.clientServiceRequests)){
+      dataToSync.clientServiceRequests = dataToSync.clientServiceRequests.filter(function(r){
+        return r && r.id && !removedIdSet[r.id] && !(r.machineId && removedIdSet[r.machineId]);
+      });
+    }
+    // Purge récursive de clientRoot : retirer toutes les machines et groupes tombstonés
+    // avant l'écriture sur Firebase, pour éviter qu'un appareil périmé ne les réinjecte.
+    function purgeNodeTombstones(node){
+      if(!node) return;
+      if(Array.isArray(node.machines)){
+        node.machines = node.machines.filter(function(m){ return m && m.id && !removedIdSet[m.id]; });
+      }
+      if(Array.isArray(node.groups)){
+        node.groups = node.groups.filter(function(g){ return g && g.id && !removedIdSet[g.id]; });
+        node.groups.forEach(purgeNodeTombstones);
+      }
+    }
+    if(dataToSync.clientRoot) purgeNodeTombstones(dataToSync.clientRoot);
     console.log('Duke SYNC: envoi vers Firebase -',
       'utilisateurs:', (dataToSync.users||[]).length,
       '| véhicules:', (dataToSync.cars||[]).length,
