@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5548,16 +5548,20 @@ function clientServiceHasOpenRequest(mid){
   return clientServiceRequestsForMachine(mid).some(r=>(r.status||'open')==='open'||(r.status||'')==='in_progress');
 }
 function getVisibleRequestsForMachine(mid){
-  // Admin and clients see all; operator sees only assigned to them
   var all=clientServiceRequestsForMachine(mid);
   if(typeof isAdmin==='function'&&isAdmin()) return all;
-  if(typeof isClientUser==='function'&&isClientUser()) return all; // client sees all their machine's requests
+  if(typeof isClientUser==='function'&&isClientUser()) return all;
   if(typeof currentUser!=='undefined'&&currentUser&&currentUser.username){
-    return all.filter(function(r){return r.assignedTo===currentUser.username;});
+    // Opérateur : uniquement les appels qui lui sont affectés ET pas encore fermés.
+    // Un appel fermé ou non affecté doit disparaître immédiatement de sa vue.
+    return all.filter(function(r){
+      return r.assignedTo===currentUser.username && (r.status||'open')!=='closed';
+    });
   }
   return [];
 }
 function getMachineRequestStatus(mid){
+  // Utilise getVisibleRequestsForMachine qui inclut déjà le filtre rôle + statut closed
   var reqs=getVisibleRequestsForMachine(mid).filter(r=>(r.status||'open')!=='closed');
   if(!reqs.length) return 'none';
   if(reqs.some(r=>(r.status||'open')==='open')) return 'open';
@@ -5617,7 +5621,10 @@ function openClientServiceRequests(mid){
   // Admin sees all; operator sees only their assigned requests
   var requests=clientServiceRequestsForMachine(mid).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt));});
   if(!isAdmin()){
-    requests=requests.filter(function(r){return r.assignedTo===currentUser.username;});
+    // Opérateur : uniquement les appels affectés ET non fermés
+    requests=requests.filter(function(r){
+      return r.assignedTo===currentUser.username && (r.status||'open')!=='closed';
+    });
   }
   if(!requests.length){
     list.innerHTML='<p class="muted">'+(isAdmin()?T('noClientRequest'):T('noAssignedRequests'))+'</p>';
