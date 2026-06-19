@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2207,9 +2207,9 @@ body.draggingMachine{
 </section>
 
 
-    <section id="faultMachineView" class="hidden" style="display:flex;flex-direction:column;height:100%">
-      <div id="faultMachineFixedHeader" style="flex-shrink:0;background:var(--bg,#eef8fd);padding-bottom:8px;border-bottom:1px solid rgba(185,215,234,.65)">
-        <div class="toolbar moduleActionToolbar" style="position:static!important">
+    <section id="faultMachineView" class="hidden">
+      <div id="faultMachineFixedHeader" style="position:sticky;z-index:100;background:var(--bg,#eef8fd);padding-bottom:8px;border-bottom:1px solid rgba(185,215,234,.65);margin-bottom:10px">
+        <div class="toolbar moduleActionToolbar" style="position:static!important;top:auto!important">
           <div class="actions moduleActionButtons oneButton">
             <button class="btn primary" id="faultMachineCreateButton" type="button" data-i="faultMachineManagementBtn" onclick="faultMachineOpenForm(); return false;">+ Ajouter machine</button>
           </div>
@@ -2224,7 +2224,7 @@ body.draggingMachine{
           <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher..." style="flex:1;min-width:0;margin:0">
         </div>
       </div>
-      <div class="groupGrid" id="faultMachineGrid" style="flex:1;overflow-y:auto;padding-top:10px"></div>
+      <div class="groupGrid" id="faultMachineGrid"></div>
     </section>
 
 </main>
@@ -3664,6 +3664,15 @@ function show(view){
   }
   ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'].forEach(id=>{if($(id)) $(id).classList.add('hidden')});
   $(view).classList.remove('hidden');
+  // Calcule dynamiquement le top du header fixe des machines pour qu'il colle
+  // exactement sous le header principal (.top), quelle que soit la hauteur réelle.
+  if(view==='faultMachineView'){
+    var topBar=document.querySelector('.top');
+    var fixedHdr=document.getElementById('faultMachineFixedHeader');
+    if(topBar&&fixedHdr){
+      fixedHdr.style.top=(topBar.offsetHeight)+'px';
+    }
+  }
   $('backBtn').classList.add('hidden');
   // Update back button visibility
   var ub=document.getElementById('universalBackBtn');
