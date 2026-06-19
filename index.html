@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3317,7 +3317,24 @@ function checkSessionTimeout(){
   const start=Number(localStorage.getItem('duke_session_started')||0);
   if(start && Date.now()-start>SECURITY.sessionMinutes*60*1000){
     alert(T('sessionExpired'));
-    currentUser=null;selected=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('loginPass').value='';
+    // Déconnexion complète : même logique que le bouton de déconnexion manuel
+    currentUser=null; selected=null;
+    sessionStorage.removeItem('duke_current_user');
+    localStorage.removeItem('duke_session_started');
+    localStorage.removeItem('duke_current_user');
+    // Cacher TOUTES les vues de l'app et afficher uniquement loginView
+    var appView=document.getElementById('appView');
+    var loginView=document.getElementById('loginView');
+    var langView=document.getElementById('langView');
+    if(appView){ appView.classList.add('hidden'); appView.classList.remove('appView-hasback'); }
+    if(langView) langView.classList.add('hidden');
+    if(loginView) loginView.classList.remove('hidden');
+    var loginPass=document.getElementById('loginPass');
+    if(loginPass) loginPass.value='';
+    var ub=document.getElementById('universalBackBtn');
+    if(ub) ub.classList.remove('visible');
+    // Remonter en haut de page pour que le formulaire de connexion soit visible
+    window.scrollTo(0,0);
   }
 }
 setInterval(checkSessionTimeout,60000);
