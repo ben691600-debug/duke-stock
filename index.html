@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5579,10 +5579,12 @@ function clientServiceHasOpenRequest(mid){
 function getVisibleRequestsForMachine(mid){
   var all=clientServiceRequestsForMachine(mid);
   if(typeof isAdmin==='function'&&isAdmin()) return all;
-  if(typeof isClientUser==='function'&&isClientUser()) return all;
+  if(typeof isClientUser==='function'&&isClientUser()){
+    // Client : uniquement les appels non fermés. Un appel fermé ne doit plus
+    // apparaître sur l'étiquette du client (badge rouge) ni dans sa liste.
+    return all.filter(function(r){ return (r.status||'open')!=='closed'; });
+  }
   if(typeof currentUser!=='undefined'&&currentUser&&currentUser.username){
-    // Opérateur : uniquement les appels qui lui sont affectés ET pas encore fermés.
-    // Un appel fermé ou non affecté doit disparaître immédiatement de sa vue.
     return all.filter(function(r){
       return r.assignedTo===currentUser.username && (r.status||'open')!=='closed';
     });
