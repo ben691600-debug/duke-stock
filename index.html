@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2825,25 +2825,22 @@ function collectAllLiveIds(node, out){
 function mergeDbWithRemote(localDb, remoteDb){
   if(!remoteDb || typeof remoteDb!=='object') return localDb;
   var removedIds=(localDb.trashRemovedIds||[]).concat(remoteDb.trashRemovedIds||[]);
-  // dédoublonnage simple des tombstones
   removedIds = removedIds.filter(function(id,i){return removedIds.indexOf(id)===i;});
-  // CORRECTIF CRITIQUE (généralisé à TOUTE l'application, pas seulement aux opérateurs) :
-  // si un élément (véhicule, machine, groupe client, opérateur, fournisseur, pièce...)
-  // existe ACTUELLEMENT en local avec son id, c'est la preuve qu'il a été intentionnellement
-  // restauré depuis la corbeille ou recréé - on retire alors son tombstone avant la fusion.
-  // Sans cela, restaurer un élément depuis la corbeille fonctionnait localement, mais la
-  // synchronisation suivante relisait l'ancien tombstone encore présent côté Firebase (qui
-  // n'avait pas encore reçu la restauration) et le réintroduisait dans removedIds par
-  // l'union des deux côtés - annulant silencieusement la restauration au prochain cycle.
   var liveIds = collectAllLiveIds(localDb);
   removedIds = removedIds.filter(function(id){ return !liveIds[id]; });
   var merged = deepMerge(remoteDb, localDb, removedIds);
   merged.trashRemovedIds = removedIds;
-  // CORRECTIF : guérison des doublons d'opérateurs déjà créés avant l'ajout d'un id
-  // stable sur chaque utilisateur (cause historique du bug "3 Benjamin identiques").
-  // On déduplique systématiquement par username, en fusionnant les champs des
-  // doublons entre eux pour ne perdre aucune information.
   if(Array.isArray(merged.users)) merged.users = dedupUsersByUsername(merged.users, removedIds);
+  // CORRECTIF CRITIQUE : les demandes client fermées/supprimées sont tombstonées dans
+  // trashRemovedIds. Sans ce filtre post-fusion, deepMerge les réinjecte depuis Firebase
+  // quelques secondes après la suppression (le listener .on('value') reçoit l'ancienne
+  // version du cloud avant que la sync ne soit confirmée), faisant réapparaître la cloche.
+  var removedSet={}; removedIds.forEach(function(id){removedSet[id]=true;});
+  if(Array.isArray(merged.clientServiceRequests)){
+    merged.clientServiceRequests = merged.clientServiceRequests.filter(function(r){
+      return r && r.id && !removedSet[r.id];
+    });
+  }
   Object.keys(merged).forEach(function(k){ localDb[k]=merged[k]; });
   return localDb;
 }
@@ -5652,7 +5649,10 @@ function openClientServiceRequests(mid){
         var newSt=btn.dataset.st;
         if(newSt==='closed'){
           if(!confirm('Confirmer la fermeture de cet appel ?')) return;
-          // Supprimer définitivement de clientServiceRequests (conservé dans historique machine si intervention faite)
+          // Tombstone : enregistrer l'id pour que la fusion Firebase ne le réinjecte pas
+          db.trashRemovedIds=db.trashRemovedIds||[];
+          if(r.id && db.trashRemovedIds.indexOf(r.id)===-1) db.trashRemovedIds.push(r.id);
+          // Supprimer définitivement de clientServiceRequests
           db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==r.id;});
         } else {
           r.status=newSt;
@@ -9421,8 +9421,13 @@ function saveIntervention(resolution){
       });
     }
 
+    // Tombstone : enregistrer l'id pour que la fusion Firebase ne réinjecte jamais
+    // cette demande depuis le cloud (même logique que les suppressions de la corbeille).
+    db.trashRemovedIds=db.trashRemovedIds||[];
+    if(_intRequest.id && db.trashRemovedIds.indexOf(_intRequest.id)===-1){
+      db.trashRemovedIds.push(_intRequest.id);
+    }
     // Supprimer la demande client de la liste ET la marquer fermée par sécurité
-    // (double protection : filtre par id + mutation directe de l'objet en mémoire)
     _intRequest.status='closed';
     _intRequest.resolution=resolution;
     db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){
