@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2537,7 +2537,20 @@ body.draggingMachine{
   const $=id=>document.getElementById(id);
   let editId=null, imgData='', faultId=null;
   function loadDb(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{};}catch(e){return {};}}
-  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); try{ if(typeof db!=='undefined' && db && typeof mergeDbWithRemote==='function') mergeDbWithRemote(db,d); else if(typeof db!=='undefined' && db) Object.assign(db,d); }catch(e){} }
+  function saveDb(d){
+    localStorage.setItem(STORE_KEY,JSON.stringify(d));
+    try{
+      if(typeof db!=='undefined' && db){
+        // Mettre à jour db global avec les faultMachines sauvegardées
+        db.faultMachines = d.faultMachines || db.faultMachines;
+        db.trash = d.trash || db.trash;
+        db.trashRemovedIds = d.trashRemovedIds || db.trashRemovedIds;
+      }
+      // Déclencher la synchronisation Firebase
+      if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+      else if(typeof save==='function') save();
+    }catch(e){}
+  }
   function ensure(db){
     db.faultMachines = Array.isArray(db.faultMachines) ? db.faultMachines : [];
     return db;
@@ -5636,12 +5649,15 @@ function buildAssignDropdown(r, mid){
   if(!isAdmin()) return '';
   var ops=(db.users||[]).filter(function(u){return u.role==='operator';}).slice().sort(function(a,b){return (a.username||'').localeCompare(b.username||'');});
   var html='<div style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:#6f7b87">'+T('assignTo')+'</label>'
-    +'<select data-assign-req="'+esc(r.id)+'" style="width:100%;padding:12px;border:2px solid var(--line);border-radius:12px;margin-top:6px;background:white;font-size:15px;font-weight:600">'
+    +'<div style="display:flex;gap:8px;margin-top:6px;align-items:center">'
+    +'<select data-assign-req="'+esc(r.id)+'" style="flex:1;padding:12px;border:2px solid var(--line);border-radius:12px;background:white;font-size:15px;font-weight:600">'
     +'<option value="">— '+T('unassigned')+' —</option>';
   ops.forEach(function(u){
     html+='<option value="'+esc(u.username)+'"'+(r.assignedTo===u.username?' selected':'')+'>'+esc(u.username)+'</option>';
   });
-  html+='</select></div>';
+  html+='</select>'
+    +'<button type="button" data-assign-confirm class="btn primary" style="white-space:nowrap;padding:12px 16px;font-size:14px">✅ OK</button>'
+    +'</div></div>';
   return html;
 }
 function openClientServiceRequests(mid){
@@ -5680,40 +5696,49 @@ function openClientServiceRequests(mid){
        );
     div.querySelectorAll('[data-st]').forEach(function(btn){
       btn.onclick=function(){
+        // Retrouver r par id dans db pour éviter les références périmées après sync
+        var live=(db.clientServiceRequests||[]).find(function(x){return x.id===r.id;});
+        if(!live) return;
         var newSt=btn.dataset.st;
         if(newSt==='closed'){
           if(!confirm('Confirmer la fermeture de cet appel ?')) return;
-          // Tombstone : enregistrer l'id pour que la fusion Firebase ne le réinjecte pas
           db.trashRemovedIds=db.trashRemovedIds||[];
-          if(r.id && db.trashRemovedIds.indexOf(r.id)===-1) db.trashRemovedIds.push(r.id);
-          // Supprimer définitivement de clientServiceRequests
-          db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==r.id;});
+          if(live.id && db.trashRemovedIds.indexOf(live.id)===-1) db.trashRemovedIds.push(live.id);
+          db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==live.id;});
         } else {
-          r.status=newSt;
+          live.status=newSt;
         }
         save(); renderClientMachineModule(); openClientServiceRequests(mid);
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
       };
     });
-    // Assign select (native dropdown - onchange)
+    // Assign select : onChange natif + click de secours pour Android
     var assignSel=div.querySelector('[data-assign-req]');
     if(assignSel){
-      assignSel.onchange=function(){
-        r.assignedTo=this.value||null;
+      function doAssign(){
+        var live=(db.clientServiceRequests||[]).find(function(x){return x.id===r.id;});
+        if(!live) return;
+        live.assignedTo=assignSel.value||null;
         save(); renderClientMachineModule(); openClientServiceRequests(mid);
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
-      };
+      }
+      assignSel.onchange=doAssign;
+      // Bouton de confirmation à côté du select pour Android où onchange est peu fiable
+      var assignBtn=div.querySelector('[data-assign-confirm]');
+      if(assignBtn) assignBtn.onclick=doAssign;
     }
     // Start intervention
     var startBtn=div.querySelector('[data-intervention=start]');
     if(startBtn){
       startBtn.onclick=function(){
-        r.status='in_progress';
-        r.startTime=new Date().toISOString();
-        if(!r.serviceNumber){
+        var live=(db.clientServiceRequests||[]).find(function(x){return x.id===r.id;});
+        if(!live) return;
+        live.status='in_progress';
+        live.startTime=new Date().toISOString();
+        if(!live.serviceNumber){
           db.serviceCounter=(db.serviceCounter||0)+1;
           var _d=new Date();
-          r.serviceNumber='SRV-'+_d.getFullYear()+String(_d.getMonth()+1).padStart(2,'0')+String(_d.getDate()).padStart(2,'0')+'-'+String(db.serviceCounter).padStart(4,'0');
+          live.serviceNumber='SRV-'+_d.getFullYear()+String(_d.getMonth()+1).padStart(2,'0')+String(_d.getDate()).padStart(2,'0')+'-'+String(db.serviceCounter).padStart(4,'0');
         }
         save(); renderClientMachineModule(); openClientServiceRequests(mid);
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
@@ -7597,7 +7622,14 @@ translate();
   const $ = id => document.getElementById(id);
   function norm(s){return String(s||'').toLowerCase().replace(/[\s_\-\/]+/g,'').replace(/[^a-z0-9א-ת]/g,'');}
   function loadDb(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{};}catch(e){return {};}}
-  function saveDb(d){localStorage.setItem(STORE_KEY,JSON.stringify(d)); if(typeof db!=='undefined' && db){ if(typeof mergeDbWithRemote==='function') mergeDbWithRemote(db,d); else Object.assign(db,d); } }
+  function saveDb(d){
+    localStorage.setItem(STORE_KEY,JSON.stringify(d));
+    if(typeof db!=='undefined' && db){
+      db.faultMachines = d.faultMachines || db.faultMachines;
+    }
+    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+    else if(typeof save==='function') save();
+  }
   function uid(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():('doc_'+Date.now()+'_'+Math.random().toString(16).slice(2));}
   function openIdb(){
     return new Promise((resolve,reject)=>{
@@ -7608,25 +7640,35 @@ translate();
     });
   }
   async function putBlob(file){
-    const id=uid();
-    const database=await openIdb();
-    await new Promise((resolve,reject)=>{
-      const tx=database.transaction(IDB_STORE,'readwrite');
-      tx.objectStore(IDB_STORE).put({id,name:file.name||'document',type:file.type||'application/octet-stream',blob:file,createdAt:new Date().toISOString()});
-      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    // Stocker le document en base64 dans Firebase (via db.faultMachines) plutôt qu'en
+    // IndexedDB local. IndexedDB n'est accessible que sur l'appareil où le fichier a été
+    // chargé — les autres téléphones ne voient jamais le document. En base64 dans Firebase,
+    // le document est synchronisé sur tous les appareils exactement comme les images.
+    return new Promise(function(resolve, reject){
+      const reader = new FileReader();
+      reader.onload = function(e){
+        resolve({
+          name: file.name || 'document',
+          type: file.type || 'application/octet-stream',
+          data: e.target.result // base64 data URL
+        });
+      };
+      reader.onerror = function(){ reject(new Error('Lecture fichier échouée')); };
+      reader.readAsDataURL(file);
     });
-    database.close();
-    return {id,name:file.name||'document',type:file.type||'application/octet-stream'};
   }
   async function getBlob(id){
-    const database=await openIdb();
-    const rec=await new Promise((resolve,reject)=>{
-      const tx=database.transaction(IDB_STORE,'readonly');
-      const req=tx.objectStore(IDB_STORE).get(id);
-      req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
-    });
-    database.close();
-    return rec;
+    // Fallback pour les anciens documents stockés en IndexedDB
+    try{
+      const database=await openIdb();
+      const rec=await new Promise((resolve,reject)=>{
+        const tx=database.transaction(IDB_STORE,'readonly');
+        const req=tx.objectStore(IDB_STORE).get(id);
+        req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+      });
+      database.close();
+      return rec;
+    }catch(e){ return null; }
   }
   function findFaultByModel(d, model, type){
     const list=d.faultMachines||[]; const nm=norm(model), nt=norm(type);
@@ -7641,8 +7683,14 @@ translate();
     if(!doc){alert(T('docNotSaved'));return;}
     try{
       let url='';
-      if(doc.id){const rec=await getBlob(doc.id); if(rec&&rec.blob) url=URL.createObjectURL(rec.blob);}
-      else if(doc.data){url=doc.data;}
+      // Nouveau format : base64 stocké directement dans Firebase
+      if(doc.data){url=doc.data;}
+      // Ancien format : fichier stocké en IndexedDB (local uniquement)
+      else if(doc.id){
+        const rec=await getBlob(doc.id);
+        if(rec&&rec.blob) url=URL.createObjectURL(rec.blob);
+        else {alert(T('docNotFound'));return;}
+      }
       else if(doc.url){url=doc.url;}
       if(!url){alert(T('docNotFound'));return;}
       const w=window.open(url,'_blank');

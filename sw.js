@@ -1,5 +1,5 @@
 // Duke Stock Manager - Service Worker v8 - NETWORK FIRST + activation automatique des mises à jour
-const CACHE_NAME = 'duke-stock-v48';
+const CACHE_NAME = 'duke-stock-v49';
 
 // Installation : on NE prend PAS le contrôle automatiquement. Le nouveau SW reste en
 // attente ('waiting') jusqu'à ce que l'utilisateur clique explicitement sur le bouton
