@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2891,58 +2891,86 @@ function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
     _rtdb=firebase.database();
-    _rtdb.ref('duke_main').once('value').then(function(snap){
-      const remote=snap.val();
-      _initialPullDone=true;
-      var alreadyAuthoritative = localStorage.getItem('duke_firebase_authoritative')==='1';
-      if(remote){
-        if(!alreadyAuthoritative){
-          console.log('Duke: première connexion de cet appareil à Firebase - remplacement intégral des données locales par celles du cloud.');
-          Object.keys(db).forEach(function(k){ delete db[k]; });
-          Object.assign(db, remote);
-          if(!Array.isArray(db.users)) db.users=[{username:'admin',password:'123Soleil?!',role:'admin',main:true}];
-          if(!Array.isArray(db.cars)) db.cars=[];
-          if(!db.clientRoot || typeof db.clientRoot!=='object') db.clientRoot={groups:[],machines:[]};
-          if(!Array.isArray(db.clientRoot.groups)) db.clientRoot.groups=[];
-          if(!Array.isArray(db.clientRoot.machines)) db.clientRoot.machines=[];
-          if(!Array.isArray(db.history)) db.history=[];
-          if(!Array.isArray(db.trash)) db.trash=[];
-          if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
-        } else {
-          mergeDbWithRemote(db, remote);
-        }
-        localStorage.setItem('duke_firebase_authoritative','1');
-        localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: synchronisation initiale - '+(db.users||[]).length+' utilisateurs.');
-        // Réactiver le bouton de connexion (bloqué sur les nouveaux appareils pendant le pull)
-        if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
-        if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
-          renderAll();
-        }
-      } else {
-        // Firebase est réellement vide : on marque tout de même cet appareil comme
-        // "autoritatif" pour que ses propres données (créées localement) deviennent
-        // la base de départ légitime du Firebase, repeuplée juste après.
-        localStorage.setItem('duke_firebase_authoritative','1');
-        console.log('Duke: Firebase vide (premier démarrage ou données effacées) - envoi des données locales.');
+
+    // ── Applique les données Firebase comme source de vérité absolue ──────────
+    // Firebase remplace TOUJOURS le local. On applique ensuite les tombstones locaux
+    // (suppressions en attente) par-dessus, puis on sauvegarde dans localStorage.
+    function applyFirebaseData(remote, isInitial){
+      if(!remote) return;
+      // Sauvegarder les tombstones locaux avant remplacement (ils sont notre seule
+      // contribution locale légitime — tout le reste vient de Firebase)
+      var localTombstones = (db.trashRemovedIds||[]).slice();
+      // Remplacer intégralement db par Firebase
+      Object.keys(db).forEach(function(k){ delete db[k]; });
+      Object.assign(db, JSON.parse(JSON.stringify(remote)));
+      // Garantir les structures de base
+      if(!Array.isArray(db.users)) db.users=[];
+      if(!Array.isArray(db.cars)) db.cars=[];
+      if(!db.clientRoot||typeof db.clientRoot!=='object') db.clientRoot={groups:[],machines:[]};
+      if(!Array.isArray(db.clientRoot.groups)) db.clientRoot.groups=[];
+      if(!Array.isArray(db.clientRoot.machines)) db.clientRoot.machines=[];
+      if(!Array.isArray(db.history)) db.history=[];
+      if(!Array.isArray(db.trash)) db.trash=[];
+      if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+      // Fusionner les tombstones : union des tombstones Firebase + locaux
+      localTombstones.forEach(function(id){
+        if(db.trashRemovedIds.indexOf(id)===-1) db.trashRemovedIds.push(id);
+      });
+      // Appliquer les tombstones : retirer tout élément tombstoné partout dans db
+      var removedSet={};
+      db.trashRemovedIds.forEach(function(id){ removedSet[id]=true; });
+      db.users = (db.users||[]).filter(function(u){ return u&&u.id&&!removedSet[u.id]&&!removedSet[u.username]; });
+      db.cars = (db.cars||[]).filter(function(c){ return c&&c.id&&!removedSet[c.id]; });
+      if(Array.isArray(db.clientServiceRequests)){
+        db.clientServiceRequests = db.clientServiceRequests.filter(function(r){
+          return r&&r.id&&!removedSet[r.id]&&!(r.machineId&&removedSet[r.machineId]);
+        });
       }
-      // Republie systématiquement après le premier pull : si Firebase était vide ou
-      // incomplet, ceci le repeuple avec les données locales (désormais alignées sur
-      // le cloud) sans jamais rien effacer côté Firebase.
+      function purgeNode(node){
+        if(!node) return;
+        if(Array.isArray(node.machines)) node.machines=node.machines.filter(function(m){return m&&m.id&&!removedSet[m.id];});
+        if(Array.isArray(node.groups)){
+          node.groups=node.groups.filter(function(g){return g&&g.id&&!removedSet[g.id];});
+          node.groups.forEach(purgeNode);
+        }
+      }
+      if(db.clientRoot) purgeNode(db.clientRoot);
+
+      localStorage.setItem('duke_firebase_authoritative','1');
+      localStorage.setItem(STORE, JSON.stringify(db));
+      if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
+      if(!isInitial && typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
+        renderAll();
+        if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+      }
+    }
+
+    _rtdb.ref('duke_main').once('value').then(function(snap){
+      _initialPullDone=true;
+      var remote=snap.val();
+      if(remote){
+        applyFirebaseData(remote, true);
+        console.log('Duke: pull initial Firebase - '+(db.users||[]).length)+' utilisateurs.';
+      } else {
+        localStorage.setItem('duke_firebase_authoritative','1');
+        console.log('Duke: Firebase vide - les données locales seront envoyées.');
+      }
+      if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
+      if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
       queueSyncToRTDB();
     }).catch(function(e){
-      _initialPullDone=true; // Même en cas d'erreur réseau, on débloque l'usage hors-ligne.
+      _initialPullDone=true;
+      if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       console.warn('Duke RTDB pull error',e);
     });
-    // Écoute en temps réel les mises à jour des autres appareils : toujours fusionner,
-    // jamais remplacer en bloc.
+
+    // Listener temps réel : Firebase notifie d'une mise à jour d'un autre appareil
     _rtdb.ref('duke_main').on('value', function(snap){
-      if(_syncInFlight) return; // une sync sortante est en cours, son .then() refusionnera déjà
-      const remote=snap.val();
+      if(_syncInFlight) return; // sync sortante en cours, on la laisse finir
+      if(!_initialPullDone) return;
+      var remote=snap.val();
       if(!remote) return;
-      mergeDbWithRemote(db, remote);
-      localStorage.setItem(STORE, JSON.stringify(db));
-      if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
+      applyFirebaseData(remote, false);
     });
   }catch(e){ console.warn('RTDB init error', e); }
 }
@@ -2960,100 +2988,42 @@ function processSyncQueue(){
   _syncQueued=false;
   _syncInFlight=true;
   showSyncBanner('☁️ Sauvegarde en cours...', false);
-  // RÈGLE MÉTIER CENTRALE : on ne fait JAMAIS .set(db) avec la copie locale seule. On
-  // relit Firebase à l'instant T, on fusionne par UNION récursive (deepMerge), et on
-  // écrit le résultat fusionné. La sync ne peut donc qu'AJOUTER des données à Firebase,
-  // jamais en retirer silencieusement - sauf tombstone explicite de corbeille vidée.
-  _rtdb.ref('duke_main').once('value').then(function(snap){
-    var remote=snap.val();
-    if(remote){
-      mergeDbWithRemote(db, remote);
-      localStorage.setItem(STORE, JSON.stringify(db));
+  // On envoie db tel quel — applyFirebaseData garantit déjà que db reflète Firebase
+  // avec les tombstones locaux appliqués. Plus de lecture avant écriture nécessaire.
+  var dataToSync=JSON.parse(JSON.stringify(db));
+  var removedIdSet={};
+  (dataToSync.trashRemovedIds||[]).forEach(function(id){removedIdSet[id]=true;});
+  // Purge finale : s'assurer qu'aucun élément tombstoné ne part sur Firebase
+  dataToSync.users=(dataToSync.users||[]).filter(function(u){return u&&u.id&&!removedIdSet[u.id]&&!removedIdSet[u.username];});
+  dataToSync.cars=(dataToSync.cars||[]).filter(function(c){return c&&c.id&&!removedIdSet[c.id];});
+  if(Array.isArray(dataToSync.clientServiceRequests)){
+    dataToSync.clientServiceRequests=dataToSync.clientServiceRequests.filter(function(r){
+      return r&&r.id&&!removedIdSet[r.id]&&!(r.machineId&&removedIdSet[r.machineId]);
+    });
+  }
+  function purgeNode(node){
+    if(!node) return;
+    if(Array.isArray(node.machines)) node.machines=node.machines.filter(function(m){return m&&m.id&&!removedIdSet[m.id];});
+    if(Array.isArray(node.groups)){
+      node.groups=node.groups.filter(function(g){return g&&g.id&&!removedIdSet[g.id];});
+      node.groups.forEach(purgeNode);
     }
-    var dataToSync=JSON.parse(JSON.stringify(db));
-    // GARDE-FOU CRITIQUE : après fusion, on vérifie qu'aucun utilisateur/véhicule présent
-    // sur Firebase n'a disparu de dataToSync SANS raison légitime (c-à-d sans figurer dans
-    // trashRemovedIds, qui est la seule façon autorisée de faire disparaître un élément).
-    // Si malgré toutes les protections un état périmé arrivait jusqu'ici (ex: ancien onglet
-    // /PWA pas encore rechargé avec une version antérieure du code), cette dernière
-    // vérification bloque l'écriture plutôt que de risquer une perte de données.
-    var removedIdSet={}; (dataToSync.trashRemovedIds||[]).forEach(function(id){removedIdSet[id]=true;});
-    function findUnexplainedLoss(remoteArr, localArr, idKey){
-      if(!Array.isArray(remoteArr)) return null;
-      var localKeys={}; (localArr||[]).forEach(function(item){
-        if(item && item[idKey]!==undefined) localKeys[item[idKey]]=true;
-      });
-      for(var i=0;i<remoteArr.length;i++){
-        var item=remoteArr[i];
-        if(!item || item[idKey]===undefined) continue;
-        // Un élément est considéré comme légitimement supprimé (tombstoné) s'il a été
-        // retiré via la corbeille, qu'il soit identifié par son id technique OU par son
-        // username (cas des opérateurs créés avant l'ajout d'un id stable). On vérifie
-        // donc les deux clés possibles, pas uniquement idKey.
-        var isTombstoned = removedIdSet[item[idKey]] || (item.id && removedIdSet[item.id]) || (item.username && removedIdSet[item.username]);
-        if(!localKeys[item[idKey]] && !isTombstoned) return item;
-      }
-      return null;
-    }
-    var lostUser = findUnexplainedLoss(remote&&remote.users, dataToSync.users, 'username');
-    var lostCar = findUnexplainedLoss(remote&&remote.cars, dataToSync.cars, 'id');
-    if(lostUser || lostCar){
-      var lostDesc = lostUser ? ('utilisateur "'+lostUser.username+'"') : ('véhicule "'+(lostCar.plate||lostCar.id)+'"');
-      console.error('Duke SYNC ANNULÉE PAR SÉCURITÉ : le '+lostDesc+' existe sur Firebase mais a disparu localement sans passer par la corbeille. Rechargez la page pour repartir d\'un état à jour.');
-      showSyncBanner('⚠️ Sauvegarde annulée par sécurité - rechargez la page', true);
-      throw new Error('SYNC_BLOCKED_DATA_LOSS_PREVENTION');
-    }
-    // CORRECTIF SYNC : s'assurer que dataToSync contient bien les trashRemovedIds à jour
-    // et que clientServiceRequests ne contient pas d'appels orphelins (machine supprimée).
-    // Cela garantit que même si l'autre téléphone avait une ancienne version, l'écriture
-    // sur Firebase propagera correctement les suppressions.
-    dataToSync.trashRemovedIds = db.trashRemovedIds || [];
-    if(Array.isArray(dataToSync.clientServiceRequests)){
-      dataToSync.clientServiceRequests = dataToSync.clientServiceRequests.filter(function(r){
-        return r && r.id && !removedIdSet[r.id] && !(r.machineId && removedIdSet[r.machineId]);
-      });
-    }
-    // Purge récursive de clientRoot : retirer toutes les machines et groupes tombstonés
-    // avant l'écriture sur Firebase, pour éviter qu'un appareil périmé ne les réinjecte.
-    function purgeNodeTombstones(node){
-      if(!node) return;
-      if(Array.isArray(node.machines)){
-        node.machines = node.machines.filter(function(m){ return m && m.id && !removedIdSet[m.id]; });
-      }
-      if(Array.isArray(node.groups)){
-        node.groups = node.groups.filter(function(g){ return g && g.id && !removedIdSet[g.id]; });
-        node.groups.forEach(purgeNodeTombstones);
-      }
-    }
-    if(dataToSync.clientRoot) purgeNodeTombstones(dataToSync.clientRoot);
-    console.log('Duke SYNC: envoi vers Firebase -',
-      'utilisateurs:', (dataToSync.users||[]).length,
-      '| véhicules:', (dataToSync.cars||[]).length,
-      '| groupes racine:', (dataToSync.clientRoot&&dataToSync.clientRoot.groups?dataToSync.clientRoot.groups.length:0));
-    return _rtdb.ref('duke_main').set(dataToSync);
-  }).then(function(){
+  }
+  if(dataToSync.clientRoot) purgeNode(dataToSync.clientRoot);
+  _rtdb.ref('duke_main').set(dataToSync).then(function(){
     showSyncBanner('☁️ Sauvegardé sur le cloud', false);
   }).catch(function(e){
-    if(e && e.message==='SYNC_BLOCKED_DATA_LOSS_PREVENTION'){
-      // Ne pas remettre en file : il faut un rechargement manuel pour repartir d'un état sain,
-      // sinon on boucle indéfiniment sur le même blocage.
-      return;
-    }
     console.warn('Duke RTDB sync error - nouvelle tentative.', e);
     showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
-    // CORRECTIF : si l'erreur est un refus de permission, c'est que la session Firebase
-    // anonyme (requise par les règles "auth != null") a été perdue. On tente de la
-    // rétablir automatiquement avant le prochain essai, plutôt que de réessayer en boucle
-    // avec une session invalide qui échouera systématiquement.
     if(e && e.code==='PERMISSION_DENIED' && firebaseAuth && !firebaseAuth.currentUser){
       firebaseAuth.signInAnonymously().catch(function(authErr){
         console.warn('Duke: échec de la reconnexion anonyme Firebase', authErr);
       });
     }
-    _syncQueued=true; // on remet la demande en file pour réessayer
+    _syncQueued=true;
   }).finally(function(){
     _syncInFlight=false;
-    setTimeout(processSyncQueue, 1200); // traite une éventuelle demande arrivée pendant la sync
+    setTimeout(processSyncQueue, 1200);
   });
 }
 // Conservé pour compatibilité avec tous les appels existants à syncToRTDB() dans le
