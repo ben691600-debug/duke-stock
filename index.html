@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5617,13 +5617,13 @@ function openClientServiceRequests(mid){
   var res=findMachineById(mid); if(!res) return;
   var list=$('clientServiceRequestsList'); if(!list) return;
   list.innerHTML='';
-  // Admin sees all; operator sees only their assigned requests
   var requests=clientServiceRequestsForMachine(mid).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt));});
+  // Les appels fermés ne s'affichent JAMAIS dans cette liste (ni pour admin ni pour opérateur).
+  // Ils sont conservés uniquement dans l'historique machine (serviceHistory).
+  requests=requests.filter(function(r){ return (r.status||'open')!=='closed'; });
   if(!isAdmin()){
-    // Opérateur : uniquement les appels affectés ET non fermés
-    requests=requests.filter(function(r){
-      return r.assignedTo===currentUser.username && (r.status||'open')!=='closed';
-    });
+    // Opérateur : uniquement les appels qui lui sont affectés
+    requests=requests.filter(function(r){ return r.assignedTo===currentUser.username; });
   }
   if(!requests.length){
     list.innerHTML='<p class="muted">'+(isAdmin()?T('noClientRequest'):T('noAssignedRequests'))+'</p>';
@@ -5652,8 +5652,11 @@ function openClientServiceRequests(mid){
         var newSt=btn.dataset.st;
         if(newSt==='closed'){
           if(!confirm('Confirmer la fermeture de cet appel ?')) return;
+          // Supprimer définitivement de clientServiceRequests (conservé dans historique machine si intervention faite)
+          db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==r.id;});
+        } else {
+          r.status=newSt;
         }
-        r.status=newSt;
         save(); renderClientMachineModule(); openClientServiceRequests(mid);
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
       };
@@ -6200,7 +6203,8 @@ function openMachineService(mid){
             return (x.id||x.serviceNumber||x.date) !== entryId;
           });
           save();
-          openClientMachineHistory(mid);
+          // Rouvre l'historique mis à jour (openMachineService = la vraie fonction)
+          openMachineService(mid);
         }
       };
     }
