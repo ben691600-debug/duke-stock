@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2853,7 +2853,12 @@ function mergeDbWithRemote(localDb, remoteDb){
   var removedSet={}; removedIds.forEach(function(id){removedSet[id]=true;});
   if(Array.isArray(merged.clientServiceRequests)){
     merged.clientServiceRequests = merged.clientServiceRequests.filter(function(r){
-      return r && r.id && !removedSet[r.id];
+      if(!r || !r.id) return false;
+      // Supprimer si l'appel lui-même est tombstoné
+      if(removedSet[r.id]) return false;
+      // Supprimer si la machine associée est tombstonée (machine supprimée définitivement)
+      if(r.machineId && removedSet[r.machineId]) return false;
+      return true;
     });
   }
   Object.keys(merged).forEach(function(k){ localDb[k]=merged[k]; });
@@ -3570,6 +3575,14 @@ function deleteForeverFromTrash(trashId){
   if(item){
     if(db.trashRemovedIds.indexOf(item.id)===-1) db.trashRemovedIds.push(item.id);
     if(item.data && item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1) db.trashRemovedIds.push(item.data.id);
+    // Purger aussi les demandes client liées à cet élément (machine supprimée)
+    if(item.data && item.data.id){
+      var deletedId=item.data.id;
+      (db.clientServiceRequests||[]).filter(function(r){return r.machineId===deletedId;}).forEach(function(r){
+        if(db.trashRemovedIds.indexOf(r.id)===-1) db.trashRemovedIds.push(r.id);
+      });
+      db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(r){return r.machineId!==deletedId;});
+    }
   }
   db.trash=(db.trash||[]).filter(x=>x.id!==trashId);
   save();
@@ -3585,14 +3598,11 @@ function emptyTrash(){
   // ferait réapparaître ces éléments dès qu'un autre appareil pas encore synchronisé
   // renverrait sa propre version de la corbeille contenant encore ces objets.
   db.trashRemovedIds = db.trashRemovedIds || [];
+  var deletedMachineIds=[];
   (db.trash||[]).forEach(function(item){
     if(item && item.id && db.trashRemovedIds.indexOf(item.id)===-1){
       db.trashRemovedIds.push(item.id);
     }
-    // L'objet original (ex: le véhicule, la machine, l'opérateur...) a aussi son propre
-    // id distinct de l'entrée de corbeille : on l'ajoute également pour garantir sa
-    // disparition. Pour les opérateurs créés avant l'ajout d'un id stable, on utilise
-    // leur username comme clé de tombstone (voir itemIdentityKey/dedupUsersByUsername).
     if(item && item.data){
       if(item.data.id && db.trashRemovedIds.indexOf(item.data.id)===-1){
         db.trashRemovedIds.push(item.data.id);
@@ -3600,8 +3610,19 @@ function emptyTrash(){
       if(!item.data.id && item.data.username && db.trashRemovedIds.indexOf(item.data.username)===-1){
         db.trashRemovedIds.push(item.data.username);
       }
+      // Collecter les ids de machines supprimées pour purger leurs appels client
+      if(item.data.id && (item.type==='clientMachine'||item.type==='machine')){
+        deletedMachineIds.push(item.data.id);
+      }
     }
   });
+  // Purger les demandes client orphelines (liées à des machines supprimées)
+  if(deletedMachineIds.length){
+    (db.clientServiceRequests||[]).filter(function(r){return deletedMachineIds.indexOf(r.machineId)!==-1;}).forEach(function(r){
+      if(db.trashRemovedIds.indexOf(r.id)===-1) db.trashRemovedIds.push(r.id);
+    });
+    db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(r){return deletedMachineIds.indexOf(r.machineId)===-1;});
+  }
   db.trash=[];
   log('EMPTY_TRASH','');
   save();
