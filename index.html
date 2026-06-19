@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2215,7 +2215,7 @@ body.draggingMachine{
           <button class="btn primary" id="faultMachineCreateButton" type="button" data-i="faultMachineManagementBtn" onclick="faultMachineOpenForm(); return false;">+ Ajouter machine</button>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;position:sticky;top:238px;z-index:19;background:rgba(235,247,253,.96);backdrop-filter:blur(10px);padding:6px 0 6px;border-bottom:1px solid rgba(185,215,234,.65)">
         <div style="position:relative;display:inline-block;flex-shrink:0">
           <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;font-weight:700">🔽 Filtrage</button>
           <select id="faultMachineTypeSelect" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer">
