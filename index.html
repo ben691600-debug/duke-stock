@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5601,12 +5601,13 @@ function buildAssignDropdown(r, mid){
   if(!isAdmin()) return '';
   var ops=(db.users||[]).filter(function(u){return u.role==='operator';}).slice().sort(function(a,b){return (a.username||'').localeCompare(b.username||'');});
   var html='<div style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:#6f7b87">'+T('assignTo')+'</label>'
-    +'<select data-assign-req="'+esc(r.id)+'" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:12px;margin-top:4px;background:white">'
-    +'<option value="">'+T('unassigned')+'</option>';
+    +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">'
+    +'<button type="button" data-assign-req="'+esc(r.id)+'" data-assign-val="" style="text-align:left;padding:10px 14px;border-radius:12px;border:2px solid '+((!r.assignedTo)?'#1a7ad4':'var(--line)')+';background:'+((!r.assignedTo)?'#e8f4fd':'#fff')+';font-weight:'+((!r.assignedTo)?'800':'500')+';cursor:pointer;font-size:14px">— '+T('unassigned')+' —</button>';
   ops.forEach(function(u){
-    html+='<option value="'+esc(u.username)+'"'+(r.assignedTo===u.username?' selected':'')+'>'+esc(u.username)+'</option>';
+    var isSel=r.assignedTo===u.username;
+    html+='<button type="button" data-assign-req="'+esc(r.id)+'" data-assign-val="'+esc(u.username)+'" style="text-align:left;padding:10px 14px;border-radius:12px;border:2px solid '+(isSel?'#1a7ad4':'var(--line)')+';background:'+(isSel?'#e8f4fd':'#fff')+';font-weight:'+(isSel?'800':'500')+';cursor:pointer;font-size:14px">'+(isSel?'✓ ':'')+esc(u.username)+'</button>';
   });
-  html+='</select></div>';
+  html+='</div></div>';
   return html;
 }
 function openClientServiceRequests(mid){
@@ -5643,16 +5644,16 @@ function openClientServiceRequests(mid){
     div.querySelectorAll('[data-st]').forEach(function(btn){
       btn.onclick=function(){r.status=btn.dataset.st; save(); renderClientMachineModule(); openClientServiceRequests(mid); if(typeof window._updateNotifBell==='function') window._updateNotifBell();};
     });
-    var assignSel=div.querySelector('[data-assign-req]');
-    if(assignSel){
-      assignSel.onchange=function(){
-        r.assignedTo=this.value||null;
+    div.querySelectorAll('[data-assign-req]').forEach(function(btn){
+      btn.onclick=function(e){
+        e.stopPropagation();
+        r.assignedTo=btn.dataset.assignVal||null;
         save();
         renderClientMachineModule();
         openClientServiceRequests(mid);
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
       };
-    }
+    });
     // Start intervention
     var startBtn=div.querySelector('[data-intervention=start]');
     if(startBtn){
