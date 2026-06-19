@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v3.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v3.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -1718,16 +1718,18 @@ body.draggingMachine{
   margin:0 0 8px!important;
   border-bottom:1px solid rgba(185,215,234,.65);
 }
-#faultMachineView #faultMachineSearch,
+#faultMachineView #faultMachineSearchBar,
 #suppliersRoot #supplierGlobalSearch,
 #supplierDetail #partSearch{
   position:sticky!important;
   top:242px!important;
-  z-index:19!important;
-  background:#fff!important;
-  box-shadow:0 8px 18px rgba(10,124,194,.10)!important;
+  z-index:999!important;
+  background:rgba(235,247,253,.96)!important;
+  backdrop-filter:blur(10px)!important;
+  box-shadow:0 4px 12px rgba(10,124,194,.10)!important;
   margin-top:0!important;
   margin-bottom:12px!important;
+  border-bottom:1px solid rgba(185,215,234,.65)!important;
 }
 #faultMachineView .groupGrid,
 #suppliersRoot .supplierGrid,
@@ -1740,7 +1742,7 @@ body.draggingMachine{
   #supplierDetail > .moduleActionToolbar{
     top:170px!important;
   }
-  #faultMachineView #faultMachineSearch,
+  #faultMachineView #faultMachineSearchBar,
   #suppliersRoot #supplierGlobalSearch,
   #supplierDetail #partSearch{
     top:228px!important;
@@ -2215,14 +2217,14 @@ body.draggingMachine{
           <button class="btn primary" id="faultMachineCreateButton" type="button" data-i="faultMachineManagementBtn" onclick="faultMachineOpenForm(); return false;">+ Ajouter machine</button>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;position:sticky;top:238px;z-index:19;background:rgba(235,247,253,.96);backdrop-filter:blur(10px);padding:6px 0 6px;border-bottom:1px solid rgba(185,215,234,.65)">
+      <div id="faultMachineSearchBar" style="display:flex;align-items:center;gap:10px;padding:6px 0">
         <div style="position:relative;display:inline-block;flex-shrink:0">
           <button type="button" class="btn secondary" id="faultMachineFilterBtn" style="white-space:nowrap;font-weight:700">🔽 Filtrage</button>
           <select id="faultMachineTypeSelect" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer">
             <option value="">Tous les types</option>
           </select>
         </div>
-        <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher..." style="flex:1;min-width:0;margin:0">
+        <input class="search" id="faultMachineSearch" data-i-placeholder="searchFaultType" placeholder="Rechercher..." style="flex:1;min-width:0">
       </div>
       <div class="groupGrid" id="faultMachineGrid"></div>
     </section>
