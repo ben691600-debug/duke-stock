@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5254,16 +5254,23 @@ function clientNodeIsDirectlyAllowed(node){
 }
 function clientAllowedChildGroups(node,inherited){
   const arr=(node&&node.groups)||[];
-  if(!isClientUser()) return arr;
-  return arr.filter(g=>!!inherited || groupMatchesCurrentClient(g) || (g.groups||[]).some(child=>groupHasCurrentClientAccess(child,false)));
+  // Filtrer les groupes supprimés définitivement (tombstonés)
+  const removedSet={};
+  (db.trashRemovedIds||[]).forEach(function(id){removedSet[id]=true;});
+  const filtered=arr.filter(function(g){ return g && g.id && !removedSet[g.id]; });
+  if(!isClientUser()) return filtered;
+  return filtered.filter(g=>!!inherited || groupMatchesCurrentClient(g) || (g.groups||[]).some(child=>groupHasCurrentClientAccess(child,false)));
 }
 function clientAllowedMachines(node,inherited){
   const arr=(node&&node.machines)||[];
-  if(!isClientUser()) return arr;
-  // Client sees machines only when the current group itself is linked to him,
-  // or when one of its parent groups is linked to him. This avoids hiding
-  // machines inside the exact group that appears for the client.
-  return (inherited || clientNodeIsDirectlyAllowed(node)) ? arr : [];
+  // Filtrer les machines supprimées définitivement (tombstonées dans trashRemovedIds)
+  // pour qu'elles n'apparaissent jamais côté client même si Firebase n'a pas encore
+  // propagé la suppression sur cet appareil.
+  const removedSet={};
+  (db.trashRemovedIds||[]).forEach(function(id){removedSet[id]=true;});
+  const filtered=arr.filter(function(m){ return m && m.id && !removedSet[m.id]; });
+  if(!isClientUser()) return filtered;
+  return (inherited || clientNodeIsDirectlyAllowed(node)) ? filtered : [];
 }
 function renderClientMachineModule(){
   try{ syncClientMachineImagesFromFaultModels(); }catch(e){}
