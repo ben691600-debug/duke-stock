@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2350,6 +2350,7 @@ body.draggingMachine{
   <label><span data-i="groupName">Nom du groupe</span><input id="clientGroupName" required placeholder="Hospital 1"></label>
   <label><span data-i="groupPhoto">Image du groupe</span><input id="clientGroupPhoto" type="file" accept="image/*"></label>
   <div id="clientGroupPreview" class="preview hidden"></div>
+  <label><span>📍 Lien Waze (navigation)</span><input id="clientGroupWaze" type="url" placeholder="https://waze.com/ul?ll=..."></label>
   <h2 data-i="contact">Contacts</h2>
   <div id="clientGroupContactsRows" class="contactRows"></div>
   <button type="button" class="btn secondary" id="addClientGroupContactBtn" data-i="addContact">+ Ajouter contact</button>
@@ -5314,6 +5315,7 @@ function renderClientMachineModule(){
       ${!isClientUser()?`<div class="groupActions">
         <button class="btn primary mini" data-act="open">${T('open')}</button>
         ${contacts.length?`<button class="btn secondary mini" data-act="contact">📞</button>`:''}
+        ${g.waze?`<button class="btn secondary mini" data-act="waze" style="background:#00d4b1;color:#fff;border:none" title="Ouvrir dans Waze"><img src="https://www.waze.com/favicon.ico" style="width:14px;height:14px;vertical-align:middle;margin-right:2px" onerror="this.style.display='none'">Waze</button>`:''}
         ${isAdmin()?`<button class="btn secondary mini" data-act="edit">✏️</button>`:''}
         ${isAdmin()&&isNotRoot?`<button class="btn secondary mini" data-act="moveup" title="Remonter au niveau supérieur">⬆️</button>`:''}
         ${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}
@@ -5322,6 +5324,8 @@ function renderClientMachineModule(){
     if(groupOpenBtn) groupOpenBtn.onclick=(ev)=>{ev.stopPropagation();clientPathIds.push(g.id);renderClientMachineModule()};
     const contactBtn=card.querySelector('[data-act=contact]');
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
+    const wazeBtn=card.querySelector('[data-act=waze]');
+    if(wazeBtn) wazeBtn.onclick=(ev)=>{ev.stopPropagation(); window.open(g.waze,'_blank');};
     const groupEditBtn=card.querySelector('[data-act=edit]');
     if(groupEditBtn) groupEditBtn.onclick=(ev)=>{ev.stopPropagation();openEditClientGroup(g.id)};
     const groupMoveUpBtn=card.querySelector('[data-act=moveup]');
@@ -5770,10 +5774,13 @@ function addClientGroupContactRow(contact={}){
   if(!wrap) return;
   const row=document.createElement('div');
   row.className='contactRow';
+  row.style.position='relative';
   row.innerHTML=`
     <label><span>Prénom</span><input data-contact-first placeholder="David" value="${esc(contact.firstName||'')}"></label>
     <label><span>Rôle</span><input data-contact-role placeholder="Ex: Responsable maintenance" value="${esc(contact.role||'')}"></label>
-    <label><span>Téléphone</span><input data-contact-phone type="tel" placeholder="+972..." value="${esc(contact.phone||'')}"></label>`;
+    <label><span>Téléphone</span><input data-contact-phone type="tel" placeholder="+972..." value="${esc(contact.phone||'')}"></label>
+    <button type="button" style="position:absolute;top:6px;right:6px;background:#fde2e1;border:none;border-radius:50%;width:28px;height:28px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#c0392b" title="Supprimer ce contact">×</button>`;
+  row.querySelector('button').onclick=()=>row.remove();
   wrap.appendChild(row);
 }
 function setClientGroupContactsRows(contacts){
@@ -5818,11 +5825,13 @@ $('clientGroupForm').onsubmit=e=>{
   e.preventDefault();
   const node=currentClientNode();
   node.groups=node.groups||[];
+  const wazeLink=($('clientGroupWaze').value||'').trim();
   if(editingGroupId){
     const group=node.groups.find(g=>g.id===editingGroupId);
     if(group){
       group.name=$('clientGroupName').value.trim();
       group.image=groupImage;
+      group.waze=wazeLink;
       group.contacts=readClientGroupContactsFromForm();
       group.contact=group.contacts[0]||{};
       log('EDIT_CLIENT_GROUP', `${currentClientPathNames().join(' / ')} / ${group.name}`);
@@ -5832,6 +5841,7 @@ $('clientGroupForm').onsubmit=e=>{
       id:uid(),
       name:$('clientGroupName').value.trim(),
       image:groupImage,
+      waze:wazeLink,
       contacts:readClientGroupContactsFromForm(),
       contact:null,
       groups:[],
@@ -6044,6 +6054,7 @@ function openEditClientGroup(gid){
   $('clientGroupForm').reset();
   $('clientGroupDialog').querySelector('h2').textContent='✏️ ' + T('groupName');
   $('clientGroupName').value=group.name||'';
+  $('clientGroupWaze').value=group.waze||'';
   setClientGroupContactsRows(normalizeGroupContacts(group));
   if(groupImage){
     $('clientGroupPreview').style.backgroundImage=`url(${groupImage})`;
@@ -7372,31 +7383,23 @@ translate();
       card.style.position = 'relative';
       card.innerHTML = '<img src="' + img.data + '"><div class="imageLibraryName">' + escapeHtmlLocal(img.name || 'Image') + '</div>' +
         (isSel ? '<div style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:#1a7ad4;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900">✓</div>' : '');
-      // Appui long → sélection pour suppression
-      var _pressTimer = null;
-      card.addEventListener('pointerdown', function(){
-        _pressTimer = setTimeout(function(){
-          _pressTimer = null;
-          _selectedLibIds.has(img.id) ? _selectedLibIds.delete(img.id) : _selectedLibIds.add(img.id);
-          renderImageLibrary();
-        }, 500);
-      });
-      card.addEventListener('pointerup', function(){ clearTimeout(_pressTimer); });
-      card.addEventListener('pointercancel', function(){ clearTimeout(_pressTimer); });
-      // Clic court → utiliser l'image (sauf si on est en mode sélection)
       card.onclick = function(){
-        if(_pressTimer === null) return; // appui long déjà déclenché
-        clearTimeout(_pressTimer); _pressTimer = null;
-        if(_selectedLibIds.size > 0){
-          // En mode sélection, le clic bascule la sélection
+        if(_selectedLibIds.size > 0 || isSel){
+          // Mode sélection actif : clic bascule la sélection
           _selectedLibIds.has(img.id) ? _selectedLibIds.delete(img.id) : _selectedLibIds.add(img.id);
           renderImageLibrary();
-          return;
+        } else {
+          // Aucune sélection active : utiliser l'image directement
+          setTargetImage(targetInputId, img.data);
+          const dlg = document.getElementById('imageLibraryDialog');
+          if(dlg) dlg.close();
         }
-        setTargetImage(targetInputId, img.data);
-        const dlg = document.getElementById('imageLibraryDialog');
-        if(dlg) dlg.close();
       };
+      // Appui long → activer la sélection
+      var _pt = null;
+      card.addEventListener('pointerdown', function(){ _pt = setTimeout(function(){ _pt=null; _selectedLibIds.add(img.id); renderImageLibrary(); }, 500); });
+      card.addEventListener('pointerup', function(){ if(_pt){clearTimeout(_pt);_pt=null;} });
+      card.addEventListener('pointercancel', function(){ if(_pt){clearTimeout(_pt);_pt=null;} });
       grid.appendChild(card);
     });
     _updateDeleteSelBtn();
@@ -7406,12 +7409,9 @@ translate();
     var btn = document.getElementById('imageLibraryDeleteSelBtn');
     if(!btn) return;
     var n = _selectedLibIds.size;
-    if(n > 0){
-      btn.textContent = '🗑️ Supprimer (' + n + ')';
-      btn.style.display = '';
-    } else {
-      btn.style.display = 'none';
-    }
+    btn.textContent = n > 0 ? '🗑️ Supprimer (' + n + ')' : '🗑️ Supprimer';
+    btn.disabled = n === 0;
+    btn.style.opacity = n === 0 ? '0.4' : '1';
   }
   function openImageLibrary(inputId){
     targetInputId = inputId;
@@ -7452,12 +7452,11 @@ translate();
     dlg.id = 'imageLibraryDialog';
     dlg.innerHTML = '<form method="dialog" class="imageLibraryForm">' +
       '<h2 data-i="imageLibrary">Bibliothèque images</h2>' +
-      '<div style="font-size:12px;color:#888;margin:-6px 0 8px">Appui long pour sélectionner • Clic pour utiliser</div>' +
+      '<div style="font-size:12px;color:#888;margin:-6px 0 8px">Clic pour utiliser • Clic sur ✓ pour sélectionner • Appui long pour sélectionner</div>' +
       '<input id="imageLibrarySearch" class="imageLibrarySearch" placeholder="Rechercher une image...">' +
       '<div id="imageLibraryGrid" class="imageLibraryGrid"></div>' +
       '<div class="formActions">' +
-      '<button type="button" class="btn danger" id="imageLibraryDeleteSelBtn" style="display:none">🗑️ Supprimer (0)</button>' +
-      '<button type="button" class="btn danger" id="imageLibraryClearBtn">Vider</button>' +
+      '<button type="button" class="btn danger" id="imageLibraryDeleteSelBtn" disabled style="opacity:0.4">🗑️ Supprimer</button>' +
       '<button class="btn secondary">Fermer</button>' +
       '</div></form>';
     document.body.appendChild(dlg);
@@ -7472,15 +7471,6 @@ translate();
       if(typeof db !== 'undefined' && db) db.imageLibrary = d.imageLibrary;
       saveDbSafe(d);
       _selectedLibIds.clear();
-      renderImageLibrary();
-    };
-    const clearBtn = document.getElementById('imageLibraryClearBtn');
-    if(clearBtn) clearBtn.onclick = function(){
-      if(!confirm(T('confirmClearImages'))) return;
-      const d = getDbSafe();
-      d.imageLibrary = [];
-      if(typeof db !== 'undefined' && db) db.imageLibrary = [];
-      saveDbSafe(d);
       renderImageLibrary();
     };
   }
