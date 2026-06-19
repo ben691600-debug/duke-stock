@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4402,7 +4402,36 @@ $('loginBtn').onclick=secureLogin;
 if($('forgotPasswordBtn')) $('forgotPasswordBtn').onclick=forgotPassword;
 initFirebaseSecurity();
 document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;localStorage.setItem(LANG,lang);translate();openApp()});
-$('langBtn').onclick=()=>{$('appView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');};
+$('langBtn').onclick=()=>{
+  if(currentUser){
+    // Session active : affiche un mini-sélecteur de langue inline sans quitter l'app
+    var existing = document.getElementById('inlineLangPicker');
+    if(existing){ existing.remove(); return; }
+    var picker = document.createElement('div');
+    picker.id = 'inlineLangPicker';
+    picker.style.cssText = 'position:fixed;top:68px;right:10px;z-index:99999;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px;display:flex;flex-direction:column;gap:6px;min-width:160px;';
+    var langs = [{code:'fr',label:'🇫🇷 Français'},{code:'he',label:'🇮🇱 עברית'},{code:'en',label:'🇬🇧 English'},{code:'ru',label:'🇷🇺 Русский'}];
+    langs.forEach(function(l){
+      var btn = document.createElement('button');
+      btn.textContent = l.label;
+      btn.style.cssText = 'background:'+(lang===l.code?'#e8f4fd':'transparent')+';border:none;border-radius:10px;padding:10px 14px;font-size:15px;font-weight:'+(lang===l.code?'800':'500')+';cursor:pointer;text-align:left;';
+      btn.onclick = function(){
+        lang = l.code; localStorage.setItem(LANG, lang); translate();
+        picker.remove();
+      };
+      picker.appendChild(btn);
+    });
+    // Fermer en cliquant ailleurs
+    setTimeout(function(){ document.addEventListener('click', function h(e){ if(!picker.contains(e.target) && e.target!==document.getElementById('langBtn')){ picker.remove(); document.removeEventListener('click',h); } }); }, 100);
+    document.body.appendChild(picker);
+    return;
+  }
+  // Pas de session : aller à l'écran de sélection de langue
+  $('appView').classList.add('hidden');
+  $('langView').classList.remove('hidden');
+  var _ub=document.getElementById('universalBackBtn');
+  if(_ub) _ub.classList.remove('visible');
+};
 $('logoutBtn').onclick=async()=>{log('LOGOUT',currentUser.username);
   // CORRECTIF CRITIQUE : on ne ferme JAMAIS la session Firebase anonyme ici. Cette session
   // est un mécanisme technique requis par les règles de sécurité (auth != null) pour que
