@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -1420,6 +1420,7 @@ body.draggingMachine{
 .imageLibrarySearch{width:100%;margin:6px 0 14px}
 .imageLibraryGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-height:48vh;overflow:auto;padding:4px}
 .imageLibraryCard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:8px;text-align:center;box-shadow:0 8px 22px rgba(10,124,194,.08);cursor:pointer}
+.imageLibraryCard.libSelected{border:2.5px solid #1a7ad4;background:#e8f4fd;}
 .imageLibraryCard img{width:100%;height:74px;object-fit:contain;border-radius:12px;background:#f7fbff}
 .imageLibraryName{font-size:11px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:5px}
 .imageLibraryEmpty{grid-column:1/-1;background:#f5f9fc;border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;color:#667}
@@ -7329,6 +7330,9 @@ translate();
   function escapeHtmlLocal(s){
     return String(s||'').replace(/[&<>"']/g, function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});
   }
+  // Ensemble des ids d'images sélectionnées pour suppression individuelle
+  var _selectedLibIds = new Set();
+
   function renderImageLibrary(){
     const grid = document.getElementById('imageLibraryGrid');
     if(!grid) return;
@@ -7341,22 +7345,60 @@ translate();
     grid.innerHTML = '';
     if(!lib.length){
       grid.innerHTML = '<div class="imageLibraryEmpty">Aucune image sauvegardée pour le moment.</div>';
+      _updateDeleteSelBtn();
       return;
     }
     lib.forEach(function(img){
       const card = document.createElement('div');
-      card.className = 'imageLibraryCard';
-      card.innerHTML = '<img src="' + img.data + '"><div class="imageLibraryName">' + escapeHtmlLocal(img.name || 'Image') + '</div>';
+      const isSel = _selectedLibIds.has(img.id);
+      card.className = 'imageLibraryCard' + (isSel ? ' libSelected' : '');
+      card.style.position = 'relative';
+      card.innerHTML = '<img src="' + img.data + '"><div class="imageLibraryName">' + escapeHtmlLocal(img.name || 'Image') + '</div>' +
+        (isSel ? '<div style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:#1a7ad4;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900">✓</div>' : '');
+      // Appui long → sélection pour suppression
+      var _pressTimer = null;
+      card.addEventListener('pointerdown', function(){
+        _pressTimer = setTimeout(function(){
+          _pressTimer = null;
+          _selectedLibIds.has(img.id) ? _selectedLibIds.delete(img.id) : _selectedLibIds.add(img.id);
+          renderImageLibrary();
+        }, 500);
+      });
+      card.addEventListener('pointerup', function(){ clearTimeout(_pressTimer); });
+      card.addEventListener('pointercancel', function(){ clearTimeout(_pressTimer); });
+      // Clic court → utiliser l'image (sauf si on est en mode sélection)
       card.onclick = function(){
+        if(_pressTimer === null) return; // appui long déjà déclenché
+        clearTimeout(_pressTimer); _pressTimer = null;
+        if(_selectedLibIds.size > 0){
+          // En mode sélection, le clic bascule la sélection
+          _selectedLibIds.has(img.id) ? _selectedLibIds.delete(img.id) : _selectedLibIds.add(img.id);
+          renderImageLibrary();
+          return;
+        }
         setTargetImage(targetInputId, img.data);
         const dlg = document.getElementById('imageLibraryDialog');
         if(dlg) dlg.close();
       };
       grid.appendChild(card);
     });
+    _updateDeleteSelBtn();
+  }
+
+  function _updateDeleteSelBtn(){
+    var btn = document.getElementById('imageLibraryDeleteSelBtn');
+    if(!btn) return;
+    var n = _selectedLibIds.size;
+    if(n > 0){
+      btn.textContent = '🗑️ Supprimer (' + n + ')';
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
   }
   function openImageLibrary(inputId){
     targetInputId = inputId;
+    _selectedLibIds.clear();
     ensureLibrary();
     renderImageLibrary();
     const dlg = document.getElementById('imageLibraryDialog');
@@ -7393,15 +7435,28 @@ translate();
     dlg.id = 'imageLibraryDialog';
     dlg.innerHTML = '<form method="dialog" class="imageLibraryForm">' +
       '<h2 data-i="imageLibrary">Bibliothèque images</h2>' +
+      '<div style="font-size:12px;color:#888;margin:-6px 0 8px">Appui long pour sélectionner • Clic pour utiliser</div>' +
       '<input id="imageLibrarySearch" class="imageLibrarySearch" placeholder="Rechercher une image...">' +
       '<div id="imageLibraryGrid" class="imageLibraryGrid"></div>' +
       '<div class="formActions">' +
+      '<button type="button" class="btn danger" id="imageLibraryDeleteSelBtn" style="display:none">🗑️ Supprimer (0)</button>' +
       '<button type="button" class="btn danger" id="imageLibraryClearBtn">Vider</button>' +
       '<button class="btn secondary">Fermer</button>' +
       '</div></form>';
     document.body.appendChild(dlg);
     const search = document.getElementById('imageLibrarySearch');
     if(search) search.addEventListener('input', renderImageLibrary);
+    const deleteSelBtn = document.getElementById('imageLibraryDeleteSelBtn');
+    if(deleteSelBtn) deleteSelBtn.onclick = function(){
+      if(!_selectedLibIds.size) return;
+      if(!confirm('Supprimer ' + _selectedLibIds.size + ' image(s) sélectionnée(s) ?')) return;
+      const d = getDbSafe();
+      d.imageLibrary = (d.imageLibrary || []).filter(function(x){ return !_selectedLibIds.has(x.id); });
+      if(typeof db !== 'undefined' && db) db.imageLibrary = d.imageLibrary;
+      saveDbSafe(d);
+      _selectedLibIds.clear();
+      renderImageLibrary();
+    };
     const clearBtn = document.getElementById('imageLibraryClearBtn');
     if(clearBtn) clearBtn.onclick = function(){
       if(!confirm(T('confirmClearImages'))) return;
