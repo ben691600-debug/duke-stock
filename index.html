@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v4.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5756,13 +5756,27 @@ function readImageInput(input, callback, previewId, mode){
 
 function normalizeGroupContacts(group){
   if(!group) return [];
-  if(Array.isArray(group.contacts)) return group.contacts.filter(c=>(c.firstName||c.phone));
-  const c=group.contact||{};
-  const one={firstName:c.firstName||'',role:c.role||'',phone:c.phone||''};
-  return (one.firstName||one.phone) ? [one] : [];
+  var contacts;
+  if(Array.isArray(group.contacts)){
+    contacts = group.contacts.filter(c=>(c.firstName||c.phone));
+  } else {
+    const c=group.contact||{};
+    const one={firstName:c.firstName||'',role:c.role||'',phone:c.phone||''};
+    contacts = (one.firstName||one.phone) ? [one] : [];
+  }
+  // Dédoublonnage par clé phone+firstName pour corriger les doublons
+  // créés par la fusion Firebase sur des contacts sans id stable.
+  const seen=new Set();
+  return contacts.filter(c=>{
+    const key=(c.firstName||'').toLowerCase().trim()+'|'+(c.phone||'').replace(/\s/g,'');
+    if(seen.has(key)) return false;
+    seen.add(key); return true;
+  });
 }
 function readClientGroupContactsFromForm(){
   return Array.from(document.querySelectorAll('#clientGroupContactsRows .contactRow')).map(row=>({
+    // id stable pour que deepMerge ne duplique jamais ces contacts lors des syncs Firebase
+    id: row.dataset.contactId || (row.dataset.contactId=uid()),
     firstName:(row.querySelector('[data-contact-first]')||{}).value?.trim()||'',
     role:(row.querySelector('[data-contact-role]')||{}).value?.trim()||'',
     phone:(row.querySelector('[data-contact-phone]')||{}).value?.trim()||''
@@ -5774,6 +5788,8 @@ function addClientGroupContactRow(contact={}){
   const row=document.createElement('div');
   row.className='contactRow';
   row.style.position='relative';
+  // Préserver l'id existant du contact pour la stabilité de clé Firebase
+  if(contact.id) row.dataset.contactId=contact.id;
   row.innerHTML=`
     <label><span>Prénom</span><input data-contact-first placeholder="David" value="${esc(contact.firstName||'')}"></label>
     <label><span>Rôle</span><input data-contact-role placeholder="Ex: Responsable maintenance" value="${esc(contact.role||'')}"></label>
