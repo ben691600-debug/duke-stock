@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2699,6 +2699,21 @@ function initFirebaseSecurity(){
   // est refusée par Firebase (sync auto, login sur nouvel appareil, bouton de restauration).
   // On établit donc systématiquement une session anonyme avant d'initialiser la sync RTDB.
   if(firebaseReady && firebaseAuth){
+    // Sur un nouvel appareil (pas encore de marqueur autoritatif), bloquer le bouton
+    // de connexion jusqu'à ce que le pull Firebase soit terminé, pour éviter que
+    // l'utilisateur tente de se connecter avec des données périmées du localStorage.
+    var isNewDevice = localStorage.getItem('duke_firebase_authoritative')!=='1';
+    if(isNewDevice){
+      var loginBtn=document.getElementById('loginBtn');
+      var loginHelp=document.getElementById('loginHelp');
+      if(loginBtn){ loginBtn.disabled=true; loginBtn.textContent='⏳ Chargement des données...'; }
+      if(loginHelp){ loginHelp.textContent='Connexion au cloud en cours, veuillez patienter...'; loginHelp.style.color='#1a7ad4'; }
+      // Restaurer après le pull (géré dans initRTDB .then())
+      window._restoreLoginBtn=function(){
+        if(loginBtn){ loginBtn.disabled=false; loginBtn.textContent='Connexion'; }
+        if(loginHelp){ loginHelp.textContent=''; }
+      };
+    }
     if(firebaseAuth.currentUser){
       _firebaseAuthReady = true;
       if(st){ st.textContent='Sécurité Firebase active (déjà connecté)'; st.className='securityStatus ok'; }
@@ -2712,8 +2727,8 @@ function initFirebaseSecurity(){
       }).catch(function(e){
         console.warn('Connexion anonyme Firebase échouée', e);
         _firebaseAuthReady = false;
-        if(st){ st.textContent='❌ Connexion anonyme refusée ('+(e&&e.code?e.code:'erreur inconnue')+') - active "Anonyme" dans Firebase Authentication'; st.className='securityStatus warn'; }
-        // On tente quand même initRTDB : si les règles n'exigent pas auth, ça fonctionnera.
+        if(st){ st.textContent='❌ Connexion anonyme refusée ('+(e&&e.code?e.code:'erreur inconnue')+')'; st.className='securityStatus warn'; }
+        if(window._restoreLoginBtn) window._restoreLoginBtn();
         initRTDB();
       });
     }
@@ -2874,18 +2889,10 @@ function initRTDB(){
     _rtdb.ref('duke_main').once('value').then(function(snap){
       const remote=snap.val();
       _initialPullDone=true;
-      // CORRECTIF CRITIQUE : Firebase doit être l'UNIQUE source de vérité. Si cet
-      // appareil n'a jamais encore été authentifié face à CE Firebase (premier
-      // chargement de l'app sur ce téléphone/navigateur, ou localStorage jamais
-      // marqué), et que Firebase a déjà des données, on REMPLACE intégralement la
-      // base locale au lieu de la fusionner. Sans ce remplacement, d'anciens essais
-      // restés dans le localStorage d'un téléphone (tests précédents, démos...)
-      // pouvaient se mélanger silencieusement aux vraies données de l'entreprise dès
-      // la première ouverture de l'app sur cet appareil - ce qui ne doit JAMAIS arriver.
       var alreadyAuthoritative = localStorage.getItem('duke_firebase_authoritative')==='1';
       if(remote){
         if(!alreadyAuthoritative){
-          console.log('Duke: première connexion de cet appareil à Firebase - remplacement intégral des données locales par celles du cloud (aucune ancienne donnée locale ne sera conservée).');
+          console.log('Duke: première connexion de cet appareil à Firebase - remplacement intégral des données locales par celles du cloud.');
           Object.keys(db).forEach(function(k){ delete db[k]; });
           Object.assign(db, remote);
           if(!Array.isArray(db.users)) db.users=[{username:'admin',password:'123Soleil?!',role:'admin',main:true}];
@@ -2901,8 +2908,12 @@ function initRTDB(){
         }
         localStorage.setItem('duke_firebase_authoritative','1');
         localStorage.setItem(STORE, JSON.stringify(db));
-        console.log('Duke: synchronisation initiale avec Firebase - '+(db.users||[]).length+' utilisateurs, '+(db.cars||[]).length+' véhicules.');
-        if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
+        console.log('Duke: synchronisation initiale - '+(db.users||[]).length+' utilisateurs.');
+        // Réactiver le bouton de connexion (bloqué sur les nouveaux appareils pendant le pull)
+        if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
+        if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
+          renderAll();
+        }
       } else {
         // Firebase est réellement vide : on marque tout de même cet appareil comme
         // "autoritatif" pour que ses propres données (créées localement) deviennent
