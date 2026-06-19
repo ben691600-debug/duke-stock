@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v4.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5682,15 +5682,12 @@ function openClientServiceRequests(mid){
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
       };
     }
-    // Stop intervention → ferme l'appel directement avec confirmation
+    // Stop intervention → ouvre le formulaire de rapport (ferme l'appel à l'enregistrement)
     var stopBtn=div.querySelector('[data-intervention=stop]');
     if(stopBtn){
       stopBtn.onclick=function(){
-        if(!confirm('Confirmer la fin du dépannage et fermer cet appel ?')) return;
-        r.status='closed';
-        r.endTime=new Date().toISOString();
-        save(); renderClientMachineModule(); openClientServiceRequests(mid);
-        if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+        var mRes=findMachineById(mid);
+        openInterventionForm(r, mRes?mRes.machine:null, mRes?mRes.path:[], mid);
       };
     }
 
@@ -6175,32 +6172,35 @@ function openMachineService(mid){
   }
   // Show interventions first
   interventions.forEach(function(s){
+    var entryId = s.id || s.serviceNumber || s.date || '';
     var div=document.createElement('div');
     div.className='serviceMini';
+    div.dataset.entryId = entryId;
     var resolution=s.resolution==='closed'?'✅ Terminé':'🔄 Retour prévu';
     var partsHtml=(s.partsUsed||[]).length?('<br><small>⚙️ '+(s.partsUsed||[]).map(function(p){return p.partName+(p.qty>1?' ×'+p.qty:'');}).join(', ')+'</small>'):'';
+    var pdfBtn=s.pdfHtml?'<button type="button" class="btn secondary mini" style="flex:1" data-pdf>📄 Voir rapport</button>':'<div style="flex:1"></div>';
+    var delBtn=isAdmin()?'<button type="button" class="btn danger mini" style="flex:1" data-del-int>🗑️ Supprimer</button>':'';
     div.innerHTML='<b>'+esc(s.date||'')+'</b> <span class="badge">'+esc(s.serviceNumber||'')+'</span><br>'
-      +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||'')+'</span><br>'
+      +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||s.operatorName||'')+'</span><br>'
       +'<span class="serviceStatusPill '+(s.resolution==='closed'?'':'in_progress')+'">'+resolution+'</span>'
       +partsHtml
-      +(isAdmin()?'<button type="button" class="btn danger mini" style="margin-top:8px;width:100%" data-del-intervention="'+esc(s.id||s.serviceNumber||s.date)+'">🗑️ Supprimer cet historique</button>':'')
-      +(s.pdfHtml?('<br><button type="button" class="btn secondary mini" style="margin-top:6px" data-pdf>📄 Voir rapport</button>'):'');
+      +'<div style="display:flex;gap:6px;margin-top:8px">'+pdfBtn+delBtn+'</div>';
     if(s.pdfHtml){
       div.querySelector('[data-pdf]').onclick=function(){
         var blob=new Blob([s.pdfHtml],{type:'text/html;charset=utf-8'});
         window.open(URL.createObjectURL(blob),'_blank');
       };
     }
-    if(isAdmin()){
-      var delBtn=div.querySelector('[data-del-intervention]');
-      if(delBtn) delBtn.onclick=function(){
+    if(isAdmin()&&div.querySelector('[data-del-int]')){
+      div.querySelector('[data-del-int]').onclick=function(){
         if(!confirm('Supprimer cet historique d\'intervention ?')) return;
         var res2=findMachineById(mid);
         if(res2&&res2.machine){
           res2.machine.serviceHistory=(res2.machine.serviceHistory||[]).filter(function(x){
-            return (x.id||x.serviceNumber||x.date)!==delBtn.getAttribute('data-del-intervention');
+            return (x.id||x.serviceNumber||x.date) !== entryId;
           });
-          save(); openClientMachineHistory(mid);
+          save();
+          openClientMachineHistory(mid);
         }
       };
     }
@@ -9053,7 +9053,8 @@ function doFallback(csv,filename,email,subject,bodyText){
     function walkNode(node){
       (node.groups||[]).forEach(function(g){walkNode(g);});
       (node.machines||[]).forEach(function(m){
-        var st = getMachineRequestStatus(m.id); // already filtered by role
+        var st = getMachineRequestStatus(m.id);
+        // La cloche ne montre que les appels actifs (open ou in_progress), jamais les fermés
         if(st!=='none') pending.push({machine:m, status:st});
       });
     }
