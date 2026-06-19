@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v5.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v5.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6199,11 +6199,23 @@ function openMachineService(mid){
         if(!confirm('Supprimer cet historique d\'intervention ?')) return;
         var res2=findMachineById(mid);
         if(res2&&res2.machine){
-          res2.machine.serviceHistory=(res2.machine.serviceHistory||[]).filter(function(x){
+          var m2=res2.machine;
+          // Filtrer l'entrée supprimée
+          m2.serviceHistory=(m2.serviceHistory||[]).filter(function(x){
             return (x.id||x.serviceNumber||x.date) !== entryId;
           });
+          // Tombstone : enregistrer l'id supprimé pour que la fusion Firebase
+          // ne le réinjecte pas lors du prochain sync (même logique que trashRemovedIds)
+          if(!m2.deletedHistoryIds) m2.deletedHistoryIds=[];
+          if(entryId && m2.deletedHistoryIds.indexOf(entryId)===-1){
+            m2.deletedHistoryIds.push(entryId);
+          }
+          // Aussi dans trashRemovedIds global pour la fusion deepMerge
+          db.trashRemovedIds=db.trashRemovedIds||[];
+          if(entryId && db.trashRemovedIds.indexOf(entryId)===-1){
+            db.trashRemovedIds.push(entryId);
+          }
           save();
-          // Rouvre l'historique mis à jour (openMachineService = la vraie fonction)
           openMachineService(mid);
         }
       };
@@ -9409,8 +9421,13 @@ function saveIntervention(resolution){
       });
     }
 
-    // Auto-delete the service request from the list (history is kept in machine)
-    db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==_intRequest.id;});
+    // Supprimer la demande client de la liste ET la marquer fermée par sécurité
+    // (double protection : filtre par id + mutation directe de l'objet en mémoire)
+    _intRequest.status='closed';
+    _intRequest.resolution=resolution;
+    db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){
+      return x.id!==_intRequest.id;
+    });
 
     save();
     renderClientMachineModule();
