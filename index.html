@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4476,48 +4476,7 @@ function adjustTransferQty(delta){
 if($('transferQtyMinus')) $('transferQtyMinus').onclick=()=>adjustTransferQty(-1);
 if($('transferQtyPlus')) $('transferQtyPlus').onclick=()=>adjustTransferQty(1);
 
-$('transferForm').onsubmit=e=>{
-  e.preventDefault();
-  const source=getSelectedCar();
-  if(!source) return;
-  const item=(source.items||[]).find(i=>i.id===transferItemId);
-  if(!item) return;
-
-  const target=(db.cars||[]).find(c=>c.id===$('transferTargetCar').value);
-  if(!target) return;
-
-  let qty=parseInt($('transferQty').value||'1',10);
-  if(isNaN(qty)) qty=1;
-  qty=Math.max(1, Math.min(qty, Number(item.qty||0)));
-
-  // Créer un transfert EN ATTENTE — l'opérateur destinataire doit confirmer
-  // La pièce reste dans le stock source jusqu'à confirmation
-  db.pendingTransfers = db.pendingTransfers||[];
-  var transfer={
-    id: uid(),
-    type: 'vehicle_to_vehicle',
-    fromCarId: source.id,
-    fromCarLabel: (source.driver||source.plate||''),
-    toCarId: target.id,
-    toCarLabel: (target.driver||target.plate||''),
-    itemId: item.id,
-    partName: item.name||'',
-    partNumber: item.partNo||item.partNumber||'',
-    partImage: item.image||'',
-    qty: qty,
-    requestedBy: currentUser.username,
-    requestDate: new Date().toLocaleDateString(),
-    createdAt: new Date().toISOString(),
-    status: 'pending'
-  };
-  db.pendingTransfers.push(transfer);
-  log('TRANSFER_REQUEST', `${source.driver||source.plate} → ${target.driver||target.plate} | ${item.name||''} ×${qty} [en attente confirmation]`);
-  save();
-  $('transferDialog').close();
-  if(typeof window._updateNotifBell==='function') window._updateNotifBell();
-  renderAll();
-  alert('📤 Demande envoyée à '+(target.driver||target.plate)+' — en attente de confirmation.\nLa pièce sera transférée uniquement après confirmation.');
-};
+// Le handler de transferForm est défini plus bas (handler unique ligne ~6872)
 
 let pendingQtyChanges={};
 function changeQty(iid,d){prepareQtyChange(iid,d,null)}
@@ -6882,33 +6841,32 @@ if($('transferForm')) $('transferForm').onsubmit=e=>{
   if(isNaN(qty)) qty=1;
   qty=Math.max(1,Math.min(qty,Number(item.qty||0)));
 
-  const partNumber=item.partNo||item.partNumber||'';
-  item.qty=Number(item.qty||0)-qty;
-
-  target.items=target.items||[];
-  let existing=target.items.find(i=>{
-    const sameSupplier=i.supplierPartId&&item.supplierPartId&&i.supplierPartId===item.supplierPartId;
-    const samePart=(i.partNo||i.partNumber||'')&&partNumber&&(i.partNo||i.partNumber)===partNumber;
-    return sameSupplier || samePart;
+  // Créer un transfert EN ATTENTE — la pièce reste chez l'expéditeur jusqu'à confirmation
+  db.pendingTransfers=db.pendingTransfers||[];
+  db.pendingTransfers.push({
+    id:uid(),
+    type:'vehicle_to_vehicle',
+    fromCarId:source.id,
+    fromCarLabel:source.driver||source.plate||'',
+    toCarId:target.id,
+    toCarLabel:target.driver||target.plate||'',
+    itemId:item.id,
+    partName:item.name||'',
+    partNumber:item.partNo||item.partNumber||'',
+    partImage:item.image||'',
+    qty:qty,
+    requestedBy:currentUser.username,
+    requestDate:new Date().toLocaleDateString(),
+    createdAt:new Date().toISOString(),
+    status:'pending'
   });
 
-  if(existing){
-    existing.qty=Number(existing.qty||0)+qty;
-  } else {
-    const copy=JSON.parse(JSON.stringify(item));
-    copy.id=uid();
-    copy.qty=qty;
-    target.items.push(copy);
-  }
-
-  if(Number(item.qty||0)<=0){
-    source.items=(source.items||[]).filter(i=>i.id!==item.id);
-  }
-
-  log('TRANSFER_PART', `${source.driver} → ${target.driver} | ${item.name||''} | ${partNumber} | ${qty}`);
+  log('TRANSFER_REQUEST',`${source.driver}→${target.driver} | ${item.name||''} ×${qty} [en attente]`);
   save();
   $('transferDialog').close();
+  if(typeof window._updateNotifBell==='function') window._updateNotifBell();
   renderAll();
+  alert('📤 Demande envoyée !\n'+target.driver+' doit confirmer pour recevoir la pièce.');
 };
 
 
