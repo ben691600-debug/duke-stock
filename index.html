@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4142,7 +4142,11 @@ function renderItems(){
           +'<button data-reject-transfer="'+esc(t.id)+'" style="width:42px;height:42px;min-width:42px;border-radius:50%;background:#ffebee;border:none;font-size:18px;cursor:pointer;flex-shrink:0">✕</button>'
         +'</div>';
       row.querySelector('[data-approve-transfer]').onclick=function(){
-        approveTransfer(t.id);
+        var tid=this.closest('[data-approve-transfer]').getAttribute('data-approve-transfer')||this.getAttribute('data-approve-transfer');
+        if(confirm('✅ Confirmer la réception de cette pièce ?\n\nPièce : '+esc(t.partName)+'\nQuantité : '+t.qty+'\nDe : '+esc(t.fromCarLabel||t.requestedBy||'')+'\n\nAppuie OK pour accepter, Annuler pour refuser.'))
+          approveTransfer(t.id);
+        else
+          if(confirm('Refuser définitivement ce transfert ?')) rejectTransfer(t.id);
       };
       row.querySelector('[data-reject-transfer]').onclick=function(){
         if(confirm('Refuser ce transfert ?')) rejectTransfer(t.id);
@@ -9436,7 +9440,13 @@ function doFallback(csv,filename,email,subject,bodyText){
         });
         // Clics sur transferts
         list.querySelectorAll('[data-approve-bell]').forEach(function(el){
-          el.onclick=function(e){e.stopPropagation(); approveTransfer(this.getAttribute('data-approve-bell')); closeDropdown();};
+          el.onclick=function(e){
+            e.stopPropagation();
+            var tid=this.getAttribute('data-approve-bell');
+            var t2=(db.pendingTransfers||[]).find(function(x){return x.id===tid;});
+            var msg=t2?('✅ Confirmer la réception ?\n\nPièce : '+t2.partName+'\nQuantité : ×'+t2.qty+'\nDe : '+(t2.fromCarLabel||t2.requestedBy||'')):'Confirmer la réception ?';
+            if(confirm(msg)){ approveTransfer(tid); closeDropdown(); }
+          };
         });
         list.querySelectorAll('[data-reject-bell]').forEach(function(el){
           el.onclick=function(e){e.stopPropagation(); if(confirm('Refuser ce transfert ?')) rejectTransfer(this.getAttribute('data-reject-bell')); closeDropdown();};
@@ -9529,7 +9539,57 @@ function doFallback(csv,filename,email,subject,bodyText){
       }
     };
   }
+  function checkPendingTransfersForCurrentUser(){
+    if(typeof currentUser==='undefined'||!currentUser) return;
+    if(typeof isAdmin==='function'&&isAdmin()) return;
+    if(typeof db==='undefined'||!db||!Array.isArray(db.pendingTransfers)) return;
+    if(document.getElementById('transferConfirmModal')) return;
+    // Trouver tous les transferts en attente dont le véhicule destination appartient à cet opérateur
+    var myUsername=(currentUser.username||'').toLowerCase().trim();
+    var pending=db.pendingTransfers.filter(function(t){
+      if(t.status!=='pending') return false;
+      var car=(db.cars||[]).find(function(c){return c.id===t.toCarId;});
+      if(!car) return false;
+      var driver=(car.driver||'').toLowerCase().trim();
+      return driver===myUsername;
+    });
+    if(!pending.length) return;
+    var t=pending[0];
+    var modal=document.createElement('div');
+    modal.id='transferConfirmModal';
+    modal.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML='<div style="background:#fff;border-radius:22px;padding:24px;max-width:320px;width:100%;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.3)">'
+      +'<div style="font-size:40px;margin-bottom:10px">📦</div>'
+      +'<h2 style="color:#1a7ad4;margin:0 0 6px;font-size:19px">Pièce reçue !</h2>'
+      +'<p style="color:#555;font-size:14px;margin:0 0 16px">'+esc(t.fromCarLabel||t.requestedBy)+' vous envoie :</p>'
+      +'<div style="background:#f0f7ff;border-radius:14px;padding:16px;margin-bottom:16px">'
+        +'<div style="font-weight:900;font-size:17px">'+esc(t.partName)+'</div>'
+        +(t.partNumber?'<div style="color:#888;font-size:13px;margin-top:4px">'+esc(t.partNumber)+'</div>':'')
+        +'<div style="font-size:26px;font-weight:900;color:#1a7ad4;margin-top:8px">×'+t.qty+'</div>'
+      +'</div>'
+      +(pending.length>1?'<p style="color:#888;font-size:12px;margin:0 0 14px">+ '+(pending.length-1)+' autre(s) en attente</p>':'')
+      +'<div style="display:flex;gap:10px;margin-top:4px">'
+        +'<button id="_tReject" style="flex:1;padding:14px;border-radius:14px;background:#ffebee;border:2px solid #ef5350;font-size:15px;font-weight:800;color:#c0392b;cursor:pointer">✕ Refuser</button>'
+        +'<button id="_tApprove" style="flex:1;padding:14px;border-radius:14px;background:#1a7ad4;border:none;font-size:15px;font-weight:800;color:#fff;cursor:pointer">✅ Accepter</button>'
+      +'</div>'
+    +'</div>';
+    document.body.appendChild(modal);
+    document.getElementById('_tApprove').onclick=function(){
+      modal.remove();
+      approveTransfer(t.id);
+      setTimeout(checkPendingTransfersForCurrentUser,800);
+    };
+    document.getElementById('_tReject').onclick=function(){
+      modal.remove();
+      rejectTransfer(t.id);
+      setTimeout(checkPendingTransfersForCurrentUser,800);
+    };
+  }
   window._checkPendingTransfers=checkPendingTransfersForCurrentUser;
+  // Vérifier toutes les 5 secondes (pour attraper les transferts arrivant en temps réel)
+  setInterval(function(){
+    if(typeof currentUser!=='undefined'&&currentUser) checkPendingTransfersForCurrentUser();
+  },5000);
 })();
 </script>
 
