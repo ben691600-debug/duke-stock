@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5724,14 +5724,14 @@ function buildAssignDropdown(r, mid){
   if(!isAdmin()) return '';
   var ops=(db.users||[]).filter(function(u){return u.role==='operator';}).slice().sort(function(a,b){return (a.username||'').localeCompare(b.username||'');});
   var html='<div style="margin-top:10px"><label style="font-size:12px;font-weight:700;color:#6f7b87">'+T('assignTo')+'</label>'
-    +'<div style="display:flex;gap:8px;margin-top:6px;align-items:center">'
-    +'<select data-assign-req="'+esc(r.id)+'" style="flex:1;padding:12px;border:2px solid var(--line);border-radius:12px;background:white;font-size:15px;font-weight:600">'
+    +'<div style="display:flex;gap:6px;margin-top:6px;align-items:center">'
+    +'<select data-assign-req="'+esc(r.id)+'" style="flex:1;min-width:0;padding:10px 8px;border:2px solid var(--line);border-radius:12px;background:white;font-size:14px;font-weight:600">'
     +'<option value="">— '+T('unassigned')+' —</option>';
   ops.forEach(function(u){
     html+='<option value="'+esc(u.username)+'"'+(r.assignedTo===u.username?' selected':'')+'>'+esc(u.username)+'</option>';
   });
   html+='</select>'
-    +'<button type="button" data-assign-confirm class="btn primary" style="white-space:nowrap;padding:12px 16px;font-size:14px">✅ OK</button>'
+    +'<button type="button" data-assign-confirm class="btn primary" style="flex-shrink:0;padding:10px 12px;font-size:13px;border-radius:12px">✅ OK</button>'
     +'</div></div>';
   return html;
 }
@@ -5753,7 +5753,11 @@ function openClientServiceRequests(mid){
   requests.forEach(function(r){
     var div=document.createElement('div');
     div.className=getCardClass(r.status);
-    var assignedInfo=r.assignedTo?('<div style="font-size:12px;color:#6f7b87;margin-top:6px">'+T('assignedTo')+': <b>'+esc(r.assignedTo)+'</b></div>'):'';
+    var st=r.status||'open';
+    // "Affecté à" affiché avec l'id du span pour le mettre à jour sans rerender
+    var assignedInfo=r.assignedTo
+      ?('<div style="font-size:12px;color:#6f7b87;margin-top:6px">'+T('assignedTo')+': <b id="assignedLabel_'+esc(r.id)+'">'+esc(r.assignedTo)+'</b></div>')
+      :'<div style="font-size:12px;color:#6f7b87;margin-top:6px" id="assignedLabel_'+esc(r.id)+'">'+T('assignTo')+': —</div>';
     div.innerHTML='<b>'+esc(r.faultLabel||'-')+'</b><br>'
       +'<span class="muted">'+esc(new Date(r.createdAt||Date.now()).toLocaleString())+'</span><br>'
       +'<span class="serviceStatusPill '+getStatusClass(r.status)+'">'+getStatusLabel(r.status)+'</span>'
@@ -5764,10 +5768,16 @@ function openClientServiceRequests(mid){
           +'<button type="button" class="btn secondary" data-st="open" style="min-height:40px;border-radius:14px">'+T('statusOpen')+'</button>'
           +'<button type="button" class="btn ok" data-st="closed" style="min-height:40px;border-radius:14px">'+T('statusClosed')+'</button>'
         +'</div>'
+        // "En cours" = statut indépendant, toujours visible
         +'<button type="button" class="btn" data-st="in_progress" style="width:100%;min-height:40px;border-radius:14px;margin-top:7px;background:#fff9c4;color:#e65100;border:1.5px solid #fb8c00;font-weight:900">'+T('statusInProgress')+'</button>'
-        // Start/Stop intervention buttons
-        +((r.status||'open')==='open'?'<button type="button" class="btn ok" data-intervention="start" style="width:100%;min-height:44px;border-radius:14px;margin-top:10px;font-size:15px;font-weight:900">▶ Début de dépannage</button>':'')
-        +(r.status==='in_progress'?'<button type="button" class="btn danger" data-intervention="stop" style="width:100%;min-height:44px;border-radius:14px;margin-top:10px;font-size:15px;font-weight:900">■ Fin de dépannage</button>':'')
+        // Début dépannage : visible SAUF si déjà in_progress avec intervention commencée
+        +(st!=='in_progress'||!r.startTime
+          ?'<button type="button" class="btn ok" data-intervention="start" style="width:100%;min-height:44px;border-radius:14px;margin-top:10px;font-size:15px;font-weight:900">▶ Début de dépannage</button>'
+          :'')
+        // Fin dépannage : visible seulement si in_progress ET intervention démarrée
+        +(st==='in_progress'&&r.startTime
+          ?'<button type="button" class="btn danger" data-intervention="stop" style="width:100%;min-height:44px;border-radius:14px;margin-top:7px;font-size:15px;font-weight:900">■ Fin de dépannage</button>'
+          :'')
        );
     div.querySelectorAll('[data-st]').forEach(function(btn){
       btn.onclick=function(){
@@ -5794,11 +5804,16 @@ function openClientServiceRequests(mid){
         var live=(db.clientServiceRequests||[]).find(function(x){return x.id===r.id;});
         if(!live) return;
         live.assignedTo=assignSel.value||null;
-        save(); renderClientMachineModule(); openClientServiceRequests(mid);
+        // Mettre à jour uniquement le label "Affecté à" sans tout rerender
+        var lbl=document.getElementById('assignedLabel_'+r.id);
+        if(lbl){
+          if(live.assignedTo) lbl.innerHTML=T('assignedTo')+': <b>'+esc(live.assignedTo)+'</b>';
+          else lbl.textContent=T('assignTo')+': —';
+        }
+        save();
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
       }
-      assignSel.onchange=doAssign;
-      // Bouton de confirmation à côté du select pour Android où onchange est peu fiable
+      assignSel.onchange=function(){}; // Ne pas déclencher sur changement, uniquement sur OK
       var assignBtn=div.querySelector('[data-assign-confirm]');
       if(assignBtn) assignBtn.onclick=doAssign;
     }
