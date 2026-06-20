@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4051,35 +4051,54 @@ function approveTransfer(transferId){
   var t = db.pendingTransfers.find(function(x){return x.id===transferId;});
   if(!t||t.status!=='pending') return;
 
-  // Deduct from stock
-  var stockPart = (db.stockParts||[]).find(function(x){return x.id===t.partId;});
-  if(stockPart){
-    stockPart.currentStock = Math.max(0,(stockPart.currentStock||0)-t.qty);
-  }
-
-  // Add to vehicle
-  var car = (db.cars||[]).find(function(x){return x.id===t.toCarId;});
-  if(car){
-    car.items = car.items||[];
-    var existing = car.items.find(function(it){
-      return (it.name||'').trim().toLowerCase()===(t.partName||'').trim().toLowerCase()
-        || (t.partNumber&&(it.partNo||it.partNumber||'').trim().toLowerCase()===t.partNumber.trim().toLowerCase());
-    });
-    if(existing){
-      existing.qty = (existing.qty||0)+t.qty;
-    } else {
-      car.items.push({id:uid(),name:t.partName,partNo:t.partNumber||'',machine:'',qty:t.qty,image:t.partImage||''});
+  if(t.type==='vehicle_to_vehicle'){
+    // Retirer la pièce du véhicule source
+    var sourceCar=(db.cars||[]).find(function(x){return x.id===t.fromCarId;});
+    if(sourceCar){
+      var sourceItem=(sourceCar.items||[]).find(function(it){return it.id===t.itemId;});
+      if(sourceItem){
+        sourceItem.qty=Math.max(0,(sourceItem.qty||0)-t.qty);
+        if(sourceItem.qty<=0) sourceCar.items=sourceCar.items.filter(function(it){return it.id!==t.itemId;});
+      }
+    }
+    // Ajouter la pièce au véhicule destinataire
+    var targetCar=(db.cars||[]).find(function(x){return x.id===t.toCarId;});
+    if(targetCar){
+      targetCar.items=targetCar.items||[];
+      var existing=targetCar.items.find(function(it){
+        return (it.partNo||it.partNumber||'')===(t.partNumber||'') && t.partNumber;
+      });
+      if(existing){
+        existing.qty=(existing.qty||0)+t.qty;
+      } else {
+        targetCar.items.push({id:uid(),name:t.partName,partNo:t.partNumber||'',qty:t.qty,image:t.partImage||''});
+      }
+    }
+  } else {
+    // stock_to_vehicle (ancien comportement)
+    var stockPart=(db.stockParts||[]).find(function(x){return x.id===t.partId;});
+    if(stockPart) stockPart.currentStock=Math.max(0,(stockPart.currentStock||0)-t.qty);
+    var car=(db.cars||[]).find(function(x){return x.id===t.toCarId;});
+    if(car){
+      car.items=car.items||[];
+      var ex=car.items.find(function(it){
+        return (it.name||'').trim().toLowerCase()===(t.partName||'').trim().toLowerCase()
+          || (t.partNumber&&(it.partNo||it.partNumber||'').trim().toLowerCase()===t.partNumber.trim().toLowerCase());
+      });
+      if(ex){ ex.qty=(ex.qty||0)+t.qty; }
+      else { car.items.push({id:uid(),name:t.partName,partNo:t.partNumber||'',machine:'',qty:t.qty,image:t.partImage||''}); }
     }
   }
 
-  t.status = 'approved';
-  t.approvedBy = currentUser.username;
-  t.approvedDate = new Date().toLocaleDateString();
+  t.status='approved';
+  t.approvedBy=currentUser.username;
+  t.approvedDate=new Date().toLocaleDateString();
   log('TRANSFER_APPROVED', t.partName+' ×'+t.qty+' → '+t.toCarLabel+' approuvé par '+currentUser.username);
   save();
-  renderItems();
+  renderAll();
   if(typeof renderStockParts==='function') renderStockParts();
   if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+  alert('✅ Transfert confirmé ! La pièce a été ajoutée à ton stock.');
 }
 
 function rejectTransfer(transferId){
@@ -4466,32 +4485,33 @@ $('transferForm').onsubmit=e=>{
   if(isNaN(qty)) qty=1;
   qty=Math.max(1, Math.min(qty, Number(item.qty||0)));
 
-  item.qty=Number(item.qty||0)-qty;
-
-  target.items=target.items||[];
-  let existing=target.items.find(i=>{
-    const a=(i.supplierPartId&&item.supplierPartId&&i.supplierPartId===item.supplierPartId);
-    const b=((i.partNo||i.partNumber||'') && (item.partNo||item.partNumber||'') && (i.partNo||i.partNumber)===(item.partNo||item.partNumber));
-    return a || b;
-  });
-
-  if(existing){
-    existing.qty=Number(existing.qty||0)+qty;
-  } else {
-    const copy=JSON.parse(JSON.stringify(item));
-    copy.id=uid();
-    copy.qty=qty;
-    target.items.push(copy);
-  }
-
-  if(Number(item.qty||0)<=0){
-    source.items=(source.items||[]).filter(i=>i.id!==item.id);
-  }
-
-  log('TRANSFER_PART', `${source.driver} → ${target.driver} | ${item.name||''} | ${item.partNo||item.partNumber||''} | ${qty}`);
+  // Créer un transfert EN ATTENTE — l'opérateur destinataire doit confirmer
+  // La pièce reste dans le stock source jusqu'à confirmation
+  db.pendingTransfers = db.pendingTransfers||[];
+  var transfer={
+    id: uid(),
+    type: 'vehicle_to_vehicle',
+    fromCarId: source.id,
+    fromCarLabel: (source.driver||source.plate||''),
+    toCarId: target.id,
+    toCarLabel: (target.driver||target.plate||''),
+    itemId: item.id,
+    partName: item.name||'',
+    partNumber: item.partNo||item.partNumber||'',
+    partImage: item.image||'',
+    qty: qty,
+    requestedBy: currentUser.username,
+    requestDate: new Date().toLocaleDateString(),
+    createdAt: new Date().toISOString(),
+    status: 'pending'
+  };
+  db.pendingTransfers.push(transfer);
+  log('TRANSFER_REQUEST', `${source.driver||source.plate} → ${target.driver||target.plate} | ${item.name||''} ×${qty} [en attente confirmation]`);
   save();
   $('transferDialog').close();
+  if(typeof window._updateNotifBell==='function') window._updateNotifBell();
   renderAll();
+  alert('📤 Demande envoyée à '+(target.driver||target.plate)+' — en attente de confirmation.\nLa pièce sera transférée uniquement après confirmation.');
 };
 
 let pendingQtyChanges={};
@@ -9361,35 +9381,64 @@ function doFallback(csv,filename,email,subject,bodyText){
       });
     }
     if(typeof db!=='undefined' && db.clientRoot) walkNode(db.clientRoot);
-    
-    if(pending.length){
+
+    // Ajouter les transferts de pièces en attente destinés aux véhicules de cet opérateur
+    var pendingTransfers=[];
+    if(typeof db!=='undefined' && typeof currentUser!=='undefined' && currentUser && !isAdmin()){
+      // Trouver les véhicules assignés à cet opérateur
+      var myCarIds=(db.cars||[]).filter(function(c){return c.driver===currentUser.username||c.assignedTo===currentUser.username;}).map(function(c){return c.id;});
+      pendingTransfers=(db.pendingTransfers||[]).filter(function(t){
+        return t.status==='pending' && myCarIds.indexOf(t.toCarId)!==-1;
+      });
+    } else if(typeof db!=='undefined' && isAdmin()){
+      // Admin voit tous les transferts en attente
+      pendingTransfers=(db.pendingTransfers||[]).filter(function(t){return t.status==='pending';});
+    }
+
+    if(pending.length || pendingTransfers.length){
       btn.style.display='flex';
       btn.style.alignItems='center';
       btn.style.justifyContent='center';
-      countEl.textContent=pending.length;
+      countEl.textContent=pending.length+pendingTransfers.length;
       // Populate list
       if(list){
-        list.innerHTML=pending.length?pending.map(function(item){
+        var html='';
+        // Appels client
+        html+=pending.map(function(item){
           var m=item.machine; var st=item.status;
           var color=st==='open'?'#ef5350':'#fb8c00';
           var bg=st==='open'?'#fff5f5':'#fffde7';
           var label=st==='open'?(typeof T==='function'?T('statusOpen'):'Ouvert'):(typeof T==='function'?T('statusInProgress'):'En cours');
           return '<div style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:14px;border:2px solid '+color+';background:'+bg+';margin-bottom:8px;cursor:pointer" data-machine-id="'+esc(m.id)+'">'
             +'<span style="font-size:22px">🏭</span>'
-            +'<div style="flex:1;min-width:0">'
-              +'<div style="font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.model||'-')+'</div>'
-              +'<div style="font-size:11px;color:#6f7b87">'+esc(m.serial||'')+'</div>'
-            +'</div>'
-            +'<span style="font-size:11px;font-weight:900;color:'+color+';white-space:nowrap">'+label+'</span>'
-          +'</div>';
-        }).join(''):'<p class="muted" style="text-align:center;padding:12px">Aucune demande</p>';
-        // Click on machine item → open the requests dialog
+            +'<div style="flex:1;min-width:0"><div style="font-weight:900;font-size:13px">'+esc(m.model||'-')+'</div><div style="font-size:11px;color:#6f7b87">'+esc(m.serial||'')+'</div></div>'
+            +'<span style="font-size:11px;font-weight:900;color:'+color+'">'+label+'</span></div>';
+        }).join('');
+        // Transferts de pièces en attente
+        html+=pendingTransfers.map(function(t){
+          return '<div style="padding:10px 8px;border-radius:14px;border:2px solid #1a7ad4;background:#e8f4fd;margin-bottom:8px">'
+            +'<div style="font-weight:900;font-size:13px">📦 Transfert entrant</div>'
+            +'<div style="font-size:12px;margin:4px 0">'+esc(t.partName)+(t.partNumber?' ('+esc(t.partNumber)+')':'')+'<br>×'+t.qty+' de '+esc(t.fromCarLabel||t.requestedBy)+'</div>'
+            +'<div style="display:flex;gap:8px;margin-top:6px">'
+            +'<button data-approve-bell="'+esc(t.id)+'" style="flex:1;padding:8px;border-radius:10px;background:#e8f5e9;border:none;font-weight:800;cursor:pointer;font-size:13px">✅ Accepter</button>'
+            +'<button data-reject-bell="'+esc(t.id)+'" style="flex:1;padding:8px;border-radius:10px;background:#ffebee;border:none;font-weight:800;cursor:pointer;font-size:13px">✕ Refuser</button>'
+            +'</div></div>';
+        }).join('');
+        list.innerHTML=html||'<p class="muted" style="text-align:center;padding:12px">Aucune demande</p>';
+        // Clics sur appels machines
         list.querySelectorAll('[data-machine-id]').forEach(function(el){
           el.onclick=function(){
             var mid=this.getAttribute('data-machine-id');
             closeDropdown();
             if(typeof openClientServiceRequests==='function') openClientServiceRequests(mid);
           };
+        });
+        // Clics sur transferts
+        list.querySelectorAll('[data-approve-bell]').forEach(function(el){
+          el.onclick=function(e){e.stopPropagation(); approveTransfer(this.getAttribute('data-approve-bell')); closeDropdown();};
+        });
+        list.querySelectorAll('[data-reject-bell]').forEach(function(el){
+          el.onclick=function(e){e.stopPropagation(); if(confirm('Refuser ce transfert ?')) rejectTransfer(this.getAttribute('data-reject-bell')); closeDropdown();};
         });
       }
     } else {
