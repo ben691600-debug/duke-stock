@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.9'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3067,6 +3067,16 @@ function processSyncQueue(){
   // On envoie db tel quel — applyFirebaseData garantit déjà que db reflète Firebase
   // avec les tombstones locaux appliqués. Plus de lecture avant écriture nécessaire.
   var dataToSync=JSON.parse(JSON.stringify(db));
+  // Injecter les permissions en attente dans dataToSync avant envoi Firebase
+  // (db.users peut avoir été écrasé par applyFirebaseData entre la sauvegarde et ici)
+  var pendingToSync=getPendingPerms();
+  if(pendingToSync && Array.isArray(pendingToSync.users)){
+    pendingToSync.users.forEach(function(pu){
+      var u=(dataToSync.users||[]).find(function(x){return x.username===pu.username;});
+      if(u && pu.permissions) u.permissions=Object.assign({},pu.permissions);
+    });
+    if(pendingToSync.rolePerms) dataToSync.rolePermissions=Object.assign({},dataToSync.rolePermissions||{},pendingToSync.rolePerms);
+  }
   var removedIdSet={};
   (dataToSync.trashRemovedIds||[]).forEach(function(id){removedIdSet[id]=true;});
   // Purge finale : s'assurer qu'aucun élément tombstoné ne part sur Firebase
@@ -7980,6 +7990,13 @@ translate();
   window.hasPermission=function(key){
     if(admin()) return true;
     const u=userRecord();
+    if(!u || !u.username) return false;
+    // Vérifier d'abord le cache de permissions en attente (sauvegardées mais pas encore confirmées Firebase)
+    var pending=getPendingPerms();
+    if(pending){
+      var pu=pending.users.find(function(x){return x.username===u.username;});
+      if(pu && pu.permissions && typeof pu.permissions[key]!=='undefined') return !!pu.permissions[key];
+    }
     const perms=(u&&u.permissions&&typeof u.permissions==='object')?u.permissions:DEFAULT_OPERATOR_PERMISSIONS;
     return !!perms[key];
   };
@@ -8008,6 +8025,18 @@ translate();
   function setHidden(el,hide){if(el) el.classList.toggle('hidden',!!hide)}
   window.applyPermissionUI=function(){
     ensurePermissions();
+    // Restaurer les permissions du cache si elles existent (plus récentes que ce qu'ensurePermissions a pu écraser)
+    var pending=getPendingPerms();
+    if(pending && Array.isArray(pending.users)){
+      var d=safeDb();
+      if(d && Array.isArray(d.users)){
+        pending.users.forEach(function(pu){
+          var u=d.users.find(function(x){return x.username===pu.username;});
+          if(u&&pu.permissions) u.permissions=Object.assign({},pu.permissions);
+        });
+        if(pending.rolePerms) d.rolePermissions=Object.assign({},d.rolePermissions||{},pending.rolePerms);
+      }
+    }
     const hp=window.hasPermission||(()=>true);
     setHidden(document.getElementById('settingsBtn'),!admin());
     setHidden(document.getElementById('trashBtn'),!admin());
