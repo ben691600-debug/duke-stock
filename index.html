@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.8'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2905,6 +2905,25 @@ function dedupUsersByUsername(users, removedIds){
 // rapprochées (ex: deux clics rapides) ne peuvent jamais se marcher dessus.
 let _rtdb=null, _initialPullDone=false, _syncQueued=false, _syncInFlight=false;
 
+// Cache localStorage séparé pour les permissions en attente de confirmation Firebase.
+// Contrairement à db (écrasé par applyFirebaseData), ce cache survit aux cycles de sync.
+const PERMS_PENDING_KEY='duke_perms_pending_v1';
+function savePendingPerms(users, rolePerms){
+  try{
+    localStorage.setItem(PERMS_PENDING_KEY, JSON.stringify({users:users||[], rolePerms:rolePerms||{}, ts:Date.now()}));
+  }catch(e){}
+}
+function getPendingPerms(){
+  try{
+    var d=JSON.parse(localStorage.getItem(PERMS_PENDING_KEY)||'null');
+    // Expirer après 30 secondes (largement suffisant pour que Firebase confirme)
+    if(d && Date.now()-d.ts < 30000) return d;
+    localStorage.removeItem(PERMS_PENDING_KEY);
+    return null;
+  }catch(e){ return null; }
+}
+function clearPendingPerms(){ localStorage.removeItem(PERMS_PENDING_KEY); }
+
 function initRTDB(){
   try{
     if(!window.firebase || !firebase.database) return;
@@ -2917,13 +2936,19 @@ function initRTDB(){
       if(!remote) return;
       // Préserver les données locales non encore envoyées à Firebase
       var localFaultMachines = (_syncQueued || _syncInFlight) ? (db.faultMachines||null) : null;
-      // Préserver les permissions locales des users (modifiées dans les paramètres)
+      // Préserver les permissions locales en attente (sauvegardées mais pas encore confirmées par Firebase)
+      var pending=getPendingPerms();
       var localUserPerms = {};
-      var localRolePerms = (_syncQueued || _syncInFlight) ? (db.rolePermissions||null) : null;
-      if(_syncQueued || _syncInFlight){
+      var localRolePerms = null;
+      if(pending){
+        pending.users.forEach(function(u){ if(u&&u.username&&u.permissions) localUserPerms[u.username]=u.permissions; });
+        localRolePerms = pending.rolePerms||null;
+      } else if(_syncQueued || _syncInFlight){
+        // Fallback : préserver depuis db si sync en cours
         (db.users||[]).forEach(function(u){
           if(u&&u.username&&u.permissions) localUserPerms[u.username]=Object.assign({},u.permissions);
         });
+        localRolePerms = db.rolePermissions||null;
       }
       var localTombstones = (db.trashRemovedIds||[]).slice();
       // Remplacer intégralement db par Firebase
@@ -3063,6 +3088,7 @@ function processSyncQueue(){
   if(dataToSync.clientRoot) purgeNode(dataToSync.clientRoot);
   _rtdb.ref('duke_main').set(dataToSync).then(function(){
     showSyncBanner('☁️ Sauvegardé sur le cloud', false);
+    clearPendingPerms(); // Firebase a confirmé → permissions sauvegardées
   }).catch(function(e){
     console.warn('Duke RTDB sync error - nouvelle tentative.', e);
     showSyncBanner('❌ Échec sauvegarde cloud ('+(e&&e.code?e.code:'erreur')+'), nouvelle tentative...', true);
@@ -4644,7 +4670,24 @@ $('carForm').onsubmit=e=>{
   $('carDialog').close();
   renderAll();
 };
-$('itemForm').onsubmit=e=>{e.preventDefault();let c=db.cars.find(x=>x.id===selected);let it={id:uid(),name:$('name').value.trim(),partNo:$('partNo').value.trim(),machine:$('machine').value.trim(),qty:Number($('qty').value||0),image,supplierId:($('selectedSupplierId')?$('selectedSupplierId').value:''),supplierPartId:($('selectedSupplierPartId')?$('selectedSupplierPartId').value:'')};c.items.push(it);log('ADD_ITEM',`${c.plate} | ${it.name} | qty ${it.qty}`);save();$('itemDialog').close();renderAll();if(!$('stockView').classList.contains('hidden'))renderItems();};
+$('itemForm').onsubmit=e=>{
+  e.preventDefault();
+  // Retrouver le véhicule par id dans db.cars (peut avoir été rechargé par Firebase)
+  let c=db.cars.find(x=>x.id===selected);
+  if(!c){
+    // Dernier recours : chercher par la valeur stockée dans le formulaire
+    alert('Erreur : véhicule non trouvé. Ferme ce formulaire, sélectionne à nouveau le véhicule et réessaie.');
+    return;
+  }
+  if(!Array.isArray(c.items)) c.items=[];
+  let it={id:uid(),name:$('name').value.trim(),partNo:$('partNo').value.trim(),machine:$('machine').value.trim(),qty:Number($('qty').value||0),image,supplierId:($('selectedSupplierId')?$('selectedSupplierId').value:''),supplierPartId:($('selectedSupplierPartId')?$('selectedSupplierPartId').value:'')};
+  c.items.push(it);
+  log('ADD_ITEM',`${c.plate} | ${it.name} | qty ${it.qty}`);
+  save();
+  $('itemDialog').close();
+  renderAll();
+  if(!$('stockView').classList.contains('hidden')) renderItems();
+};
 $('search').oninput=renderItems;
 $('usersBtn').onclick=()=>show('usersView'); $('historyBtn').onclick=()=>show('historyView');
 if($('attendanceEntryBtn')) $('attendanceEntryBtn').onclick=()=>punchAttendance('in');
@@ -8143,7 +8186,6 @@ translate();
   function savePermissions(){
     const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
     // Lire chaque checkbox et mettre à jour directement la permission correspondante
-    // SANS réinitialiser d'abord toutes les permissions (ce qui effaçait les modifications)
     box.querySelectorAll('input[data-user][data-permission]').forEach(ch=>{
       const username=ch.getAttribute('data-user');
       const permKey=ch.getAttribute('data-permission');
@@ -8153,10 +8195,10 @@ translate();
         u.permissions[permKey]=!!ch.checked;
       }
     });
+    // Sauvegarder dans le cache persistant pour survivre aux cycles applyFirebaseData
+    var usersPerms=(d.users||[]).filter(u=>u.role!=='admin').map(u=>({username:u.username,permissions:Object.assign({},u.permissions)}));
+    savePendingPerms(usersPerms, d.rolePermissions||{});
     // Sauvegarder dans localStorage ET Firebase
-    localStorage.setItem(STORE,'duke_stock_manager_auth_v1' in localStorage
-      ? localStorage.getItem('duke_stock_manager_auth_v1')
-      : JSON.stringify(d));
     localStorage.setItem(STORE, JSON.stringify(d));
     if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
     else if(typeof save==='function') save();
