@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7975,7 +7975,8 @@ translate();
     viewVehicles:true,viewClients:true,viewStock:true,attendanceSelf:true,
     vehicleExpenses:false,exportExcel:false,
     viewSuppliers:false,viewFaultMachines:false,viewHistory:false,
-    addVehicle:false,editVehicle:false,deleteVehicle:false,addStock:false,editStock:false,deleteStock:false,transferStock:false,
+    addVehicle:false,editVehicle:false,deleteVehicle:false,addStock:false,editStock:false,deleteStock:false,
+    transferStock:true, // Toujours activé pour tous les opérateurs - incontournable
     addGroup:false,editGroup:false,deleteGroup:false,addClientMachine:false,editClientMachine:false,deleteClientMachine:false,serviceHistoryEdit:false,
     addSupplier:false,editSupplier:false,deleteSupplier:false,addPart:false,editPart:false,deletePart:false,
     addFaultMachine:false,editFaultMachine:false,deleteFaultMachine:false,editFaultList:false
@@ -7991,7 +7992,9 @@ translate();
     if(admin()) return true;
     const u=userRecord();
     if(!u || !u.username) return false;
-    // Vérifier d'abord le cache de permissions en attente (sauvegardées mais pas encore confirmées Firebase)
+    // transferStock est toujours autorisé pour tous les opérateurs - incontournable
+    if(key==='transferStock' && u.role==='operator') return true;
+    // Vérifier d'abord le cache de permissions en attente
     var pending=getPendingPerms();
     if(pending){
       var pu=pending.users.find(function(x){return x.username===u.username;});
