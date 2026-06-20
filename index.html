@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7742,118 +7742,88 @@ translate();
   async function openDoc(model,type,key){
     const docs=getDocsForModel(model,type); const doc=docs[key];
     if(!doc){alert(T('docNotSaved'));return;}
-    try{
-      const docType=doc.type||'application/octet-stream';
-      const docName=doc.name||key;
-
-      // Vérifier si déjà en cache local sur cet appareil
-      const cached=await getCachedBlob(model,key);
-      if(cached&&cached.blob){
-        // Déjà téléchargé : ouvrir directement sans aucune modale
-        const url=URL.createObjectURL(cached.blob);
-        const a=document.createElement('a');
-        a.href=url; a.target='_blank'; a.rel='noopener';
-        document.body.appendChild(a); a.click();
-        setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },2000);
-        return;
-      }
-
-      // Première fois : convertir base64 → blob et proposer le téléchargement
-      let blob=null;
-      if(doc.data){
-        try{
-          var parts=doc.data.split(',');
-          var mime=parts[0].match(/:(.*?);/)[1];
-          var byteStr=atob(parts[1]);
-          var ab=new ArrayBuffer(byteStr.length); var ia=new Uint8Array(ab);
-          for(var i=0;i<byteStr.length;i++) ia[i]=byteStr.charCodeAt(i);
-          blob=new Blob([ab],{type:mime});
-        }catch(e){ console.error('base64 decode',e); }
-      } else if(doc.id){
-        const rec=await getBlob(doc.id);
-        if(rec&&rec.blob) blob=rec.blob;
-      }
-
-      if(!blob){alert(T('docNotFound'));return;}
-
-      // Sauvegarder en cache local pour les prochains clics
-      await saveBlobToLocalCache(model, key, blob, docName, docType);
-
-      // Télécharger le fichier sur l'appareil
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download=docName; a.target='_blank';
-      document.body.appendChild(a); a.click();
-      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },2000);
-
-      // Informer l'utilisateur que le doc est maintenant disponible localement
-      alert('✅ Document téléchargé et mis en cache.\nLa prochaine fois, il s\'ouvrira directement sans re-télécharger.');
-
-    }catch(e){ console.error('openDoc',e); alert('Erreur ouverture document.'); }
+    // Système URL : ouvrir directement le lien
+    const url = doc.url || doc.data || '';
+    if(!url){alert(T('docNotFound'));return;}
+    window.open(url,'_blank');
   }
   window.openTechDocModel = openDoc;
+
   function ensureFaultDocPanel(){
     const form=$('faultMachineForm'); if(!form || $('faultMachineDocBox')) return;
     const box=document.createElement('div'); box.id='faultMachineDocBox'; box.className='techDocBox';
-    box.innerHTML='<h3>Documents techniques</h3>'+DOCS.map(([k,ic,label])=>
-      '<div class="techDocRow"><label><span>'+ic+' '+label+'</span><input id="faultDoc_'+k+'" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,image/*,application/pdf"></label><div class="techDocStatus" id="faultDocStatus_'+k+'">Aucun document</div><button type="button" class="btn secondary" id="faultDocOpen_'+k+'">Ouvrir</button></div>'
-    ).join('');
+    box.innerHTML='<h3>📎 Documents techniques</h3>'
+      +'<p style="font-size:13px;color:#667;margin:0 0 12px">Colle un lien vers le document (GitHub, Google Drive, Dropbox...). Le lien sera accessible sur tous les appareils.</p>'
+      +DOCS.map(([k,ic,label])=>
+        '<div class="techDocRow">'
+        +'<label><span>'+ic+' '+label+'</span>'
+        +'<input id="faultDocUrl_'+k+'" type="url" placeholder="https://..." style="width:100%;margin-top:4px">'
+        +'</label>'
+        +'<div style="display:flex;gap:8px;margin-top:6px">'
+        +'<button type="button" class="btn secondary" id="faultDocOpen_'+k+'" style="flex:1">🔗 Ouvrir</button>'
+        +'</div>'
+        +'</div>'
+      ).join('')
+      +'<button type="button" class="btn primary" id="faultDocSaveBtn" style="width:100%;margin-top:12px">💾 Enregistrer les liens</button>';
+
     const actions=form.querySelector('.formActions');
-    form.insertBefore(box, actions || null);
-    DOCS.forEach(([k])=>{
-      const input=$('faultDoc_'+k);
-      if(input) input.addEventListener('change',()=>{
-        const f=input.files&&input.files[0];
-        if(!f) return;
-        docDraft[k]={file:f,name:f.name||'document',type:f.type||'application/octet-stream'};
-        const st=$('faultDocStatus_'+k); if(st) st.textContent=f.name||'document prêt';
+    form.insertBefore(box, actions||null);
+
+    // Bouton enregistrer les liens
+    document.getElementById('faultDocSaveBtn').onclick=function(){
+      const model=($('faultMachineModelInput')||{}).value||'';
+      const type=($('faultMachineTypeInput')||{}).value||'';
+      if(!model){alert('Enregistre d\'abord la machine.');return;}
+      if(typeof db==='undefined'||!db) return;
+      db.faultMachines=db.faultMachines||[];
+      let m=findFaultByModel(db,model,type);
+      if(!m){m={id:(crypto&&crypto.randomUUID)?crypto.randomUUID():('fm_'+Date.now()),type:type,model:model,image:'',faults:[],docs:{}}; db.faultMachines.unshift(m);}
+      m.docs=m.docs||{};
+      DOCS.forEach(([k])=>{
+        const inp=$('faultDocUrl_'+k);
+        if(inp&&inp.value.trim()) m.docs[k]={url:inp.value.trim(), name:k+'.pdf', type:'application/pdf'};
       });
-      const btn=$('faultDocOpen_'+k); if(btn) btn.addEventListener('click',()=>openDoc(($('faultMachineModelInput')||{}).value,($('faultMachineTypeInput')||{}).value,k));
+      localStorage.setItem(STORE_KEY, JSON.stringify(db));
+      if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+      else if(typeof save==='function') save();
+      alert('✅ Liens enregistrés ! Accessibles sur tous les appareils.');
+    };
+
+    // Boutons ouvrir
+    DOCS.forEach(([k])=>{
+      const btn=$('faultDocOpen_'+k);
+      if(btn) btn.onclick=function(){
+        const inp=$('faultDocUrl_'+k);
+        const url=inp&&inp.value.trim();
+        if(url){ window.open(url,'_blank'); }
+        else {
+          // Essayer d'ouvrir depuis Firebase
+          const model=($('faultMachineModelInput')||{}).value||'';
+          const type=($('faultMachineTypeInput')||{}).value||'';
+          const docs=getDocsForModel(model,type);
+          const doc=docs[k];
+          if(doc&&(doc.url||doc.data)){ window.open(doc.url||doc.data,'_blank'); }
+          else { alert(T('docNotSaved')); }
+        }
+      };
     });
   }
   function refreshFaultDocPanel(){
-    ensureFaultDocPanel();
-    docDraft={manual:null, spare:null, electrical:null};
+    // Recréer le panel si absent, et pré-remplir les URLs depuis Firebase
+    var box=$('faultMachineDocBox');
+    if(!box){ ensureFaultDocPanel(); box=$('faultMachineDocBox'); }
+    if(!box) return;
     const model=($('faultMachineModelInput')||{}).value||activeDocModel||'';
     const type=($('faultMachineTypeInput')||{}).value||'';
     const docs=getDocsForModel(model,type);
-    DOCS.forEach(([k])=>{const s=$('faultDocStatus_'+k); if(s) s.textContent=(docs[k]&&docs[k].name)?docs[k].name:'Aucun document'; const input=$('faultDoc_'+k); if(input) input.value='';});
-  }
-  async function mergeDocsAfterFaultSave(){
-    setTimeout(async()=>{
-      const model=($('faultMachineModelInput')||{}).value||activeDocModel||'';
-      const type=($('faultMachineTypeInput')||{}).value||'';
-      if(!model) return;
-      if(!Object.values(docDraft).some(Boolean)) return;
-      try{
-        if(typeof db==='undefined'||!db) return;
-        db.faultMachines = db.faultMachines||[];
-        let m=findFaultByModel(db,model,type);
-        if(!m){m={id:(crypto&&crypto.randomUUID)?crypto.randomUUID():('fm_'+Date.now()),type:type,model:model,image:'',faults:[],docs:{}}; db.faultMachines.unshift(m);}
-        m.docs=m.docs||{};
-        for(const [k] of DOCS){
-          if(docDraft[k]&&docDraft[k].file){
-            const result = await putBlob(docDraft[k].file);
-            if(result.data && result.data.length > 8*1024*1024){
-              alert('Document trop volumineux ('+Math.round(result.data.length/1024/1024)+'MB max 8MB). Compresse le PDF.');
-              continue;
-            }
-            m.docs[k]=result;
-          }
-        }
-        localStorage.setItem(STORE_KEY, JSON.stringify(db));
-        if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
-        else if(typeof save==='function') save();
-        alert(T('docSaved'));
-      }catch(e){
-        console.error('Doc save error',e);
-        alert('Erreur enregistrement : '+(e&&e.message?e.message:'erreur inconnue'));
+    DOCS.forEach(([k])=>{
+      const inp=$('faultDocUrl_'+k);
+      if(inp && docs[k] && (docs[k].url||docs[k].data)){
+        inp.value=docs[k].url||'';
       }
-      docDraft={manual:null,spare:null,electrical:null};
-      refreshFaultDocPanel();
-      if(typeof faultMachineRender==='function') try{faultMachineRender();}catch(e){}
-    },120);
+    });
   }
+  async function mergeDocsAfterFaultSave(){ /* Les docs URL sont sauvegardés via le bouton dédié */ }
   function addDocButtonsToService(){
     const old=$('clientMachineDocButtons');
     if(old) old.remove();
