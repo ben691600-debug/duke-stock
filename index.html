@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.7'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2915,10 +2915,16 @@ function initRTDB(){
     // (suppressions en attente) par-dessus, puis on sauvegarde dans localStorage.
     function applyFirebaseData(remote, isInitial){
       if(!remote) return;
-      // Préserver les données locales non encore envoyées à Firebase :
-      // faultMachines (pannes + documents) sont souvent modifiées juste avant
-      // qu'un sync ne parte, et le listener temps réel peut arriver avant la sync.
+      // Préserver les données locales non encore envoyées à Firebase
       var localFaultMachines = (_syncQueued || _syncInFlight) ? (db.faultMachines||null) : null;
+      // Préserver les permissions locales des users (modifiées dans les paramètres)
+      var localUserPerms = {};
+      var localRolePerms = (_syncQueued || _syncInFlight) ? (db.rolePermissions||null) : null;
+      if(_syncQueued || _syncInFlight){
+        (db.users||[]).forEach(function(u){
+          if(u&&u.username&&u.permissions) localUserPerms[u.username]=Object.assign({},u.permissions);
+        });
+      }
       var localTombstones = (db.trashRemovedIds||[]).slice();
       // Remplacer intégralement db par Firebase
       Object.keys(db).forEach(function(k){ delete db[k]; });
@@ -2933,21 +2939,29 @@ function initRTDB(){
       if(!Array.isArray(db.trash)) db.trash=[];
       if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
       // Restaurer les faultMachines locales si une sync est en attente
-      // (elles contiennent les pannes/docs tout juste sauvegardés, pas encore sur Firebase)
       if(localFaultMachines && localFaultMachines.length > 0){
-        // Fusionner : garder la version locale pour les machines qu'on vient de modifier,
-        // et ajouter les machines Firebase qu'on n'a pas localement.
         var localById = {};
         localFaultMachines.forEach(function(m){ if(m&&m.id) localById[m.id]=m; });
         db.faultMachines = (db.faultMachines||[]).map(function(m){
           return (m&&m.id&&localById[m.id]) ? localById[m.id] : m;
         });
-        // Ajouter les machines locales absentes de Firebase (nouvellement créées)
         localFaultMachines.forEach(function(m){
           if(m&&m.id&&!db.faultMachines.find(function(x){return x.id===m.id;})){
             db.faultMachines.push(m);
           }
         });
+      }
+      // Restaurer les permissions locales des users si une sync est en attente
+      // (les permissions viennent d'être sauvegardées et ne sont pas encore sur Firebase)
+      if(Object.keys(localUserPerms).length > 0){
+        (db.users||[]).forEach(function(u){
+          if(u&&u.username&&localUserPerms[u.username]){
+            u.permissions = localUserPerms[u.username];
+          }
+        });
+      }
+      if(localRolePerms){
+        db.rolePermissions = Object.assign({}, db.rolePermissions||{}, localRolePerms);
       }
       // Fusionner les tombstones : union des tombstones Firebase + locaux
       localTombstones.forEach(function(id){
