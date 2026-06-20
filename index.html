@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.5'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.6'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7941,7 +7941,12 @@ translate();
       if(!u.permissions || typeof u.permissions!=='object'){u.permissions={...DEFAULT_OPERATOR_PERMISSIONS};changed=true;}
       ALL_KEYS.forEach(k=>{if(typeof u.permissions[k]==='undefined'){u.permissions[k]=!!DEFAULT_OPERATOR_PERMISSIONS[k];changed=true;}});
     });
-    if(changed && typeof save==='function') save();
+    if(changed){
+      // NE PAS appeler save() ici : cela écraserait les permissions Firebase avec les
+      // valeurs par défaut à chaque chargement de l'app. Les permissions sont sauvegardées
+      // uniquement quand l'admin clique explicitement sur Enregistrer dans les paramètres.
+      localStorage.setItem(STORE, JSON.stringify(d));
+    }
   }
   function setHidden(el,hide){if(el) el.classList.toggle('hidden',!!hide)}
   window.applyPermissionUI=function(){
@@ -8004,7 +8009,9 @@ translate();
     var d=safeDb(); if(!d) return;
     if(!d.rolePermissions) d.rolePermissions={};
     d.rolePermissions[role]=Object.assign({},perms);
-    if(typeof save==='function') save();
+    localStorage.setItem(STORE, JSON.stringify(d));
+    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+    else if(typeof save==='function') save();
   }
   function applyRoleTemplateToAllUsers(role){
     var d=safeDb(); if(!d) return;
@@ -8012,7 +8019,9 @@ translate();
     (d.users||[]).forEach(function(u){
       if(u.role===role) u.permissions=Object.assign({},tpl);
     });
-    if(typeof save==='function') save();
+    localStorage.setItem(STORE, JSON.stringify(d));
+    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+    else if(typeof save==='function') save();
   }
 
   // Onglets dans le dialog
@@ -8119,16 +8128,29 @@ translate();
   }
   function savePermissions(){
     const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
-    (d.users||[]).forEach(u=>{if(u.role!=='admin') u.permissions={...DEFAULT_OPERATOR_PERMISSIONS};});
+    // Lire chaque checkbox et mettre à jour directement la permission correspondante
+    // SANS réinitialiser d'abord toutes les permissions (ce qui effaçait les modifications)
     box.querySelectorAll('input[data-user][data-permission]').forEach(ch=>{
-      const u=(d.users||[]).find(x=>x.username===ch.getAttribute('data-user'));
-      if(u){if(!u.permissions)u.permissions={};u.permissions[ch.getAttribute('data-permission')]=!!ch.checked;}
+      const username=ch.getAttribute('data-user');
+      const permKey=ch.getAttribute('data-permission');
+      const u=(d.users||[]).find(x=>x.username===username);
+      if(u){
+        if(!u.permissions) u.permissions={...DEFAULT_OPERATOR_PERMISSIONS};
+        u.permissions[permKey]=!!ch.checked;
+      }
     });
-    if(typeof save==='function') save();
-    if(typeof log==='function') log('PERMISSIONS','Autorisations opérateurs mises à jour');
+    // Sauvegarder dans localStorage ET Firebase
+    localStorage.setItem(STORE,'duke_stock_manager_auth_v1' in localStorage
+      ? localStorage.getItem('duke_stock_manager_auth_v1')
+      : JSON.stringify(d));
+    localStorage.setItem(STORE, JSON.stringify(d));
+    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+    else if(typeof save==='function') save();
+    if(typeof log==='function') log('PERMISSIONS','Autorisations mises à jour');
     const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.close();
     if(typeof renderAll==='function') renderAll();
     setTimeout(window.applyPermissionUI,80);
+    alert('✅ Autorisations enregistrées !');
   }
   function deny(){alert(T('actionDenied'));}
   document.addEventListener('click',function(e){
