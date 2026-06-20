@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v7.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v7.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3018,6 +3018,7 @@ function initRTDB(){
       if(!isInitial && typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
         renderAll();
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+        if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();
       }
     }
 
@@ -3823,7 +3824,7 @@ function show(view){
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
 function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
-function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appView').classList.remove('hidden');$('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';renderAll();if(currentUser&&currentUser.role==='client'){clientPathIds=[];show('clientsView');renderClientMachineModule();}else{show('moduleView')}}
+function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appView').classList.remove('hidden');$('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';renderAll();if(currentUser&&currentUser.role==='client'){clientPathIds=[];show('clientsView');renderClientMachineModule();}else{show('moduleView')} setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);}
 
 function renderAll(){
   if(!currentUser)return;
@@ -9478,6 +9479,57 @@ function doFallback(csv,filename,email,subject,bodyText){
   }
   setTimeout(startBellUpdater, 1500);
   window._updateNotifBell = updateNotifBell;
+
+  // Vérifier au chargement et après chaque sync si des transferts attendent cet opérateur
+  // et afficher une modale de confirmation automatique
+  function checkPendingTransfersForCurrentUser(){
+    if(typeof currentUser==='undefined'||!currentUser||typeof isAdmin==='undefined') return;
+    if(isAdmin()) return; // L'admin gère depuis la vue stock
+    if(typeof db==='undefined'||!db) return;
+    var pending=(db.pendingTransfers||[]).filter(function(t){
+      if(t.status!=='pending') return false;
+      // Véhicule assigné à cet opérateur
+      var car=(db.cars||[]).find(function(c){return c.id===t.toCarId;});
+      return car && (car.driver===currentUser.username||car.assignedTo===currentUser.username||car.operatorId===currentUser.id);
+    });
+    if(!pending.length) return;
+    // Ne pas afficher si une modale est déjà ouverte
+    if(document.getElementById('transferConfirmModal')) return;
+    // Afficher la modale pour le premier transfert en attente
+    var t=pending[0];
+    var modal=document.createElement('div');
+    modal.id='transferConfirmModal';
+    modal.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.innerHTML='<div style="background:#fff;border-radius:22px;padding:24px;max-width:340px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25)">'
+      +'<div style="font-size:36px;text-align:center;margin-bottom:12px">📦</div>'
+      +'<h2 style="text-align:center;color:#1a7ad4;margin:0 0 8px;font-size:18px">Transfert de pièce</h2>'
+      +'<p style="text-align:center;color:#444;margin:0 0 16px;font-size:14px">'+esc(t.requestedBy)+' vous envoie :</p>'
+      +'<div style="background:#f4f9fd;border-radius:14px;padding:14px;margin-bottom:20px;text-align:center">'
+        +'<div style="font-weight:900;font-size:16px;color:#1a2a3a">'+esc(t.partName)+'</div>'
+        +(t.partNumber?'<div style="font-size:13px;color:#6f7b87;margin-top:2px">Réf: '+esc(t.partNumber)+'</div>':'')
+        +'<div style="font-size:22px;font-weight:900;color:#1a7ad4;margin-top:8px">×'+t.qty+'</div>'
+      +'</div>'
+      +(pending.length>1?'<p style="text-align:center;font-size:12px;color:#888;margin:0 0 16px">+ '+(pending.length-1)+' autre(s) transfert(s) en attente</p>':'')
+      +'<div style="display:flex;gap:12px">'
+        +'<button id="transferRejectBtn" style="flex:1;padding:14px;border-radius:14px;background:#ffebee;border:none;font-size:15px;font-weight:800;color:#c0392b;cursor:pointer">✕ Refuser</button>'
+        +'<button id="transferApproveBtn" style="flex:1;padding:14px;border-radius:14px;background:#1a7ad4;border:none;font-size:15px;font-weight:800;color:#fff;cursor:pointer">✅ Accepter</button>'
+      +'</div>'
+      +'</div>';
+    document.body.appendChild(modal);
+    document.getElementById('transferApproveBtn').onclick=function(){
+      modal.remove();
+      approveTransfer(t.id);
+      setTimeout(checkPendingTransfersForCurrentUser, 500);
+    };
+    document.getElementById('transferRejectBtn').onclick=function(){
+      if(confirm('Refuser ce transfert ? La pièce restera chez '+esc(t.requestedBy)+'.')){
+        modal.remove();
+        rejectTransfer(t.id);
+        setTimeout(checkPendingTransfersForCurrentUser, 500);
+      }
+    };
+  }
+  window._checkPendingTransfers=checkPendingTransfersForCurrentUser;
 })();
 </script>
 
