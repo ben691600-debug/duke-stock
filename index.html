@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v6.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v6.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7702,46 +7702,93 @@ translate();
            list.find(x=>nm && (norm(x.model).includes(nm)||nm.includes(norm(x.model)))) || null;
   }
   function getDocsForModel(model,type){const d=loadDb(); const m=findFaultByModel(d,model,type); return (m&&m.docs)||{};}
-  function showDocInModal(url, name, docType){
-    var old=document.getElementById('docViewerModal');
-    if(old) old.remove();
-    var m=document.createElement('div');
-    m.id='docViewerModal';
-    m.style.cssText='position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.92);display:flex;flex-direction:column';
-    var isImage = docType && docType.startsWith('image/');
-    var viewer = isImage
-      ? '<div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:16px"><img src="'+url+'" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px"></div>'
-      : '<iframe src="'+url+'" style="flex:1;border:none;width:100%;background:#fff"></iframe>';
-    m.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#1a1a2e;flex-shrink:0">'
-      +'<button id="docViewerClose" style="background:#fff2;border:none;color:#fff;font-size:22px;width:38px;height:38px;border-radius:50%;cursor:pointer">✕</button>'
-      +'<span style="color:#fff;font-weight:700;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(name||'Document')+'</span>'
-      +'<a href="'+url+'" download="'+(name||'document')+'" style="background:#1a7ad4;color:#fff;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none">⬇️</a>'
-      +'</div>'+viewer;
-    document.body.appendChild(m);
-    document.getElementById('docViewerClose').onclick=function(){ m.remove(); };
+  // Clé de cache IndexedDB pour un document local : modèle+key
+  function localCacheKey(model, key){ return 'cache__'+String(model||'').replace(/[^a-z0-9]/gi,'_')+'__'+key; }
+
+  async function isDocCachedLocally(model, key){
+    try{
+      const database=await openIdb();
+      const rec=await new Promise((resolve,reject)=>{
+        const tx=database.transaction(IDB_STORE,'readonly');
+        const req=tx.objectStore(IDB_STORE).get(localCacheKey(model,key));
+        req.onsuccess=()=>resolve(req.result); req.onerror=()=>resolve(null);
+      });
+      database.close();
+      return !!(rec&&rec.blob);
+    }catch(e){ return false; }
+  }
+
+  async function getCachedBlob(model, key){
+    const database=await openIdb();
+    const rec=await new Promise((resolve,reject)=>{
+      const tx=database.transaction(IDB_STORE,'readonly');
+      const req=tx.objectStore(IDB_STORE).get(localCacheKey(model,key));
+      req.onsuccess=()=>resolve(req.result); req.onerror=()=>resolve(null);
+    });
+    database.close();
+    return rec;
+  }
+
+  async function saveBlobToLocalCache(model, key, blob, name, type){
+    const database=await openIdb();
+    await new Promise((resolve,reject)=>{
+      const tx=database.transaction(IDB_STORE,'readwrite');
+      tx.objectStore(IDB_STORE).put({id:localCacheKey(model,key), blob, name, type});
+      tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
+    });
+    database.close();
   }
 
   async function openDoc(model,type,key){
     const docs=getDocsForModel(model,type); const doc=docs[key];
     if(!doc){alert(T('docNotSaved'));return;}
     try{
-      let url=''; let docType=doc.type||'application/octet-stream';
+      const docType=doc.type||'application/octet-stream';
+      const docName=doc.name||key;
+
+      // Vérifier si déjà en cache local sur cet appareil
+      const cached=await getCachedBlob(model,key);
+      if(cached&&cached.blob){
+        // Déjà téléchargé : ouvrir directement sans aucune modale
+        const url=URL.createObjectURL(cached.blob);
+        const a=document.createElement('a');
+        a.href=url; a.target='_blank'; a.rel='noopener';
+        document.body.appendChild(a); a.click();
+        setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },2000);
+        return;
+      }
+
+      // Première fois : convertir base64 → blob et proposer le téléchargement
+      let blob=null;
       if(doc.data){
-        if(docType.includes('pdf')){
-          try{
-            var parts=doc.data.split(','); var byteStr=atob(parts[1]);
-            var ab=new ArrayBuffer(byteStr.length); var ia=new Uint8Array(ab);
-            for(var i=0;i<byteStr.length;i++) ia[i]=byteStr.charCodeAt(i);
-            url=URL.createObjectURL(new Blob([ab],{type:'application/pdf'}));
-          }catch(e){ url=doc.data; }
-        } else { url=doc.data; }
+        try{
+          var parts=doc.data.split(',');
+          var mime=parts[0].match(/:(.*?);/)[1];
+          var byteStr=atob(parts[1]);
+          var ab=new ArrayBuffer(byteStr.length); var ia=new Uint8Array(ab);
+          for(var i=0;i<byteStr.length;i++) ia[i]=byteStr.charCodeAt(i);
+          blob=new Blob([ab],{type:mime});
+        }catch(e){ console.error('base64 decode',e); }
       } else if(doc.id){
         const rec=await getBlob(doc.id);
-        if(rec&&rec.blob){ url=URL.createObjectURL(rec.blob); docType=rec.type||docType; }
-        else {alert(T('docNotFound'));return;}
-      } else if(doc.url){ url=doc.url; }
-      if(!url){alert(T('docNotFound'));return;}
-      showDocInModal(url, doc.name||key, docType);
+        if(rec&&rec.blob) blob=rec.blob;
+      }
+
+      if(!blob){alert(T('docNotFound'));return;}
+
+      // Sauvegarder en cache local pour les prochains clics
+      await saveBlobToLocalCache(model, key, blob, docName, docType);
+
+      // Télécharger le fichier sur l'appareil
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=docName; a.target='_blank';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },2000);
+
+      // Informer l'utilisateur que le doc est maintenant disponible localement
+      alert('✅ Document téléchargé et mis en cache.\nLa prochaine fois, il s\'ouvrira directement sans re-télécharger.');
+
     }catch(e){ console.error('openDoc',e); alert('Erreur ouverture document.'); }
   }
   window.openTechDocModel = openDoc;
