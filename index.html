@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.3'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v8.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2266,6 +2266,7 @@ body.draggingMachine{
   <div class="expenseHistoryList" id="vehicleExpenseHistoryList"></div>
   <div class="formActions">
     <button type="button" class="btn secondary close" data-i="cancel"><span data-i="close">Fermer</span></button>
+    <button type="button" class="btn secondary" id="vehicleExpenseExcelBtn" style="background:#1d6f42;color:white;border:none">📊 Exporter Excel</button>
     <button type="button" class="btn secondary" id="vehicleExpenseSendBtn" style="width:100%">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
     <button type="button" class="btn primary" id="vehicleExpenseHistoryAdd" data-i="addExpense">+ Ajouter dépense</button>
   </div>
@@ -4580,6 +4581,114 @@ if($('vehicleExpenseFiles')) $('vehicleExpenseFiles').onchange=updateExpenseFile
 if($('vehicleExpenseHistoryMonth')) $('vehicleExpenseHistoryMonth').onchange=renderVehicleExpenseHistory;
 if($('vehicleExpenseHistoryAdd')) $('vehicleExpenseHistoryAdd').onclick=()=>{if(vehicleExpenseHistoryCarId) openVehicleExpenseDialog(vehicleExpenseHistoryCarId)};
 if($('vehicleExpenseSendBtn')) $('vehicleExpenseSendBtn').onclick=()=>openSendExpenseDialog(vehicleExpenseHistoryCarId);
+if($('vehicleExpenseExcelBtn')) $('vehicleExpenseExcelBtn').onclick=()=>generateExpenseExcel(vehicleExpenseHistoryCarId);
+
+function generateExpenseExcel(carId){
+  var car=(db.cars||[]).find(function(c){return c.id===carId;});
+  if(!car){alert('Véhicule introuvable');return;}
+  var monthKey=($('vehicleExpenseHistoryMonth')||{}).value||new Date().toISOString().slice(0,7);
+  var expenses=vehicleMonthlyExpenses(carId,monthKey);
+  var operatorName=car.driver||'';
+  // Format mois lisible
+  var monthDate=new Date(monthKey+'-01');
+  var monthLabel=monthDate.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+
+  // Charger SheetJS si pas encore chargé
+  function buildExcel(){
+    var XLSX=window.XLSX;
+    var wb=XLSX.utils.book_new();
+    var wsData=[];
+
+    // Ligne 1 : titre centré
+    wsData.push(['דוח הוצאות','','','','','','','','','']);
+    // Ligne 2 : nom opérateur
+    wsData.push([operatorName,'שם עובד:','','','','','','','','']);
+    // Ligne 3 : mois
+    wsData.push([monthLabel,'חודש:','','','','','','','','']);
+    // Ligne 4 : vide
+    wsData.push(['','','','','','','','','','']);
+    // Ligne 5 : en-têtes (colonne A à J) — de droite à gauche dans le fichier
+    wsData.push([
+      'תאריך',           // A
+      'פרטים והערות',    // B
+      'חנייה',           // C
+      'הוצ. אישיות\nרכב שנות', // D
+      'הוצאות\nדלק',    // E
+      'ארוחות אנשי HCP', // F
+      'ארוח ח"ול',       // G
+      'ארוחות אישיות',   // H
+      'סה"כ',            // I
+      'הערות',           // J
+    ]);
+
+    // Lignes de données 6-24
+    var PARKING_KEYWORDS=['parking','חנייה','park'];
+    for(var i=0;i<19;i++){
+      var exp=expenses[i];
+      if(exp){
+        var reason=(exp.reason||'').toLowerCase();
+        var isParking=PARKING_KEYWORDS.some(function(k){return reason.indexOf(k)!==-1;});
+        var amount=Number(exp.amount||0);
+        wsData.push([
+          exp.date||'',    // A - date
+          exp.reason||'',  // B - détails
+          isParking?amount:'',  // C - parking
+          '',              // D
+          '',              // E
+          '',              // F
+          '',              // G
+          '',              // H
+          !isParking?amount:'', // I - autre
+          '',              // J - notes
+        ]);
+      } else {
+        wsData.push(['','','','','','','','','','']);
+      }
+    }
+
+    // Ligne totaux (25)
+    wsData.push(['סה"כ','',0,'','',' ','','',0,'']);
+
+    // Lignes vides 26-27
+    wsData.push(['','','','','','','','','','']);
+    wsData.push(['','','','','','','','','','']);
+
+    // Ligne 28 : signature opérateur
+    wsData.push([operatorName,'חתימת העובד','','','','','','','','']);
+    // Ligne 29 vide
+    wsData.push(['','','','','','','','','','']);
+    // Ligne 30 : signature patron
+    wsData.push(['','שם וחתימת המאשר','','','','','','','','']);
+
+    var ws=XLSX.utils.aoa_to_sheet(wsData);
+
+    // Largeurs colonnes
+    ws['!cols']=[
+      {wch:12},{wch:28},{wch:10},{wch:14},{wch:10},{wch:16},{wch:14},{wch:14},{wch:10},{wch:12}
+    ];
+
+    // Hauteur en-tête
+    ws['!rows']=[{hpt:20},{hpt:18},{hpt:18},{hpt:10},{hpt:40}];
+
+    // Totaux via formule
+    var dataStart=6; var dataEnd=24;
+    ws['C25']={t:'n', f:'SUM(C6:C24)', v:0};
+    ws['I25']={t:'n', f:'SUM(I6:I24)', v:0};
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    var fileName='depenses_'+operatorName+'_'+monthKey+'.xlsx';
+    XLSX.writeFile(wb, fileName);
+  }
+
+  if(window.XLSX){
+    buildExcel();
+  } else {
+    var script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload=buildExcel;
+    document.head.appendChild(script);
+  }
+}
 if($('vehicleExpenseHistorySend')) $('vehicleExpenseHistorySend').onclick=()=>{if(vehicleExpenseHistoryCarId) sendVehicleExpenses(vehicleExpenseHistoryCarId,$('vehicleExpenseHistoryMonth').value||currentMonthKey())};
 if($('vehicleExpenseForm')) $('vehicleExpenseForm').onsubmit=async e=>{
   e.preventDefault();
@@ -9699,31 +9808,79 @@ window.openInterventionForm=function(request, machine, path, mid){
   var note=document.getElementById('intNote');
   if(note) note.value='';
 
-  // ── Numéros de panne — pré-remplis depuis la demande client, modifiables ──
+  // ── Numéros de panne — liste déroulante depuis faultMachines ──
   var faultList=document.getElementById('intFaultList');
   if(faultList){
     faultList.innerHTML='';
     window._intFaults=[];
+
+    // Récupérer les pannes définies pour ce modèle de machine
+    function getFaultOptions(){
+      var opts=[];
+      var model=machine?machine.model||'':'';
+      var type=machine?machine.type||'':'';
+      if(!model) return opts;
+      var norm=function(s){return String(s||'').toLowerCase().replace(/\s+/g,'');};
+      var fm=(db.faultMachines||[]).find(function(m){
+        return norm(m.model)===norm(model)||(type&&norm(m.type)===norm(type)&&norm(m.model)===norm(model));
+      });
+      if(fm&&Array.isArray(fm.faults)){
+        fm.faults.forEach(function(f){
+          if(f.number||f.text) opts.push({number:f.number||'',text:f.text||''});
+        });
+      }
+      return opts;
+    }
+
+    function addFaultRow(preselectedNumber){
+      var opts=getFaultOptions();
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px';
+      if(opts.length>0){
+        // Liste déroulante avec les pannes définies + option saisie libre
+        var sel=document.createElement('select');
+        sel.style.cssText='flex:1;padding:10px;border:2px solid #fb8c00;border-radius:12px;font-size:14px;font-weight:700;color:#e65100;background:white';
+        var emptyOpt=document.createElement('option');
+        emptyOpt.value=''; emptyOpt.textContent='— Choisir un numéro de panne —';
+        sel.appendChild(emptyOpt);
+        opts.forEach(function(o){
+          var opt=document.createElement('option');
+          opt.value=o.number+(o.text?' - '+o.text:'');
+          opt.textContent=(o.number?o.number+' — ':'')+o.text;
+          if(preselectedNumber && (o.number===preselectedNumber||opt.value===preselectedNumber)) opt.selected=true;
+          sel.appendChild(opt);
+        });
+        // Option "Autre / saisie libre"
+        var freeOpt=document.createElement('option');
+        freeOpt.value='__free__'; freeOpt.textContent='✏️ Autre (saisie libre)';
+        sel.appendChild(freeOpt);
+        row.appendChild(sel);
+      } else {
+        // Pas de pannes définies : champ texte libre
+        var inp=document.createElement('input');
+        inp.type='text';
+        inp.value=preselectedNumber||'';
+        inp.placeholder='Ex: 01 - Porte, E-05...';
+        inp.style.cssText='flex:1;padding:10px;border:2px solid #fb8c00;border-radius:12px;font-size:14px;font-weight:700;color:#e65100';
+        row.appendChild(inp);
+      }
+      var rmBtn=document.createElement('button');
+      rmBtn.type='button';
+      rmBtn.style.cssText='background:#ffebee;border:none;border-radius:10px;width:36px;height:36px;font-size:18px;cursor:pointer;flex-shrink:0';
+      rmBtn.textContent='×';
+      rmBtn.onclick=function(){row.remove();};
+      row.appendChild(rmBtn);
+      faultList.appendChild(row);
+    }
+
     // Pré-remplir avec le numéro de panne de la demande client
     var initialFault=request.faultLabel||request.errorNumber||'';
-    if(initialFault) addFaultNumberRow(initialFault);
-    // Bouton + ajouter
-    var addFaultBtn=document.getElementById('intAddFaultBtn');
-    if(addFaultBtn) addFaultBtn.onclick=function(){ addFaultNumberRow(''); };
-  }
+    addFaultRow(initialFault);
 
-  function addFaultNumberRow(val){
-    if(!faultList) return;
-    window._intFaults=window._intFaults||[];
-    var row=document.createElement('div');
-    row.style.cssText='display:flex;gap:8px;align-items:center';
-    row.innerHTML='<input type="text" value="'+esc(val||'')+'" placeholder="Ex: 01 - Porte, E-05..." '
-      +'style="flex:1;padding:10px;border:2px solid #fb8c00;border-radius:12px;font-size:14px;font-weight:700;color:#e65100">'
-      +'<button type="button" style="background:#ffebee;border:none;border-radius:10px;width:36px;height:36px;font-size:18px;cursor:pointer;flex-shrink:0">×</button>';
-    row.querySelector('button').onclick=function(){ row.remove(); };
-    faultList.appendChild(row);
+    // Bouton + ajouter une panne
+    var addFaultBtn=document.getElementById('intAddFaultBtn');
+    if(addFaultBtn) addFaultBtn.onclick=function(){addFaultRow('');};
   }
-  window._addFaultNumberRow=addFaultNumberRow;
 
   // Reset photos
   var photoList=document.getElementById('intPhotoList');
@@ -9845,11 +10002,12 @@ function saveIntervention(resolution){
   var parts=collectParts();
   var sigDataUrl=(_sigHasData&&_sigCanvas)?_sigCanvas.toDataURL('image/png'):'';
 
-  // Collecter les numéros de panne depuis les lignes du formulaire
+  // Collecter les numéros de panne depuis les lignes du formulaire (select ou input)
   var faultNumbers=[];
   var fl=document.getElementById('intFaultList');
-  if(fl) fl.querySelectorAll('input[type=text]').forEach(function(inp){
-    var v=(inp.value||'').trim(); if(v) faultNumbers.push(v);
+  if(fl) fl.querySelectorAll('select,input[type=text]').forEach(function(el){
+    var v=(el.value||'').trim();
+    if(v && v!=='__free__') faultNumbers.push(v);
   });
   var errorNumber=faultNumbers.join(', ');
   var faultLabel=faultNumbers[0]||_intRequest.faultLabel||'';
