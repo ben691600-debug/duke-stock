@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.0'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v8.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6333,8 +6333,7 @@ function openMachineService(mid){
     var pdfBtn=s.pdfHtml?'<button type="button" class="btn secondary mini" style="flex:1" data-pdf>📄 Voir rapport</button>':'<div style="flex:1"></div>';
     var delBtn=isAdmin()?'<button type="button" class="btn danger mini" style="flex:1" data-del-int>🗑️ Supprimer</button>':'';
     div.innerHTML='<b>'+esc(s.date||'')+'</b> <span class="badge">'+esc(s.serviceNumber||'')+'</span><br>'
-      +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||s.operatorName||'')+'</span><br>'
-      +'<span class="serviceStatusPill '+(s.resolution==='closed'?'':'in_progress')+'">'+resolution+'</span>'
+      +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||s.operatorName||'')+'</span>'
       +partsHtml
       +'<div style="display:flex;gap:6px;margin-top:8px">'+pdfBtn+delBtn+'</div>';
     if(s.pdfHtml){
@@ -9510,7 +9509,14 @@ function doFallback(csv,filename,email,subject,bodyText){
     <button type="button" id="intAddPartBtn" class="btn secondary" style="width:100%;margin-bottom:14px;border-radius:14px">+ Ajouter une pièce</button>
 
     <label style="font-weight:800;display:block;margin-bottom:6px">Note de l'opérateur</label>
-    <textarea id="intNote" rows="3" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:14px;box-sizing:border-box;resize:vertical;font-family:inherit;margin-bottom:14px" placeholder="Ce qui a été fait..."></textarea>
+    <textarea id="intNote" rows="3" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:14px;box-sizing:border-box;resize:vertical;font-family:inherit;margin-bottom:8px" placeholder="Ce qui a été fait..."></textarea>
+
+    <!-- Bouton ajout photos -->
+    <div style="margin-bottom:14px">
+      <button type="button" id="intAddPhotoBtn" class="btn secondary" style="border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700">📎 Ajouter photos</button>
+      <input type="file" id="intPhotoInput" accept="image/*" multiple style="display:none">
+      <div id="intPhotoList" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+    </div>
 
     <label style="font-weight:800;display:block;margin-bottom:6px">Opérateur</label>
     <input type="text" id="intOperatorName" readonly style="width:100%;padding:10px;border:1px solid var(--line);border-radius:14px;box-sizing:border-box;margin-bottom:14px;background:#f5f8fb;color:#6f7b87">
@@ -9634,6 +9640,38 @@ window.openInterventionForm=function(request, machine, path, mid){
   var note=document.getElementById('intNote');
   if(note) note.value='';
 
+  // Reset photos
+  var photoList=document.getElementById('intPhotoList');
+  if(photoList) photoList.innerHTML='';
+  window._intPhotos=[];
+  var photoBtn=document.getElementById('intAddPhotoBtn');
+  var photoInput=document.getElementById('intPhotoInput');
+  if(photoBtn&&photoInput){
+    photoInput.value='';
+    photoBtn.onclick=function(){ photoInput.click(); };
+    photoInput.onchange=function(){
+      Array.from(photoInput.files).forEach(function(file){
+        var reader=new FileReader();
+        reader.onload=function(e){
+          window._intPhotos=window._intPhotos||[];
+          window._intPhotos.push(e.target.result);
+          var img=document.createElement('div');
+          img.style.cssText='position:relative;width:70px;height:70px;flex-shrink:0';
+          img.innerHTML='<img src="'+e.target.result+'" style="width:70px;height:70px;object-fit:cover;border-radius:10px;border:2px solid var(--line)">'
+            +'<button type="button" style="position:absolute;top:-6px;right:-6px;background:#ef5350;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;font-weight:900;line-height:20px;text-align:center">×</button>';
+          img.querySelector('button').onclick=function(){
+            var idx=Array.from(photoList.children).indexOf(img);
+            if(idx>=0) window._intPhotos.splice(idx,1);
+            img.remove();
+          };
+          photoList.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+      });
+      photoInput.value='';
+    };
+  }
+
   // Tech name: default to current operator
   // Operator: auto-filled from current user
   var opInput=document.getElementById('intOperatorName');
@@ -9695,10 +9733,12 @@ function generateInterventionPDF(data, callback){
     +'<div class="row"><span class="label">N° de série</span><span class="val">'+esc2(data.machineSerial)+'</span></div>'
     +'<div class="row"><span class="label">Site / Entreprise</span><span class="val">'+esc2(data.groupPath.join(' / '))+'</span></div>'
     +'<div class="row"><span class="label">Panne signalée</span><span class="val">'+esc2(data.faultLabel)+'</span></div>'
+    +(data.errorNumber?'<div class="row"><span class="label">N° panne / erreur</span><span class="val"><b>'+esc2(data.errorNumber)+'</b></span></div>':'')
     +'<div class="section">Pièces utilisées</div>'
     +(data.partsUsed.length?data.partsUsed.map(function(p){return '<div class="row"><span class="label">'+esc2(p.partName)+'</span><span class="val">'+esc2(p.partNumber)+(p.supplier?' — '+esc2(p.supplier):'')+' × '+p.qty+'</span></div>';}).join(''):'<div class="row"><span class="val">Aucune pièce utilisée</span></div>')
     +'<div class="section">Note de l\'opérateur</div>'
     +'<div style="font-size:13px;white-space:pre-wrap;padding:8px;background:#f5f8fb;border-radius:8px">'+esc2(data.note||'—')+'</div>'
+    +((data.photos&&data.photos.length)?'<div class="section">Photos</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">'+data.photos.map(function(p){return '<img src="'+p+'" style="width:200px;height:150px;object-fit:cover;border-radius:8px;border:1px solid #ddd">';}).join('')+'</div>':'')
     +'<div class="section">Opérateur & Signature</div>'
     +'<div class="row"><span class="label">Opérateur</span><span class="val"><b>'+esc2(data.operatorName)+'</b></span></div>'
     +'<div class="row"><span class="label">Signataire (client)</span><span class="val">'+esc2(data.technicianName)+'</span></div>'
@@ -9734,11 +9774,13 @@ function saveIntervention(resolution){
     machineSerial:(_intMachine&&(_intMachine.serial||_intMachine.serialNumber))||_intRequest.serial||'',
     groupPath:_intRequest.groupPath||_intPath||[],
     faultLabel:_intRequest.faultLabel||'',
+    errorNumber:_intRequest.faultNumber||_intRequest.errorCode||_intRequest.errorNumber||'',
     partsUsed:parts,
     note:note,
     operatorName:operatorName,
     technicianName:techName,
-    signatureDataUrl:sigDataUrl
+    signatureDataUrl:sigDataUrl,
+    photos:window._intPhotos||[]
   };
 
   generateInterventionPDF(data, function(pdfUrl, pdfHtml){
