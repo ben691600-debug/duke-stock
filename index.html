@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v8.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -24,18 +24,10 @@ let _updateReady = false;
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=8.6', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=8.7', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
-
-      function checkForUpdate(){
-        if(reg.waiting){ showUpdateBanner(); return; }
-        reg.update().catch(function(){});
-      }
-
-      // Cas 1 : un SW est déjà en attente (mise à jour téléchargée avant ce chargement)
-      if(reg.waiting){ showUpdateBanner(); }
-
-      // Cas 2 : une mise à jour est détectée pendant que l'app est ouverte
+      // Déclencher une vérification au chargement (sans setInterval — checkVersionOnServer s'en charge)
+      reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
         var newWorker = reg.installing;
         if(!newWorker) return;
@@ -45,22 +37,10 @@ if('serviceWorker' in navigator){
           }
         });
       });
-
-      // Vérification immédiate + toutes les 60 secondes + au retour de focus
-      checkForUpdate();
-      setInterval(checkForUpdate, 60*1000);
-      document.addEventListener('visibilitychange', function(){
-        if(document.visibilityState === 'visible') checkForUpdate();
-      });
-
     }).catch(function(e){console.warn('SW error',e);});
-
-    // Quand le nouveau SW prend le contrôle, recharger une seule fois
     var _reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function(){
-      if(_reloaded) return;
-      _reloaded = true;
-      window.location.reload();
+      if(_reloaded) return; _reloaded = true; window.location.reload();
     });
   });
 }
@@ -3941,7 +3921,6 @@ function downloadExpenseFile(fileObj){
   document.body.appendChild(a);a.click();a.remove();
 }
 function buildExpenseXlsx(car, monthKey, callback){
-  // Charger SheetJS si nécessaire
   function build(){
     var XLSX=window.XLSX;
     var expenses=vehicleMonthlyExpenses(car.id, monthKey);
@@ -3949,59 +3928,69 @@ function buildExpenseXlsx(car, monthKey, callback){
     var monthDate=new Date((monthKey||currentMonthKey())+'-01');
     var monthLabel=monthDate.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
     var PARKING=['parking','חנייה','park'];
-
     var wb=XLSX.utils.book_new();
     var wsData=[];
 
-    // Ligne 1 titre
-    wsData.push(['דוח הוצאות','','','','','','','','','']);
-    // Ligne 2 nom
-    wsData.push([operatorName,'שם עובד:','','','','','','','','']);
-    // Ligne 3 mois
-    wsData.push([monthLabel,'חודש:','','','','','','','','']);
-    // Ligne 4 vide
-    wsData.push(['','','','','','','','','','']);
-    // Ligne 5 entêtes
-    wsData.push(['תאריך','פרטים והערות','חנייה','הוצ. אישיות\nרכב שנות','הוצאות\nדלק','ארוחות אנשי HCP','ארוח ח"ול','ארוחות אישיות','סה"כ','הערות']);
+    // En-tête
+    wsData.push(['דוח הוצאות']);
+    wsData.push([operatorName, 'שם עובד:']);
+    wsData.push([monthLabel, 'חודש:']);
+    wsData.push([]);
+    wsData.push(['תאריך','פרטים והערות','חנייה','הוצ. אישית / רכב','הוצאות דלק','ארוחות אנשי HCP','ארוח ח"ול','ארוחות אישיות','סה"כ','הערות']);
 
-    // Lignes 6-24 données
-    for(var i=0;i<19;i++){
-      var exp=expenses[i];
-      if(exp){
-        var reason=(exp.reason||'').toLowerCase();
-        var isParking=PARKING.some(function(k){return reason.indexOf(k)!==-1;});
-        var amt=Number(exp.amount||0);
-        wsData.push([
-          exp.date||'', exp.reason||'',
-          isParking?amt:'', '','','','','',
-          !isParking?amt:'', ''
-        ]);
-      } else {
-        wsData.push(['','','','','','','','','','']);
-      }
-    }
-    // Ligne 25 totaux
-    wsData.push(['סה"כ','','=SUM(C6:C24)','','','','','','=SUM(I6:I24)','']);
-    // Lignes vides
-    wsData.push(['','','','','','','','','','']);
-    wsData.push(['','','','','','','','','','']);
-    // Ligne 28 signature opérateur
-    wsData.push([operatorName,'חתימת העובד','','','','','','','','']);
-    wsData.push(['','','','','','','','','','']);
-    // Ligne 30 signature patron
-    wsData.push(['','שם וחתימת המאשר','','','','','','','','']);
+    // Données dynamiques — seulement les lignes réelles
+    var dataStart=6;
+    expenses.forEach(function(exp){
+      var isParking=PARKING.some(function(k){return (exp.reason||'').toLowerCase().indexOf(k)!==-1;});
+      var amt=Number(exp.amount||0);
+      wsData.push([exp.date||'', exp.reason||'', isParking?amt:'', '','','','','', !isParking?amt:'', '']);
+    });
+
+    var dataEnd=dataStart+expenses.length-1;
+    var totalRow=dataEnd+1;
+    var cRef='C'+dataStart+':C'+dataEnd;
+    var iRef='I'+dataStart+':I'+dataEnd;
+    wsData.push(['סה"כ','', expenses.length?{t:'n',f:'SUM('+cRef+')'}:0, '','','','','', expenses.length?{t:'n',f:'SUM('+iRef+')'}:0, '']);
+
+    wsData.push([]);
+    wsData.push([]);
+    wsData.push([operatorName, 'חתימת העובד']);
+    wsData.push([]);
+    wsData.push(['', 'שם וחתימת המאשר']);
 
     var ws=XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols']=[{wch:12},{wch:28},{wch:10},{wch:14},{wch:10},{wch:16},{wch:14},{wch:14},{wch:10},{wch:12}];
-    ws['!rows']=[{hpt:20},{hpt:18},{hpt:18},{hpt:10},{hpt:40}];
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    var xlsxData=XLSX.write(wb,{type:'array',bookType:'xlsx'});
-    var blob=new Blob([xlsxData],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    if(callback) callback(blob, 'depenses_'+operatorName+'_'+monthKey+'.xlsx');
+    ws['!cols']=[{wch:14},{wch:30},{wch:10},{wch:14},{wch:10},{wch:16},{wch:14},{wch:14},{wch:10},{wch:14}];
+    ws['!rows']=[];
+    ws['!rows'][4]={hpt:35};
+
+    // Bordures sur l'entête + données + totaux
+    var cols=['A','B','C','D','E','F','G','H','I','J'];
+    var thin={style:'thin',color:{rgb:'888888'}};
+    var brd={top:thin,bottom:thin,left:thin,right:thin};
+    var hFill={patternType:'solid',fgColor:{rgb:'BDD7EE'}};
+    var tFill={patternType:'solid',fgColor:{rgb:'DEEAF1'}};
+    // En-têtes
+    cols.forEach(function(c){
+      var a=c+'5'; if(!ws[a])ws[a]={t:'s',v:''};
+      ws[a].s={font:{bold:true,name:'Arial',sz:10},fill:hFill,border:brd,alignment:{horizontal:'center',vertical:'center',wrapText:true,readingOrder:2}};
+    });
+    // Données
+    for(var r=dataStart;r<=totalRow;r++){
+      cols.forEach(function(c){
+        var a=c+r; if(!ws[a])ws[a]={t:'s',v:''};
+        ws[a].s={font:{name:'Arial',sz:10,bold:r===totalRow},fill:r===totalRow?tFill:undefined,border:brd,alignment:{horizontal:'center',vertical:'center',readingOrder:2}};
+      });
+    }
+    ws['!sheetViews']=[{rightToLeft:true}];
+    XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+    var out=XLSX.write(wb,{type:'array',bookType:'xlsx',cellStyles:true});
+    var blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    if(callback) callback(blob,'depenses_'+operatorName+'_'+monthKey+'.xlsx');
   }
   if(window.XLSX){build();}
   else{var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=build;document.head.appendChild(s);}
 }
+
 function buildVehicleExpensesExcelBlob(car,monthKey){
   // Redirige vers la vraie fonction SheetJS
   buildExpenseXlsx(car, monthKey||currentMonthKey(), function(){});
