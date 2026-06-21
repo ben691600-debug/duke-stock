@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v8.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -24,7 +24,7 @@ let _updateReady = false;
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=8.5', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=8.6', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
 
       function checkForUpdate(){
@@ -3940,16 +3940,71 @@ function downloadExpenseFile(fileObj){
   a.download=fileObj.name||'document';
   document.body.appendChild(a);a.click();a.remove();
 }
-function buildVehicleExpensesExcelBlob(car,monthKey=currentMonthKey()){
-  const rows=[[T('plate'),T('driver'),'Mois','Date','Raison','Montant ₪','Documents']];
-  const expenses=vehicleMonthlyExpenses(car.id,monthKey);
-  if(!expenses.length) rows.push([car.plate||'',car.driver||'',monthKey,'-','-',0,'-']);
-  expenses.forEach(x=>rows.push([car.plate||'',car.driver||'',monthKey,x.date||'',x.reason||'',Number(x.amount||0),(x.files||[]).map(f=>f.name).join(', ')]));
-  rows.push(['','','','','Total',vehicleMonthlyExpenseTotal(car.id,monthKey),'']);
-  let htmlTable=`<html><head><meta charset="UTF-8"></head><body><h2>${excelEscape('Dépenses véhicule - '+(car.plate||''))}</h2><table border="1">`;
-  rows.forEach((row,idx)=>{htmlTable += '<tr>' + row.map(cell => idx===0 ? `<th>${excelEscape(cell)}</th>` : `<td>${excelEscape(cell)}</td>`).join('') + '</tr>';});
-  htmlTable += '</table></body></html>';
-  return new Blob([htmlTable], {type:'application/vnd.ms-excel;charset=utf-8;'});
+function buildExpenseXlsx(car, monthKey, callback){
+  // Charger SheetJS si nécessaire
+  function build(){
+    var XLSX=window.XLSX;
+    var expenses=vehicleMonthlyExpenses(car.id, monthKey);
+    var operatorName=car.driver||'';
+    var monthDate=new Date((monthKey||currentMonthKey())+'-01');
+    var monthLabel=monthDate.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+    var PARKING=['parking','חנייה','park'];
+
+    var wb=XLSX.utils.book_new();
+    var wsData=[];
+
+    // Ligne 1 titre
+    wsData.push(['דוח הוצאות','','','','','','','','','']);
+    // Ligne 2 nom
+    wsData.push([operatorName,'שם עובד:','','','','','','','','']);
+    // Ligne 3 mois
+    wsData.push([monthLabel,'חודש:','','','','','','','','']);
+    // Ligne 4 vide
+    wsData.push(['','','','','','','','','','']);
+    // Ligne 5 entêtes
+    wsData.push(['תאריך','פרטים והערות','חנייה','הוצ. אישיות\nרכב שנות','הוצאות\nדלק','ארוחות אנשי HCP','ארוח ח"ול','ארוחות אישיות','סה"כ','הערות']);
+
+    // Lignes 6-24 données
+    for(var i=0;i<19;i++){
+      var exp=expenses[i];
+      if(exp){
+        var reason=(exp.reason||'').toLowerCase();
+        var isParking=PARKING.some(function(k){return reason.indexOf(k)!==-1;});
+        var amt=Number(exp.amount||0);
+        wsData.push([
+          exp.date||'', exp.reason||'',
+          isParking?amt:'', '','','','','',
+          !isParking?amt:'', ''
+        ]);
+      } else {
+        wsData.push(['','','','','','','','','','']);
+      }
+    }
+    // Ligne 25 totaux
+    wsData.push(['סה"כ','','=SUM(C6:C24)','','','','','','=SUM(I6:I24)','']);
+    // Lignes vides
+    wsData.push(['','','','','','','','','','']);
+    wsData.push(['','','','','','','','','','']);
+    // Ligne 28 signature opérateur
+    wsData.push([operatorName,'חתימת העובד','','','','','','','','']);
+    wsData.push(['','','','','','','','','','']);
+    // Ligne 30 signature patron
+    wsData.push(['','שם וחתימת המאשר','','','','','','','','']);
+
+    var ws=XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols']=[{wch:12},{wch:28},{wch:10},{wch:14},{wch:10},{wch:16},{wch:14},{wch:14},{wch:10},{wch:12}];
+    ws['!rows']=[{hpt:20},{hpt:18},{hpt:18},{hpt:10},{hpt:40}];
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    var xlsxData=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+    var blob=new Blob([xlsxData],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    if(callback) callback(blob, 'depenses_'+operatorName+'_'+monthKey+'.xlsx');
+  }
+  if(window.XLSX){build();}
+  else{var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=build;document.head.appendChild(s);}
+}
+function buildVehicleExpensesExcelBlob(car,monthKey){
+  // Redirige vers la vraie fonction SheetJS
+  buildExpenseXlsx(car, monthKey||currentMonthKey(), function(){});
 }
 function downloadVehicleExpensesExcel(carId,monthKey=currentMonthKey()){
   const car=db.cars.find(x=>x.id===carId); if(!car) return null;
@@ -3970,22 +4025,30 @@ async function sendVehicleExpenses(carId,monthKey=currentMonthKey()){
   const email=prompt('Adresse mail pour envoyer le rapport :','');
   if(email===null) return;
   const clean=String(car.plate||'vehicule').replace(/[^\w\-]+/g,'_');
-  const excelFile=new File([buildVehicleExpensesExcelBlob(car,monthKey)], `depenses_${clean}_${monthKey}.xls`, {type:'application/vnd.ms-excel'});
+  const fileName=`depenses_${clean}_${monthKey}.xlsx`;
   const attachFiles=[];
   expenses.forEach(x=>(x.files||[]).forEach(f=>{try{attachFiles.push(dataUrlToFile(f));}catch(e){}}));
-  const files=[excelFile].concat(attachFiles).slice(0,20);
   const text=`Dépenses véhicule ${car.plate||''} / ${car.driver||''}\nMois: ${monthKey}\nTotal: ${total}`;
-  try{
-    if(navigator.canShare && navigator.canShare({files}) && navigator.share){
-      await navigator.share({files,title:'Dépenses véhicule '+(car.plate||''),text});
-      log('SHARE_VEHICLE_EXPENSES', `${car.plate} | ${monthKey} | ${total}`);
-      return;
-    }
-  }catch(e){}
-  downloadVehicleExpensesExcel(carId,monthKey);
-  const subject=encodeURIComponent('Dépenses véhicule '+(car.plate||'')+' - '+monthKey);
-  const body=encodeURIComponent(text+'\n\nLe fichier Excel a été téléchargé. Ajoute-le en pièce jointe avec les documents.');
-  window.location.href='mailto:'+encodeURIComponent(email)+'?subject='+subject+'&body='+body;
+
+  // Générer le vrai XLSX via SheetJS puis envoyer
+  buildExpenseXlsx(car, monthKey, async function(blob, fname){
+    const excelFile=new File([blob], fname||fileName, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const files=[excelFile].concat(attachFiles).slice(0,20);
+    try{
+      if(navigator.canShare && navigator.canShare({files}) && navigator.share){
+        await navigator.share({files,title:'Dépenses véhicule '+(car.plate||''),text});
+        log('SHARE_VEHICLE_EXPENSES', `${car.plate} | ${monthKey} | ${total}`);
+        return;
+      }
+    }catch(e){}
+    // Fallback : télécharger le fichier puis ouvrir mailto
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download=fname||fileName;
+    document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(url);a.remove();},1000);
+    var subject=encodeURIComponent('Dépenses véhicule '+(car.plate||'')+' - '+monthKey);
+    var body=encodeURIComponent(text+'\n\nLe fichier Excel a été téléchargé — ajoute-le en pièce jointe.');
+    window.location.href='mailto:'+encodeURIComponent(email)+'?subject='+subject+'&body='+body;
+  });
 }
 function openVehicleExpenseHistory(carId,monthKey=currentMonthKey()){
   const car=db.cars.find(x=>x.id===carId); if(!car) return;
@@ -9878,10 +9941,6 @@ window.openInterventionForm=function(request, machine, path, mid){
           if(preselectedNumber && (o.number===preselectedNumber||opt.value===preselectedNumber)) opt.selected=true;
           sel.appendChild(opt);
         });
-        // Option "Autre / saisie libre"
-        var freeOpt=document.createElement('option');
-        freeOpt.value='__free__'; freeOpt.textContent='✏️ Autre (saisie libre)';
-        sel.appendChild(freeOpt);
         row.appendChild(sel);
       } else {
         // Pas de pannes définies : champ texte libre
