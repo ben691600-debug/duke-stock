@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.1'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v8.2'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6306,79 +6306,94 @@ function findMachineById(mid){
   return scan(db.clientRoot, []);
 }
 function openMachineService(mid){
-  // Repurposed: now shows machine history (read-only) with PDF links
   const res=findMachineById(mid);
   if(!res) return;
   const m=res.machine;
   $('machineServiceTitle').textContent=m.model || 'Machine';
   $('machineServiceSub').textContent=T('serialNumber')+': '+(m.serial || '-')+' | '+(res.path.join(' / ') || T('clientMachineManagement'));
-  // Render combined history: old services + new interventions
   var box=$('machineServiceHistory');
-  box.innerHTML='';
-  // New interventions (from ▶/■ workflow)
-  var interventions=(m.serviceHistory||[]).filter(function(s){return s.type==='intervention';});
-  // Old manual services
-  var oldServices=(m.services||[]);
-  if(!interventions.length && !oldServices.length){
-    box.innerHTML='<p class="muted" style="padding:12px">'+T('noService')+'</p>';
-  }
-  // Show interventions first
-  interventions.forEach(function(s){
-    var entryId = s.id || s.serviceNumber || s.date || '';
-    var div=document.createElement('div');
-    div.className='serviceMini';
-    div.dataset.entryId = entryId;
-    var resolution=s.resolution==='closed'?'✅ Terminé':'🔄 Retour prévu';
-    var partsHtml=(s.partsUsed||[]).length?('<br><small>⚙️ '+(s.partsUsed||[]).map(function(p){return p.partName+(p.qty>1?' ×'+p.qty:'');}).join(', ')+'</small>'):'';
-    var pdfBtn=s.pdfHtml?'<button type="button" class="btn secondary mini" style="flex:1" data-pdf>📄 Voir rapport</button>':'<div style="flex:1"></div>';
-    var delBtn=isAdmin()?'<button type="button" class="btn danger mini" style="flex:1" data-del-int>🗑️ Supprimer</button>':'';
-    div.innerHTML='<b>'+esc(s.date||'')+'</b> <span class="badge">'+esc(s.serviceNumber||'')+'</span><br>'
-      +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||s.operatorName||'')+'</span>'
-      +partsHtml
-      +'<div style="display:flex;gap:6px;margin-top:8px">'+pdfBtn+delBtn+'</div>';
-    if(s.pdfHtml){
-      div.querySelector('[data-pdf]').onclick=function(){
-        var blob=new Blob([s.pdfHtml],{type:'text/html;charset=utf-8'});
-        window.open(URL.createObjectURL(blob),'_blank');
-      };
+
+  function renderHistory(filter){
+    box.innerHTML='';
+    var interventions=(m.serviceHistory||[]).filter(function(s){return s.type==='intervention';});
+    var oldServices=(m.services||[]);
+    // Filtre par numéro de panne ou note
+    if(filter){
+      var q=filter.toLowerCase();
+      interventions=interventions.filter(function(s){
+        return (s.errorNumber||'').toLowerCase().indexOf(q)!==-1
+          || (s.faultLabel||'').toLowerCase().indexOf(q)!==-1
+          || (s.serviceNumber||'').toLowerCase().indexOf(q)!==-1
+          || (s.note||'').toLowerCase().indexOf(q)!==-1;
+      });
     }
-    if(isAdmin()&&div.querySelector('[data-del-int]')){
-      div.querySelector('[data-del-int]').onclick=function(){
-        if(!confirm(T('confirmDeleteHistory'))) return;
-        var res2=findMachineById(mid);
-        if(res2&&res2.machine){
-          var m2=res2.machine;
-          // Filtrer l'entrée supprimée
-          m2.serviceHistory=(m2.serviceHistory||[]).filter(function(x){
-            return (x.id||x.serviceNumber||x.date) !== entryId;
-          });
-          // Tombstone : enregistrer l'id supprimé pour que la fusion Firebase
-          // ne le réinjecte pas lors du prochain sync (même logique que trashRemovedIds)
-          if(!m2.deletedHistoryIds) m2.deletedHistoryIds=[];
-          if(entryId && m2.deletedHistoryIds.indexOf(entryId)===-1){
-            m2.deletedHistoryIds.push(entryId);
-          }
-          // Aussi dans trashRemovedIds global pour la fusion deepMerge
-          db.trashRemovedIds=db.trashRemovedIds||[];
-          if(entryId && db.trashRemovedIds.indexOf(entryId)===-1){
-            db.trashRemovedIds.push(entryId);
-          }
-          save();
-          openMachineService(mid);
-        }
-      };
+    if(!interventions.length && !oldServices.length){
+      box.innerHTML='<p class="muted" style="padding:12px">'+T('noService')+'</p>';
     }
-    box.appendChild(div);
-  });
-  // Old manual services
-  oldServices.slice().reverse().forEach(function(s){
-    var div=document.createElement('div');
-    div.className='serviceMini';
-    div.innerHTML='<b>'+esc(s.date||'')+'</b><br>'
-      +T('serviceNumber')+': '+esc(s.serviceNumber||'')+' | '+T('errorNumber')+': '+esc(s.errorNumber||'')
-      +(s.note?('<div class="serviceNote">'+esc(s.note)+'</div>'):'');
-    box.appendChild(div);
-  });
+    interventions.forEach(function(s){
+      var entryId = s.id || s.serviceNumber || s.date || '';
+      var div=document.createElement('div');
+      div.className='serviceMini';
+      div.dataset.entryId = entryId;
+      var partsHtml=(s.partsUsed||[]).length?('<br><small>⚙️ '+(s.partsUsed||[]).map(function(p){return p.partName+(p.qty>1?' ×'+p.qty:'');}).join(', ')+'</small>'):'';
+      var pdfBtn=s.pdfHtml?'<button type="button" class="btn secondary mini" style="flex:1" data-pdf>📄 Voir rapport</button>':'<div style="flex:1"></div>';
+      var delBtn=isAdmin()?'<button type="button" class="btn danger mini" style="flex:1" data-del-int>🗑️ Supprimer</button>':'';
+      // Afficher numéro de panne si disponible
+      var faultHtml=(s.errorNumber||s.faultLabel)
+        ?('<div style="margin-top:3px"><span style="background:#fff3e0;color:#e65100;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px">⚡ '+esc(s.errorNumber||s.faultLabel)+'</span></div>')
+        :'';
+      div.innerHTML='<b>'+esc(s.date||'')+'</b> <span class="badge">'+esc(s.serviceNumber||'')+'</span><br>'
+        +'<span style="font-size:12px;color:#6f7b87">'+esc(s.technicianName||s.operatorName||'')+'</span>'
+        +faultHtml
+        +partsHtml
+        +'<div style="display:flex;gap:6px;margin-top:8px">'+pdfBtn+delBtn+'</div>';
+      if(s.pdfHtml){
+        div.querySelector('[data-pdf]').onclick=function(){
+          var blob=new Blob([s.pdfHtml],{type:'text/html;charset=utf-8'});
+          window.open(URL.createObjectURL(blob),'_blank');
+        };
+      }
+      if(isAdmin()&&div.querySelector('[data-del-int]')){
+        div.querySelector('[data-del-int]').onclick=function(){
+          if(!confirm(T('confirmDeleteHistory'))) return;
+          var res2=findMachineById(mid);
+          if(res2&&res2.machine){
+            var m2=res2.machine;
+            m2.serviceHistory=(m2.serviceHistory||[]).filter(function(x){
+              return (x.id||x.serviceNumber||x.date) !== entryId;
+            });
+            if(!m2.deletedHistoryIds) m2.deletedHistoryIds=[];
+            if(entryId && m2.deletedHistoryIds.indexOf(entryId)===-1) m2.deletedHistoryIds.push(entryId);
+            db.trashRemovedIds=db.trashRemovedIds||[];
+            if(entryId && db.trashRemovedIds.indexOf(entryId)===-1) db.trashRemovedIds.push(entryId);
+            save(); openMachineService(mid);
+          }
+        };
+      }
+      box.appendChild(div);
+    });
+    // Old manual services
+    oldServices.slice().reverse().forEach(function(s){
+      var div=document.createElement('div');
+      div.className='serviceMini';
+      div.innerHTML='<b>'+esc(s.date||'')+'</b><br>'
+        +T('serviceNumber')+': '+esc(s.serviceNumber||'')+' | '+T('errorNumber')+': '+esc(s.errorNumber||'')
+        +(s.note?('<div class="serviceNote">'+esc(s.note)+'</div>'):'');
+      box.appendChild(div);
+    });
+  } // end renderHistory
+
+  // Champ de filtre par numéro/type de panne — inséré avant la liste
+  var existingFilter=document.getElementById('machineHistoryFilter');
+  if(existingFilter) existingFilter.remove();
+  var filterWrap=document.createElement('div');
+  filterWrap.id='machineHistoryFilter';
+  filterWrap.style.cssText='padding:0 0 10px';
+  filterWrap.innerHTML='<input class="search" placeholder="🔍 Filtrer par N° panne, type..." style="width:100%;box-sizing:border-box">';
+  box.parentNode.insertBefore(filterWrap, box);
+  filterWrap.querySelector('input').oninput=function(){ renderHistory(this.value.trim()); };
+
+  renderHistory('');
   // Hide the form, show only history + close button
   var form=$('machineServiceForm');
   if(form){
@@ -9799,6 +9814,8 @@ function saveIntervention(resolution){
         date:now.toLocaleDateString(),
         type:'intervention',
         serviceNumber:data.serviceNumber,
+        errorNumber:data.errorNumber||'',
+        faultLabel:data.faultLabel||'',
         note:data.note,
         operatorName:data.operatorName,
         technicianName:data.technicianName,
