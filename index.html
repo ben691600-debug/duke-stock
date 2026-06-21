@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v8.4'; // ← à incrémenter à chaque update (v1.2, v1.3, ...)
+const APP_VERSION = 'v8.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -24,13 +24,16 @@ let _updateReady = false;
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js').then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=8.5', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
 
-      // Cas 1 : un SW est déjà en attente (mise à jour téléchargée avant ce chargement)
-      if(reg.waiting){
-        showUpdateBanner();
+      function checkForUpdate(){
+        if(reg.waiting){ showUpdateBanner(); return; }
+        reg.update().catch(function(){});
       }
+
+      // Cas 1 : un SW est déjà en attente (mise à jour téléchargée avant ce chargement)
+      if(reg.waiting){ showUpdateBanner(); }
 
       // Cas 2 : une mise à jour est détectée pendant que l'app est ouverte
       reg.addEventListener('updatefound', function(){
@@ -38,23 +41,22 @@ if('serviceWorker' in navigator){
         if(!newWorker) return;
         newWorker.addEventListener('statechange', function(){
           if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            // Nouveau SW installé et prêt, ancien SW toujours actif → update dispo
             showUpdateBanner();
           }
         });
       });
 
-      // Vérifie s'il y a une mise à jour disponible sur GitHub Pages dès l'ouverture,
-      // puis périodiquement (toutes les 5 minutes) et quand l'app reprend le focus.
-      reg.update().catch(function(){});
-      setInterval(function(){ reg.update().catch(function(){}); }, 5*60*1000);
+      // Vérification immédiate + toutes les 60 secondes + au retour de focus
+      checkForUpdate();
+      setInterval(checkForUpdate, 60*1000);
       document.addEventListener('visibilitychange', function(){
-        if(document.visibilityState === 'visible'){ reg.update().catch(function(){}); }
+        if(document.visibilityState === 'visible') checkForUpdate();
       });
+
     }).catch(function(e){console.warn('SW error',e);});
 
-    // Quand le nouveau SW prend le contrôle, on recharge une seule fois proprement
-    let _reloaded = false;
+    // Quand le nouveau SW prend le contrôle, recharger une seule fois
+    var _reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function(){
       if(_reloaded) return;
       _reloaded = true;
@@ -69,6 +71,32 @@ function showUpdateBanner(){
   var b = document.getElementById('updateBanner');
   if(b) b.style.display = 'flex';
 }
+
+// Vérification de version directe sur GitHub Pages (contourne le cache SW)
+// Compare APP_VERSION affiché avec la version réelle du fichier déployé
+(function checkVersionOnServer(){
+  // Attendre 3s que l'app se charge avant de faire la requête
+  setTimeout(function(){
+    fetch('/index.html?nocache='+Date.now(), {cache:'no-store', headers:{'Cache-Control':'no-cache'}})
+      .then(function(r){return r.text();})
+      .then(function(html){
+        var match=html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+        if(match && match[1] && match[1] !== (window.APP_VERSION||'')){
+          console.log('Duke: version serveur '+match[1]+' > locale '+window.APP_VERSION+' → mise à jour disponible');
+          showUpdateBanner();
+        }
+      }).catch(function(){});
+    // Revérifier toutes les 2 minutes
+    setInterval(function(){
+      fetch('/index.html?nocache='+Date.now(), {cache:'no-store', headers:{'Cache-Control':'no-cache'}})
+        .then(function(r){return r.text();})
+        .then(function(html){
+          var match=html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+          if(match && match[1] && match[1] !== (window.APP_VERSION||'')) showUpdateBanner();
+        }).catch(function(){});
+    }, 2*60*1000);
+  }, 3000);
+})();
 
 function applyAppUpdate(){
   if(_swRegistration && _swRegistration.waiting){

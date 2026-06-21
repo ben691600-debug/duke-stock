@@ -1,14 +1,14 @@
-// Duke Stock Manager - Service Worker v8 - NETWORK FIRST + activation automatique des mises à jour
-const CACHE_NAME = 'duke-stock-v73';
+// Duke Stock Manager - Service Worker v8 - CACHE FIRST avec détection de mise à jour
+const CACHE_NAME = 'duke-stock-v74';
+const FILES_TO_CACHE = ['/', '/index.html', '/manifest.json', '/logo.png'];
 
-// Installation : on NE prend PAS le contrôle automatiquement. Le nouveau SW reste en
-// attente ('waiting') jusqu'à ce que l'utilisateur clique explicitement sur le bouton
-// de mise à jour affiché dans l'application, qui envoie le message SKIP_WAITING.
 self.addEventListener('install', event => {
-  // (volontairement vide : pas de self.skipWaiting() ici)
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(FILES_TO_CACHE)).catch(() => {})
+  );
+  // NE PAS skipWaiting automatiquement — l'utilisateur doit valider
 });
 
-// Conservé pour compatibilité si la page envoie encore ce message.
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -19,37 +19,44 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.map(k => {
-        if (k !== CACHE_NAME) {
-          console.log('Duke SW: suppression ancien cache', k);
-          return caches.delete(k);
-        }
+        if (k !== CACHE_NAME) return caches.delete(k);
       }))
-    ).then(() => self.clients.claim()) // Prendre le contrôle immédiatement
+    ).then(() => self.clients.claim())
   );
 });
 
-// STRATÉGIE RÉSEAU EN PRIORITÉ
-// Toujours essayer le réseau d'abord, cache uniquement si hors ligne
 self.addEventListener('fetch', event => {
-  // Ignorer Firebase et APIs externes
   const url = event.request.url;
   if (url.includes('firebase') || url.includes('gstatic') ||
       url.includes('googleapis') || url.includes('qrserver') ||
-      url.includes('api.')) return;
+      url.includes('api.') || url.includes('cdnjs')) return;
+
+  if (url.endsWith('/') || url.endsWith('/index.html') || url.includes('index.html')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(event.request).then(cached => {
+          const networkFetch = fetch(event.request).then(response => {
+            if (response && response.status === 200) {
+              cache.put(event.request, response.clone());
+            }
+            return response;
+          }).catch(() => cached);
+          return cached || networkFetch;
+        })
+      )
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Réseau OK → mettre en cache ET retourner
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
         return response;
       })
-      .catch(() => {
-        // Réseau indisponible → utiliser le cache (mode hors ligne)
-        return caches.match(event.request);
-      })
+      .catch(() => caches.match(event.request))
   );
 });
