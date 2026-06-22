@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v9.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v9.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=9.7', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=9.8', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -2353,10 +2353,19 @@ body.draggingMachine{
 <dialog class="modal" id="clientGroupDialog"><form id="clientGroupForm">
   <h2 data-i="addGroup">Ajouter un groupe</h2>
   <label><span data-i="groupName">Nom du groupe</span><input id="clientGroupName" required placeholder="Hospital 1"></label>
+  <label><span>🏢 <span data-i="groupFloor">Étage / Localisation</span></span><input id="clientGroupFloor" placeholder="Ex: 3ème étage, Bâtiment B..."></label>
   <label><span data-i="groupPhoto">Image du groupe</span><input id="clientGroupPhoto" type="file" accept="image/*"></label>
   <div id="clientGroupPreview" class="preview hidden"></div>
   <label><span>📍 Lien Waze (navigation)</span><input id="clientGroupWaze" type="url" placeholder="https://waze.com/ul?ll=..."></label>
   <h2 data-i="contact">Contacts</h2>
+  <!-- Liste déroulante contacts du groupe parent (si sous-groupe) -->
+  <div id="parentContactsRow" style="display:none;margin-bottom:10px">
+    <label style="font-size:13px;font-weight:700;color:#1a7ad4">📋 <span data-i="contactFromParent">Copier un contact du groupe parent</span></label>
+    <select id="parentContactSelect" style="width:100%;padding:10px;border:2px solid #1a7ad4;border-radius:12px;margin-top:4px;font-size:14px;font-weight:600">
+      <option value="">— Sélectionner un contact —</option>
+    </select>
+    <button type="button" id="addParentContactBtn" class="btn secondary" style="width:100%;margin-top:6px;border-radius:12px" data-i="addContact">+ Ajouter ce contact</button>
+  </div>
   <div id="clientGroupContactsRows" class="contactRows"></div>
   <button type="button" class="btn secondary" id="addClientGroupContactBtn" data-i="addContact">+ Ajouter contact</button>
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
@@ -5633,6 +5642,7 @@ function renderClientMachineModule(){
     card.innerHTML=`
       <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
       <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
+      ${g.floor?`<p style="font-size:12px;color:#1a7ad4;font-weight:700">🏢 ${esc(g.floor)}</p>`:''}
       <p>${(g.groups||[]).length} ${T('groups')} · ${(g.machines||[]).length} ${T('machines')}</p>
       <div class="contactBox">
         <div class="contactPhoto">👤</div>
@@ -6268,24 +6278,61 @@ function openClientGroupContacts(gid){
 }
 if($('addClientGroupContactBtn')) $('addClientGroupContactBtn').onclick=()=>addClientGroupContactRow({});
 
+// Bouton "Ajouter ce contact" depuis la liste du groupe parent
+if($('addParentContactBtn')) $('addParentContactBtn').onclick=function(){
+  var sel=$('parentContactSelect');
+  if(!sel||!sel.value) return;
+  try{
+    var c=JSON.parse(sel.value);
+    addClientGroupContactRow(c);
+    sel.value='';
+  }catch(e){}
+};
+
 $('addClientGroupBtn').onclick=()=>{
   editingGroupId=null; groupImage='';
   $('clientGroupForm').reset();
   setClientGroupContactsRows([{}]);
   $('clientGroupDialog').querySelector('h2').textContent=T('addGroup');
   $('clientGroupPreview').classList.add('hidden');
+  $('clientGroupFloor').value='';
+  // Contacts du groupe parent (si on est dans un sous-groupe)
+  populateParentContactsDropdown();
   $('clientGroupDialog').showModal();
 };
+
+function populateParentContactsDropdown(){
+  var row=document.getElementById('parentContactsRow');
+  var sel=document.getElementById('parentContactSelect');
+  if(!row||!sel) return;
+  var node=currentClientNode();
+  var parentContacts=normalizeGroupContacts(node);
+  if(parentContacts.length>0 && clientPathIds.length>0){
+    sel.innerHTML='<option value="">— Sélectionner un contact —</option>';
+    parentContacts.forEach(function(c){
+      var opt=document.createElement('option');
+      opt.value=JSON.stringify(c);
+      opt.textContent=(c.firstName||'')+(c.lastName?' '+c.lastName:'')+(c.phone?' — '+c.phone:'');
+      sel.appendChild(opt);
+    });
+    row.style.display='block';
+  } else {
+    row.style.display='none';
+  }
+}
+
 $('clientGroupPhoto').onchange=e=>readImageInput(e.target,v=>groupImage=v,'clientGroupPreview','square');
 $('clientGroupForm').onsubmit=e=>{
   e.preventDefault();
   const node=currentClientNode();
   node.groups=node.groups||[];
   const wazeLink=($('clientGroupWaze').value||'').trim();
+  const floorVal=($('clientGroupFloor').value||'').trim();
   if(editingGroupId){
     const group=node.groups.find(g=>g.id===editingGroupId);
     if(group){
       group.name=$('clientGroupName').value.trim();
+      group.floor=floorVal;
       group.image=groupImage;
       group.waze=wazeLink;
       group.contacts=readClientGroupContactsFromForm();
@@ -6296,6 +6343,7 @@ $('clientGroupForm').onsubmit=e=>{
     const group={
       id:uid(),
       name:$('clientGroupName').value.trim(),
+      floor:floorVal,
       image:groupImage,
       waze:wazeLink,
       contacts:readClientGroupContactsFromForm(),
@@ -6510,7 +6558,9 @@ function openEditClientGroup(gid){
   $('clientGroupForm').reset();
   $('clientGroupDialog').querySelector('h2').textContent='✏️ ' + T('groupName');
   $('clientGroupName').value=group.name||'';
+  $('clientGroupFloor').value=group.floor||'';
   $('clientGroupWaze').value=group.waze||'';
+  populateParentContactsDropdown();
   setClientGroupContactsRows(normalizeGroupContacts(group));
   if(groupImage){
     $('clientGroupPreview').style.backgroundImage=`url(${groupImage})`;
