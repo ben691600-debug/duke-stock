@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v9.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v9.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=9.6', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=9.7', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -5753,7 +5753,7 @@ function renderClientMachineModule(){
     $('clientGroupsGrid').appendChild(card);
   });
 
-  // ── Bouton Filtrage par type de machine ──────────────────
+  // ── Bouton Filtrage par type/modèle de machine ──────────
   var machineFilterWrap=document.getElementById('clientMachineTypeFilter');
   if(!machineFilterWrap){
     machineFilterWrap=document.createElement('div');
@@ -5764,67 +5764,59 @@ function renderClientMachineModule(){
   }
   machineFilterWrap.innerHTML='';
 
-  // Collecter les types uniques de machines dans ce groupe
   var allMachines=clientAllowedMachines(node,clientInheritedAccess);
+
+  // Utiliser type si disponible, sinon le modèle comme catégorie de filtre
   var typeSet=[];
   allMachines.forEach(function(m){
-    var t=(m.type||'').trim();
+    var t=((m.type||'').trim()||(m.model||'').trim());
     if(t&&typeSet.indexOf(t)===-1) typeSet.push(t);
   });
 
-  // N'afficher le bouton que s'il y a plusieurs types
-  if(typeSet.length>1){
+  // Afficher le bouton si au moins 2 catégories différentes (ou au moins 3 machines)
+  if(typeSet.length>1||(allMachines.length>=3&&typeSet.length>=1)){
     var activeTypeFilter=window._clientTypeFilter||'';
     var filterBtn=document.createElement('button');
     filterBtn.type='button';
     filterBtn.style.cssText='display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:14px;border:2px solid var(--line);background:white;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px';
-    filterBtn.innerHTML=(activeTypeFilter?'⚡ '+esc(activeTypeFilter)+' ✕':'▼ '+T('filterAll'));
+    filterBtn.innerHTML=activeTypeFilter?'🏭 '+esc(activeTypeFilter)+' <span style="color:#ef5350">✕</span>':'▼ Filtrage';
 
     var dropdown=document.createElement('div');
     dropdown.style.cssText='display:none;position:absolute;top:46px;left:0;right:0;background:white;border:2px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:999;overflow:hidden;max-height:220px;overflow-y:auto';
 
-    // Option "Tout afficher"
     var allOpt=document.createElement('div');
     allOpt.style.cssText='padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;color:var(--blue)';
-    allOpt.textContent='🔄 '+T('filterAll');
-    allOpt.onclick=function(){
-      window._clientTypeFilter='';
-      dropdown.style.display='none';
-      renderClientMachineModule();
-    };
+    allOpt.textContent='🔄 Tout afficher ('+allMachines.length+')';
+    allOpt.onclick=function(){ window._clientTypeFilter=''; dropdown.style.display='none'; renderClientMachineModule(); };
     dropdown.appendChild(allOpt);
 
     typeSet.forEach(function(type){
+      var count=allMachines.filter(function(m){ return ((m.type||'').trim()||(m.model||'').trim())===type; }).length;
       var opt=document.createElement('div');
-      opt.style.cssText='padding:11px 16px;font-size:14px;cursor:pointer;border-top:1px solid #f0f0f0;display:flex;align-items:center;gap:8px'
+      opt.style.cssText='padding:11px 16px;font-size:14px;cursor:pointer;border-top:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between'
         +(activeTypeFilter===type?';background:#e8f4fd;font-weight:800':'');
-      opt.innerHTML='<span style="background:#e8f4fd;color:#1a7ad4;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px">🏭</span>'+esc(type);
-      opt.onclick=function(){
-        window._clientTypeFilter=type;
-        dropdown.style.display='none';
-        renderClientMachineModule();
-      };
+      opt.innerHTML='<span style="display:flex;align-items:center;gap:8px">'
+        +'<span style="background:#e8f4fd;color:#1a7ad4;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px">🏭</span>'
+        +esc(type)+'</span>'
+        +'<span style="background:#f0f0f0;color:#444;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">'+count+'</span>';
+      opt.onclick=function(){ window._clientTypeFilter=type; dropdown.style.display='none'; renderClientMachineModule(); };
       dropdown.appendChild(opt);
     });
 
-    filterBtn.onclick=function(){
-      dropdown.style.display=dropdown.style.display==='none'?'block':'none';
-    };
-    document.addEventListener('click',function closeDD(e){
-      if(!machineFilterWrap.contains(e.target)){dropdown.style.display='none';document.removeEventListener('click',closeDD);}
-    });
+    filterBtn.onclick=function(e){ e.stopPropagation(); dropdown.style.display=dropdown.style.display==='none'?'block':'none'; };
+    document.addEventListener('click',function closeDD(e){ if(!machineFilterWrap.contains(e.target)){dropdown.style.display='none'; document.removeEventListener('click',closeDD);} });
     machineFilterWrap.appendChild(filterBtn);
     machineFilterWrap.appendChild(dropdown);
   } else {
-    window._clientTypeFilter=''; // réinitialiser si plus qu'un type
+    window._clientTypeFilter='';
   }
 
   var activeTypeFilter=window._clientTypeFilter||'';
 
   $('clientMachinesList').innerHTML='';
   clientAllowedMachines(node,clientInheritedAccess).filter(m=>{
-    // Filtre par type
-    if(activeTypeFilter && (m.type||'').trim()!==activeTypeFilter) return false;
+    // Filtre par type ou modèle
+    if(activeTypeFilter && ((m.type||'').trim()||(m.model||'').trim())!==activeTypeFilter) return false;
     // Filtre par recherche texte
     const txt=[m.model,m.serial,(m.services||[]).map(s=>[s.serviceNumber,s.errorNumber,s.note].join(' ')).join(' ')].join(' ').toLowerCase();
     return !clientQuery || txt.includes(clientQuery);
