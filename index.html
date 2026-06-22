@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v9.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v9.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=9.1', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=9.2', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3039,6 +3039,8 @@ function initRTDB(){
       }
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
+      // Injecter les pannes DS 1000 depuis le manuel (si pas encore présentes)
+      if(typeof injectDS1000Faults==='function') setTimeout(injectDS1000Faults, 500);
       queueSyncToRTDB();
     }).catch(function(e){
       _initialPullDone=true;
@@ -9906,7 +9908,90 @@ function addPartRow(partId, qty){
   container.appendChild(row);
 }
 
-// ── Signature canvas setup ─────────────────────────────
+// ── Injection automatique des pannes DS 1000 depuis le manuel (pages 96-106) ──
+// S'exécute une seule fois si la machine n'a pas encore de pannes enregistrées.
+function injectDS1000Faults(){
+  if(!db||!Array.isArray(db.faultMachines)) return;
+  var DS1000_FAULTS=[
+    {number:'01',text:'CONTROL PLC LOCKED'},
+    {number:'02',text:'PLC CONTROL FAILURE (XOB10)'},
+    {number:'03',text:'PLC CONTROL FAILURE (XOB12)'},
+    {number:'04',text:'PLC CONTROL FAILURE (TEST)'},
+    {number:'05',text:'PLC RECORD FAILURES'},
+    {number:'06',text:'AUX ALARM - Emergency button'},
+    {number:'07',text:'THERMAL SAFETY TRIPPED'},
+    {number:'08',text:'PHASES SEQUENCE UNCORRECT'},
+    {number:'09',text:'ALL DOORS OPENED'},
+    {number:'10',text:'FAILURE LOADING DOOR (TIME)'},
+    {number:'11',text:'FAILURE UNLOADING DOOR (TIME)'},
+    {number:'12',text:'LOADING DOOR OPEN'},
+    {number:'13',text:'UNLOADING DOOR OPEN'},
+    {number:'14',text:'FAILURE ON BASKET LOCK'},
+    {number:'15',text:'VENT STACK FAILURE'},
+    {number:'16',text:'HAKKO TOUCH SCREEN NOT ACTIVE'},
+    {number:'17',text:'CHAMBER PROBE FAILURE'},
+    {number:'18',text:'DRYER PROBE FAILURE'},
+    {number:'19',text:'PH TRANSDUCER PROBLEMS'},
+    {number:'20',text:'RECORD TANK PROBE'},
+    {number:'21',text:'TANK PROBE DISPARITY'},
+    {number:'22',text:'FAILURE WATER CONNECTION 1'},
+    {number:'23',text:'FAILURE WATER CONNECTION 2'},
+    {number:'24',text:'FAILURE WATER CONNECTION 3'},
+    {number:'25',text:'FAILURE WATER CONNECTION 4'},
+    {number:'26',text:'FAILURE ON CHEMICAL 1'},
+    {number:'27',text:'FAILURE ON CHEMICAL 2'},
+    {number:'28',text:'FAILURE ON CHEMICAL 3'},
+    {number:'29',text:'FAILURE ON CHEMICAL 4'},
+    {number:'31',text:'WASH. PUMP PRESS. SWITCH 1'},
+    {number:'32',text:'CHAMBER HEATING FAILURE (TIME)'},
+    {number:'33',text:'DRYER HEATING FAILURE (TIME)'},
+    {number:'34',text:'WASH. PUMP PRESS. SWITCH 2'},
+    {number:'35',text:'DRAIN FAILURE (TIME)'},
+    {number:'36',text:'DRYER PRESSURE SWITCH 1'},
+    {number:'37',text:'SUMP PROBE FAILURE'},
+    {number:'38',text:'CHEMICAL NOT DOSABLE FOR TEMP.'},
+    {number:'39',text:'COMPRESSED AIR LACK'},
+    {number:'40',text:'EMERGENCY + DRYING TEMP.'},
+    {number:'41',text:'DRYER PRESSURE SWITCH 2'},
+    {number:'43',text:'FAILURE ON SOL.WATER 1'},
+    {number:'44',text:'FAILURE ON SOL.WATER 2'},
+    {number:'45',text:'FAILURE ON SOL.WATER 3'},
+    {number:'46',text:'FAILURE ON SOL.WATER 4'},
+    {number:'47',text:'FAILURE ON SOL. PRODUCT 1'},
+    {number:'48',text:'FAILURE ON SOL. PRODUCT 2'},
+    {number:'49',text:'FAILURE ON SOL. PRODUCT 3'},
+    {number:'50',text:'FAILURE ON SOL. PRODUCT 4'},
+    {number:'52',text:'TANK 1 MAX LEVEL FAILURE'},
+    {number:'53',text:'TANK 2 MAX LEVEL FAILURE'},
+    {number:'54',text:'TANK 3 MAX LEVEL FAILURE'},
+    {number:'55',text:'LOADING DOOR LS DISPARITY'},
+  ];
+  // Chercher une entrée existante DS 1000 / DS1000
+  var norm=function(s){return String(s||'').replace(/\s+/g,'').toUpperCase();};
+  var existing=db.faultMachines.find(function(m){
+    return norm(m.model).indexOf('DS1000')!==-1||norm(m.model).indexOf('DS900')!==-1;
+  });
+  if(existing){
+    // Ajouter seulement les pannes manquantes (sans écraser)
+    if(!Array.isArray(existing.faults)||existing.faults.length===0){
+      existing.faults=DS1000_FAULTS;
+      save();
+      console.log('Duke: pannes DS 1000 injectées ('+DS1000_FAULTS.length+' pannes)');
+    }
+  } else {
+    // Créer une nouvelle entrée faultMachine DS 1000
+    db.faultMachines.push({
+      id:uid(),
+      type:'Washer-Disinfector',
+      model:'DS 1000',
+      image:'',
+      faults:DS1000_FAULTS,
+      docs:{}
+    });
+    save();
+    console.log('Duke: entrée DS 1000 créée avec '+DS1000_FAULTS.length+' pannes');
+  }
+}
 function initSignatureCanvas(){
   _sigCanvas=document.getElementById('intSigCanvas');
   if(!_sigCanvas) return;
