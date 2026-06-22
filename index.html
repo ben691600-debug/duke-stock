@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v9.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v10.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=9.9', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=10.0', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -8602,7 +8602,25 @@ translate();
   function savePermissions(){
     const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
 
-    // 1. Lire toutes les checkboxes → construire la map complète
+    if(_permTab==='roles'){
+      // Onglet rôles — sauvegarder les templates de rôles
+      ['operator','client'].forEach(function(role){
+        var perms=Object.assign({},ROLE_PERMISSION_DEFAULTS[role]||{});
+        box.querySelectorAll('input[data-role-perm="'+role+'"]').forEach(function(ch){
+          perms[ch.getAttribute('data-permission')]=!!ch.checked;
+        });
+        saveRoleTemplate(role,perms);
+        applyRoleTemplateToAllUsers(role);
+      });
+      if(typeof log==='function') log('PERMISSIONS','Templates de rôles mis à jour');
+      const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.close();
+      if(typeof renderAll==='function') renderAll();
+      setTimeout(function(){ if(typeof window.applyPermissionUI==='function') window.applyPermissionUI(); },80);
+      alert(T('permsSaved'));
+      return;
+    }
+
+    // Onglet utilisateurs
     const permMap={};
     box.querySelectorAll('input[data-user][data-permission]').forEach(ch=>{
       const username=ch.getAttribute('data-user');
@@ -8611,20 +8629,17 @@ translate();
       permMap[username][permKey]=!!ch.checked;
     });
 
-    if(!Object.keys(permMap).length){ alert('Aucune permission à enregistrer.'); return; }
-
-    // 2. Appliquer sur db.users en mémoire
+    // Appliquer sur db.users en mémoire
     (d.users||[]).forEach(u=>{
       if(u.role==='admin'||!permMap[u.username]) return;
       u.permissions=Object.assign({...DEFAULT_OPERATOR_PERMISSIONS}, permMap[u.username]);
     });
 
-    // 3. Sauvegarder dans le cache persistant (30s de protection contre applyFirebaseData)
+    // Sauvegarder dans le cache persistant (60s de protection)
     var usersPerms=(d.users||[]).filter(u=>u.role!=='admin').map(u=>({username:u.username,permissions:Object.assign({},u.permissions)}));
     savePendingPerms(usersPerms, d.rolePermissions||{});
 
-    // 4. Écrire directement dans Firebase (court-circuite le cycle db→sync vulnérable)
-    var saved=false;
+    // Écriture directe dans Firebase sur le nœud users
     if(typeof _rtdb!=='undefined' && _rtdb && typeof _firebaseAuthReady!=='undefined' && _firebaseAuthReady){
       try{
         var usersToSend=(d.users||[]).map(function(u){return Object.assign({},u);});
@@ -8632,19 +8647,16 @@ translate();
           clearPendingPerms();
           console.log('Duke: permissions écrites directement dans Firebase ✓');
         }).catch(function(e){
-          console.warn('Duke: écriture directe Firebase échouée, fallback sync', e);
+          console.warn('Duke: écriture directe Firebase échouée', e);
         });
-        saved=true;
       }catch(e){ console.warn('Direct Firebase write failed', e); }
     }
 
-    // 5. Toujours sauvegarder dans localStorage + déclencher sync complète (backup)
+    // Backup : sync complète
     localStorage.setItem(STORE, JSON.stringify(d));
     if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
 
     if(typeof log==='function') log('PERMISSIONS','Autorisations mises à jour');
-
-    // 6. Fermer et rafraîchir
     const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.close();
     if(typeof renderAll==='function') renderAll();
     setTimeout(function(){ if(typeof window.applyPermissionUI==='function') window.applyPermissionUI(); },80);
