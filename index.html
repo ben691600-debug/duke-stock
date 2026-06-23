@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v10.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v10.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=10.3', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=10.4', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -5829,6 +5829,7 @@ function renderClientMachineModule(){
   }).forEach(m=>{
     const card=document.createElement('div');
     card.className='item';
+    card.style.position='relative';
     var _mSt=getMachineRequestStatus(m.id);
     if(_mSt==='open') card.classList.add('clientMachineOpenFault');
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
@@ -5849,9 +5850,8 @@ function renderClientMachineModule(){
           ${(isAdmin()||isOperator())?`<button class="btn secondary mini" type="button" data-act="machineCredentials" title="Acces machine" style="font-size:14px">🔐</button>`:''}
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="edit" title="Modifier" aria-label="Modifier">✏️</button>`:''}
           ${isAdmin()?`<button class="btn danger mini" type="button" data-act="delete" title="Supprimer" aria-label="Supprimer">🗑️</button>`:''}
-          ${(typeof isEndoscopeMachine==='function'&&isEndoscopeMachine(m))?`<button class="btn secondary mini" type="button" data-act="filters" title="Suivi filtres" style="background:#e8f5e9;font-size:15px">🔬</button>`:''}
         </div>`:''}
-        ${(isClientUser()&&typeof isEndoscopeMachine==='function'&&isEndoscopeMachine(m))?`<button class="btn secondary" type="button" data-act="filters" style="margin-top:6px;width:100%;font-size:13px">🔬 Suivi filtres</button>`:''}
+        ${(typeof isEndoscopeMachine==='function'&&isEndoscopeMachine(m))?`<div data-act="filters" style="position:absolute;top:-6px;left:-6px;background:${typeof getMachineFilterBadgeColor==='function'?getMachineFilterBadgeColor(m):'#bdbdbd'};color:white;font-size:10px;font-weight:900;padding:3px 8px;border-radius:999px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18);z-index:2">🔬 Filtres</div>`:''}
       </div>`;
     const qrBtn=card.querySelector('[data-act=qr]');
     if(qrBtn) qrBtn.onclick=(ev)=>{ev.stopPropagation();ev.preventDefault();clientServiceOpenPublic(m.id);};
@@ -9907,34 +9907,18 @@ function doFallback(csv,filename,email,subject,bodyText){
 </button>
 
 <!-- ══ Dialogue Rapport d'Intervention ══ -->
-<!-- ══ Suivi Filtres Endoscope ══ -->
-<dialog class="modal" id="filterTrackingDialog" style="max-width:540px;width:96vw;padding:0;border-radius:22px;overflow:hidden">
-  <div style="background:var(--blue);color:white;padding:16px 20px 12px">
-    <div style="font-size:12px;opacity:.8" id="ftMachineInfo">Machine</div>
-    <div style="font-weight:900;font-size:18px">🔬 Suivi des filtres</div>
-  </div>
-  <div style="padding:16px 18px;overflow-y:auto;max-height:78vh">
-    <div id="ftFilterList"></div>
-    <div id="ftStockSection" style="margin-top:14px"></div>
-    <div style="margin-top:16px">
-      <button type="button" onclick="document.getElementById('filterTrackingDialog').close()" class="btn secondary" style="width:100%">Fermer</button>
+<!-- ══ Panneau Filtres (slide depuis droite) ══ -->
+<div id="filterPanel" style="position:fixed;top:0;right:-100%;width:min(360px,100vw);height:100%;background:white;z-index:99999;box-shadow:-4px 0 24px rgba(0,0,0,.18);transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column">
+  <div style="background:var(--blue);color:white;padding:14px 16px 10px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <button onclick="closeFilterPanel()" style="background:rgba(255,255,255,.2);border:none;color:white;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;flex-shrink:0">✕</button>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:900;font-size:16px">🔬 Filtres</div>
+      <div style="font-size:11px;opacity:.8" id="ftMachineInfo"></div>
     </div>
   </div>
-</dialog>
-<!-- ══ Stock Filtres Client ══ -->
-<dialog class="modal" id="filterStockDialog" style="max-width:440px;width:96vw;padding:0;border-radius:22px;overflow:hidden">
-  <div style="background:var(--blue);color:white;padding:14px 18px 10px">
-    <div style="font-weight:900;font-size:16px">📦 Stock filtres client</div>
-    <div style="font-size:12px;opacity:.8" id="fsGroupName"></div>
-  </div>
-  <div style="padding:16px 18px;overflow-y:auto;max-height:70vh">
-    <div id="fsStockList"></div>
-    <div style="margin-top:14px;display:flex;gap:10px">
-      <button type="button" onclick="document.getElementById('filterStockDialog').close()" class="btn secondary" style="flex:1">Fermer</button>
-      <button type="button" id="fsStockSave" class="btn primary" style="flex:1">💾 Enregistrer</button>
-    </div>
-  </div>
-</dialog>
+  <div id="ftFilterList" style="flex:1;overflow-y:auto;padding:12px"></div>
+</div>
+<div id="filterPanelOverlay" onclick="closeFilterPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99998"></div>
 <dialog class="modal" id="interventionDialog" style="max-width:560px;width:96vw;padding:0;overflow:hidden;border-radius:22px">
   <div style="background:var(--blue);color:white;padding:16px 20px 12px">
     <div style="font-size:11px;opacity:.8;margin-bottom:2px" id="intSrvNum">N° SRV-...</div>
@@ -10084,220 +10068,234 @@ function addPartRow(partId, qty){
 // MODULE : SUIVI FILTRES ENDOSCOPES
 // ══════════════════════════════════════════════════════════
 var FILTER_TYPES=[
-  {id:'f5',    label:'5 µm',            icon:'🔵', internal:false},
-  {id:'fsyl',  label:'Siliphus',         icon:'🟤', internal:false},
-  {id:'f1',    label:'1 µm',             icon:'🟣', internal:false},
-  {id:'f05',   label:'0.5 µm',           icon:'🟠', internal:false},
-  {id:'f02',   label:'0.2 µm',           icon:'🔴', internal:false},
-  {id:'fint1', label:'Filtre interne 1',  icon:'⚙️', internal:true, fixedMonths:12},
-  {id:'fint2', label:'Filtre interne 2',  icon:'⚙️', internal:true, fixedMonths:12},
+  {id:'f5',    label:'5 µm',             icon:'🔵', internal:false},
+  {id:'fsyl',  label:'Siliphus',          icon:'🟤', internal:false},
+  {id:'f1',    label:'1 µm',              icon:'🟣', internal:false},
+  {id:'f05',   label:'0.5 µm',            icon:'🟠', internal:false},
+  {id:'f02',   label:'0.2 µm',            icon:'🔴', internal:false},
+  {id:'fint1', label:'Filtre interne 1',   icon:'⚙️', internal:true, fixedMonths:12},
+  {id:'fint2', label:'Filtre interne 2',   icon:'⚙️', internal:true, fixedMonths:12},
 ];
 
 function isEndoscopeMachine(m){
+  if(!m) return false;
   var t=((m.type||'')+(m.model||'')).toLowerCase();
-  return t.indexOf('endoscope')!==-1||t.indexOf('endoscop')!==-1||t.indexOf('scope')!==-1||t.indexOf('washer')!==-1||(m.filterTracking&&Object.keys(m.filterTracking).length>0);
+  return t.indexOf('endoscope')!==-1||t.indexOf('scope')!==-1||t.indexOf('washer')!==-1
+    ||(m.filterTracking&&Object.keys(m.filterTracking).length>0);
 }
 
+// Calcule statut + couleur d'un filtre
+// retourne {color, pct, label}
 function getFilterStatus(lastDate, freqMonths){
-  if(!lastDate||!freqMonths) return {color:'#9e9e9e',label:'Non configuré',pct:0};
+  if(!lastDate||!freqMonths) return {color:'#bdbdbd',pct:0,label:'—'};
   var now=Date.now();
   var last=new Date(lastDate).getTime();
   var totalMs=freqMonths*30*24*3600*1000;
   var elapsed=now-last;
   var pct=Math.max(0,Math.min(100,Math.round((elapsed/totalMs)*100)));
-  var remaining=totalMs-elapsed;
-  var daysLeft=Math.round(remaining/(24*3600*1000));
-  if(elapsed>totalMs) return {color:'#d32f2f',label:'⛔ Dépassé de '+(Math.abs(daysLeft))+' j',pct:100,urgent:true};
-  if(pct>=75)         return {color:'#f57c00',label:'🟡 '+daysLeft+' j restants',pct};
-  return               {color:'#388e3c',label:'🟢 '+daysLeft+' j restants',pct};
+  var daysLeft=Math.round((totalMs-elapsed)/(24*3600*1000));
+  if(elapsed>=totalMs) return {color:'#d32f2f',pct:100,label:'⛔ Dépassé '+Math.abs(daysLeft)+'j'};
+  if(pct>=75) return {color:'#e65100',pct,label:'🔴 '+daysLeft+'j restants'};
+  if(pct>=50) return {color:'#f9a825',pct,label:'🟡 '+daysLeft+'j restants'};
+  return {color:'#43a047',pct,label:'🟢 '+daysLeft+'j restants'};
+}
+
+// Couleur du badge filtre sur l'étiquette machine (pire filtre)
+function getMachineFilterBadgeColor(m){
+  if(!m||!m.filterTracking) return '#bdbdbd';
+  var worst='#43a047';
+  FILTER_TYPES.forEach(function(ft){
+    var data=(m.filterTracking||{})[ft.id]||{};
+    var freq=ft.internal?ft.fixedMonths:(data.freqMonths||0);
+    if(!freq) return;
+    var st=getFilterStatus(data.lastDate||'',freq);
+    if(st.color==='#d32f2f') worst='#d32f2f';
+    else if(st.color==='#e65100'&&worst!=='#d32f2f') worst='#e65100';
+    else if(st.color==='#f9a825'&&worst==='#43a047') worst='#f9a825';
+  });
+  return worst;
 }
 
 function openFilterTracking(mid, machine){
   var m=machine||(findMachineById(mid)||{}).machine;
   if(!m) return;
-  if(!m.filterTracking) m.filterTracking={};
-  var ftInfo=document.getElementById('ftMachineInfo');
-  if(ftInfo) ftInfo.textContent=esc(m.model)+(m.serial?' — '+m.serial:'');
+  var info=document.getElementById('ftMachineInfo');
+  if(info) info.textContent=(m.model||'')+(m.serial?' · '+m.serial:'');
   var list=document.getElementById('ftFilterList');
   if(!list) return;
   list.innerHTML='';
+  var groupId=findMachineGroupId(mid)||mid;
+  var clientStock=getClientFilterStock(groupId);
 
   FILTER_TYPES.forEach(function(ft){
-    var data=m.filterTracking[ft.id]||{};
-    var freqMonths=ft.internal?ft.fixedMonths:(data.freqMonths||0);
-    var lastDate=data.lastDate||'';
-    var status=getFilterStatus(lastDate, freqMonths);
+    var data=(m.filterTracking||{})[ft.id]||{};
+    var freq=ft.internal?ft.fixedMonths:(data.freqMonths||0);
+    var st=getFilterStatus(data.lastDate||'',freq);
+    var stock=clientStock[ft.id]||0;
     var canEdit=isAdmin();
-    var canConsume=isAdmin()||isOperator();
+    var canConsume=isAdmin()||(typeof isOperator==='function'&&isOperator());
 
     var card=document.createElement('div');
-    card.style.cssText='background:#f8fafc;border-radius:16px;padding:14px;margin-bottom:10px;border:2px solid '+(status.pct>=100?'#d32f2f':status.pct>=75?'#f57c00':'#e0e0e0');
+    card.style.cssText='border-radius:14px;padding:12px;margin-bottom:8px;border-left:4px solid '+st.color+';background:#fafafa';
+
+    // En-tête filtre
+    var header='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      +'<span style="font-size:18px">'+ft.icon+'</span>'
+      +'<span style="font-weight:800;font-size:14px;flex:1">'+ft.label+'</span>'
+      +'<span style="font-size:12px;font-weight:700;color:'+st.color+'">'+st.label+'</span>'
+      +'</div>';
 
     // Barre de progression
-    var barColor=status.color;
-    var barHtml='<div style="background:#e0e0e0;border-radius:999px;height:8px;margin:8px 0">'
-      +'<div style="background:'+barColor+';width:'+status.pct+'%;height:8px;border-radius:999px;transition:width .3s"></div></div>';
+    var bar='<div style="background:#e0e0e0;border-radius:999px;height:6px;margin-bottom:8px">'
+      +'<div style="background:'+st.color+';width:'+st.pct+'%;height:6px;border-radius:999px"></div></div>';
 
-    // Champ fréquence (admin seulement, non modifiable pour filtres internes)
+    // Stock client
+    var stockHtml='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">'
+      +'<span style="font-size:12px;color:#666">📦 Stock client:</span>'
+      +'<span style="font-weight:900;color:'+(stock===0?'#d32f2f':stock<=2?'#e65100':'#333')+'">'
+        +stock+' unité'+(stock>1?'s':'')+'</span>';
+    if(stock===0) stockHtml+='<span style="font-size:11px;color:#d32f2f">⛔ Vide</span>';
+    else if(stock<=2) stockHtml+='<span style="font-size:11px;color:#e65100">⚠️</span>';
+    stockHtml+='</div>';
+
+    // Fréquence (modifiable par admin, fixe pour internes)
     var freqHtml='';
-    if(canEdit && !ft.internal){
-      freqHtml='<div style="display:flex;align-items:center;gap:8px;margin-top:8px">'
-        +'<span style="font-size:12px;color:#667;white-space:nowrap">Tous les</span>'
-        +'<input type="number" min="1" max="36" value="'+(freqMonths||'')+'" placeholder="?" '
-        +'id="ftFreq_'+ft.id+'" style="width:60px;padding:6px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;text-align:center">'
-        +'<span style="font-size:12px;color:#667">mois</span></div>';
+    if(canEdit&&!ft.internal){
+      freqHtml='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">'
+        +'<span style="font-size:12px;color:#666">Fréquence:</span>'
+        +'<input type="number" min="1" max="36" value="'+(freq||'')+'" placeholder="?" '
+        +'id="ftFreq_'+ft.id+'" style="width:52px;padding:5px;border:1.5px solid #ccc;border-radius:8px;font-size:13px;text-align:center"> mois</div>';
     } else if(ft.internal){
-      freqHtml='<div style="font-size:12px;color:#667;margin-top:4px">Durée de vie : 1 an (fixe)</div>';
-    } else {
-      freqHtml=freqMonths?'<div style="font-size:12px;color:#667;margin-top:4px">Tous les '+freqMonths+' mois</div>':'';
+      freqHtml='<div style="font-size:12px;color:#666;margin-bottom:8px">Durée fixe: 12 mois</div>';
+    } else if(freq){
+      freqHtml='<div style="font-size:12px;color:#666;margin-bottom:8px">Tous les '+freq+' mois</div>';
     }
 
-    // Bouton "Remplacé aujourd'hui"
-    var replaceHtml='';
-    if(canConsume){
-      replaceHtml='<button type="button" data-replace="'+ft.id+'" style="margin-top:10px;width:100%;padding:10px;background:#e8f5e9;border:1.5px solid #4caf50;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;color:#2e7d32">✅ Remplacé aujourd\'hui</button>';
-    }
+    // Dernier remplacement
+    var lastHtml=data.lastDate?'<div style="font-size:11px;color:#888;margin-bottom:8px">Dernier: '+new Date(data.lastDate).toLocaleDateString()+'</div>':'';
 
-    card.innerHTML='<div style="display:flex;align-items:center;gap:8px">'
-      +'<span style="font-size:20px">'+ft.icon+'</span>'
-      +'<div style="flex:1"><div style="font-weight:800;font-size:14px">'+ft.label+'</div>'
-      +'<div style="font-size:12px;color:'+barColor+';font-weight:700">'+status.label+'</div></div>'
-      +(lastDate?'<div style="font-size:11px;color:#888;text-align:right">Dernier:<br>'+new Date(lastDate).toLocaleDateString()+'</div>':'')
-      +'</div>'
-      +barHtml+freqHtml+replaceHtml;
+    // Bouton remplacé
+    var replHtml=canConsume?'<button type="button" data-replace="'+ft.id+'" style="width:100%;padding:9px;background:#e8f5e9;border:1.5px solid #4caf50;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;color:#2e7d32">✅ Remplacé aujourd\'hui</button>':'';
 
-    // Bouton remplacer
-    var replBtn=card.querySelector('[data-replace]');
-    if(replBtn) replBtn.onclick=function(){
+    card.innerHTML=header+bar+stockHtml+freqHtml+lastHtml+replHtml;
+
+    // Sauvegarder fréquence
+    var fi=card.querySelector('#ftFreq_'+ft.id);
+    if(fi) fi.onchange=function(){
+      if(!m.filterTracking) m.filterTracking={};
+      if(!m.filterTracking[ft.id]) m.filterTracking[ft.id]={};
+      m.filterTracking[ft.id].freqMonths=parseInt(this.value)||0;
+      save(); openFilterTracking(mid,m);
+    };
+
+    // Bouton remplacé
+    var rb=card.querySelector('[data-replace]');
+    if(rb) rb.onclick=function(){
       if(!m.filterTracking) m.filterTracking={};
       if(!m.filterTracking[ft.id]) m.filterTracking[ft.id]={};
       m.filterTracking[ft.id].lastDate=new Date().toISOString();
-      // Lire la fréquence saisie si admin
-      var freqInp=document.getElementById('ftFreq_'+ft.id);
-      if(freqInp && !ft.internal) m.filterTracking[ft.id].freqMonths=parseInt(freqInp.value)||0;
-      // Déduire du stock client si consommation
-      deductFilterFromClientStock(mid, ft.id);
-      save();
-      openFilterTracking(mid, m);
-    };
-
-    // Sauvegarder fréquence au blur (admin)
-    var freqInp2=card.querySelector('#ftFreq_'+ft.id);
-    if(freqInp2) freqInp2.onchange=function(){
-      if(!m.filterTracking[ft.id]) m.filterTracking[ft.id]={};
-      m.filterTracking[ft.id].freqMonths=parseInt(this.value)||0;
-      save();
+      var fi2=document.getElementById('ftFreq_'+ft.id);
+      if(fi2&&!ft.internal) m.filterTracking[ft.id].freqMonths=parseInt(fi2.value)||freq||0;
+      // Déduire du stock
+      var gid=findMachineGroupId(mid)||mid;
+      if(!db.clientFilterStock) db.clientFilterStock={};
+      if(!db.clientFilterStock[gid]) db.clientFilterStock[gid]={};
+      var cur=db.clientFilterStock[gid][ft.id]||0;
+      if(cur>0) db.clientFilterStock[gid][ft.id]=cur-1;
+      save(); openFilterTracking(mid,m);
     };
 
     list.appendChild(card);
   });
 
-  // Section stock client
-  renderFilterStockSection(mid, m);
-  document.getElementById('filterTrackingDialog').showModal();
-}
-
-function renderFilterStockSection(mid, m){
-  var section=document.getElementById('ftStockSection');
-  if(!section) return;
-  // Trouver le groupe de cette machine
-  var groupId=findMachineGroupId(mid);
-  if(!groupId&&!isAdmin()) { section.innerHTML=''; return; }
-  var clientStock=getClientFilterStock(groupId||mid);
-  var html='<div style="background:#e8f4fd;border-radius:16px;padding:14px">'
-    +'<div style="font-weight:900;font-size:14px;color:#1a7ad4;margin-bottom:10px">📦 Stock filtres client</div>';
-  FILTER_TYPES.filter(function(ft){return !ft.internal;}).forEach(function(ft){
-    var qty=clientStock[ft.id]||0;
-    var lowStock=qty<=2;
-    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-      +'<span>'+ft.icon+'</span>'
-      +'<span style="flex:1;font-size:13px">'+ft.label+'</span>'
-      +'<span style="font-weight:900;font-size:15px;color:'+(lowStock&&qty>0?'#f57c00':qty===0?'#d32f2f':'#388e3c')+'">'+qty+' unité'+(qty>1?'s':'')+'</span>'
-      +(lowStock?'<span style="font-size:11px;color:'+(qty===0?'#d32f2f':'#f57c00')+'">'+(qty===0?'⛔ Vide':'⚠️ Faible')+'</span>':'')
-      +'</div>';
-  });
-  if(isAdmin()||isClientUser()){
-    html+='<button type="button" id="ftOpenStock" style="width:100%;margin-top:8px;padding:10px;background:#1a7ad4;color:white;border:none;border-radius:12px;font-weight:800;cursor:pointer">✏️ Gérer le stock</button>';
+  // Bouton gérer stock (admin/client)
+  if(isAdmin()||(typeof isClientUser==='function'&&isClientUser())){
+    var sb=document.createElement('button');
+    sb.type='button';
+    sb.style.cssText='width:100%;margin-top:8px;padding:11px;background:#1a7ad4;color:white;border:none;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer';
+    sb.textContent='📦 Gérer le stock client';
+    sb.onclick=function(){ openFilterStockPanel(groupId, m, mid); };
+    list.appendChild(sb);
   }
-  html+='</div>';
-  section.innerHTML=html;
-  var btn=document.getElementById('ftOpenStock');
-  if(btn) btn.onclick=function(){ document.getElementById('filterTrackingDialog').close(); openFilterStockDialog(groupId||mid, m); };
+
+  // Ouvrir le panneau
+  var panel=document.getElementById('filterPanel');
+  var overlay=document.getElementById('filterPanelOverlay');
+  if(panel){ panel.style.right='0'; }
+  if(overlay){ overlay.style.display='block'; }
 }
 
-function findMachineGroupId(mid){
-  var found=null;
-  function scan(node){
-    (node.machines||[]).forEach(function(m){ if(m.id===mid) found=node.id||null; });
-    (node.groups||[]).forEach(function(g){ if(!found) scan(g); });
-  }
-  if(db.clientRoot) scan(db.clientRoot);
-  return found;
+function closeFilterPanel(){
+  var panel=document.getElementById('filterPanel');
+  var overlay=document.getElementById('filterPanelOverlay');
+  if(panel) panel.style.right='-100%';
+  if(overlay) overlay.style.display='none';
 }
 
-function getClientFilterStock(groupOrMachineId){
-  if(!db.clientFilterStock) db.clientFilterStock={};
-  return db.clientFilterStock[groupOrMachineId]||{};
-}
-
-function deductFilterFromClientStock(mid, filterId){
-  var groupId=findMachineGroupId(mid)||mid;
-  if(!db.clientFilterStock) db.clientFilterStock={};
-  if(!db.clientFilterStock[groupId]) db.clientFilterStock[groupId]={};
-  var curr=db.clientFilterStock[groupId][filterId]||0;
-  if(curr>0) db.clientFilterStock[groupId][filterId]=curr-1;
-}
-
-function openFilterStockDialog(groupId, machine){
-  var stock=getClientFilterStock(groupId);
-  var gName=document.getElementById('fsGroupName');
-  if(gName) gName.textContent=machine?(machine.model||''):'';
-  var list=document.getElementById('fsStockList');
+function openFilterStockPanel(groupId, machine, mid){
+  var list=document.getElementById('ftFilterList');
   if(!list) return;
-  list.innerHTML='';
+  var stock=getClientFilterStock(groupId);
+  var canEdit=isAdmin()||(typeof isClientUser==='function'&&isClientUser());
+
+  list.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+    +'<button onclick="openFilterTracking(\''+mid+'\',null)" style="background:#f0f0f0;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px">← Retour</button>'
+    +'<span style="font-weight:900;font-size:15px;color:#1a7ad4">📦 Stock filtres client</span>'
+    +'</div>';
+
   FILTER_TYPES.filter(function(ft){return !ft.internal;}).forEach(function(ft){
     var qty=stock[ft.id]||0;
     var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:12px;background:#f8fafc;border-radius:14px;padding:10px';
-    var canEdit=isAdmin()||isClientUser();
-    row.innerHTML='<span style="font-size:22px">'+ft.icon+'</span>'
-      +'<span style="flex:1;font-size:14px;font-weight:700">'+ft.label+'</span>'
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px;background:#f8fafc;border-radius:12px;margin-bottom:8px';
+    row.innerHTML='<span style="font-size:20px">'+ft.icon+'</span>'
+      +'<span style="flex:1;font-size:13px;font-weight:700">'+ft.label+'</span>'
       +(canEdit
-        ?'<button type="button" data-dm="-" style="width:34px;height:34px;border-radius:10px;border:1.5px solid #ccc;background:white;font-size:18px;cursor:pointer">−</button>'
-        +'<span id="fsQty_'+ft.id+'" style="font-size:18px;font-weight:900;min-width:36px;text-align:center">'+qty+'</span>'
-        +'<button type="button" data-dm="+" style="width:34px;height:34px;border-radius:10px;border:1.5px solid #ccc;background:white;font-size:18px;cursor:pointer">+</button>'
-        :'<span style="font-size:18px;font-weight:900;color:#1a7ad4">'+qty+'</span>');
+        ?'<button data-dm="-" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #ccc;background:white;font-size:18px;cursor:pointer">−</button>'
+          +'<span id="fsQty_'+ft.id+'" style="font-size:16px;font-weight:900;min-width:32px;text-align:center">'+qty+'</span>'
+          +'<button data-dm="+" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #ccc;background:white;font-size:18px;cursor:pointer">+</button>'
+        :'<span style="font-size:16px;font-weight:900;color:#1a7ad4">'+qty+'</span>');
     if(canEdit){
-      var qtyEl=row.querySelector('#fsQty_'+ft.id);
+      var qEl=row.querySelector('#fsQty_'+ft.id);
       row.querySelectorAll('[data-dm]').forEach(function(btn){
         btn.onclick=function(){
-          var cur=parseInt(qtyEl.textContent)||0;
-          var nv=btn.getAttribute('data-dm')==='+' ? cur+1 : Math.max(0,cur-1);
-          qtyEl.textContent=nv;
+          var c=parseInt(qEl.textContent)||0;
+          qEl.textContent=btn.getAttribute('data-dm')==='+' ? c+1 : Math.max(0,c-1);
         };
       });
     }
     list.appendChild(row);
   });
-  var saveBtn=document.getElementById('fsStockSave');
-  if(saveBtn) saveBtn.onclick=function(){
-    if(!db.clientFilterStock) db.clientFilterStock={};
-    if(!db.clientFilterStock[groupId]) db.clientFilterStock[groupId]={};
-    FILTER_TYPES.filter(function(ft){return !ft.internal;}).forEach(function(ft){
-      var el=document.getElementById('fsQty_'+ft.id);
-      if(el) db.clientFilterStock[groupId][ft.id]=parseInt(el.textContent)||0;
-    });
-    save();
-    document.getElementById('filterStockDialog').close();
-    alert('✅ Stock mis à jour !');
-  };
-  document.getElementById('filterStockDialog').showModal();
+
+  if(canEdit){
+    var saveBtn=document.createElement('button');
+    saveBtn.type='button';
+    saveBtn.style.cssText='width:100%;margin-top:12px;padding:12px;background:#1a7ad4;color:white;border:none;border-radius:12px;font-weight:900;font-size:14px;cursor:pointer';
+    saveBtn.textContent='💾 Enregistrer';
+    saveBtn.onclick=function(){
+      if(!db.clientFilterStock) db.clientFilterStock={};
+      if(!db.clientFilterStock[groupId]) db.clientFilterStock[groupId]={};
+      FILTER_TYPES.filter(function(ft){return !ft.internal;}).forEach(function(ft){
+        var el=document.getElementById('fsQty_'+ft.id);
+        if(el) db.clientFilterStock[groupId][ft.id]=parseInt(el.textContent)||0;
+      });
+      save(); alert('✅ Stock mis à jour !');
+      openFilterTracking(mid, null);
+    };
+    list.appendChild(saveBtn);
+  }
 }
 
+function findMachineGroupId(mid){
+  var found=null;
+  function scan(node){ (node.machines||[]).forEach(function(m){if(m.id===mid)found=node.id||null;}); (node.groups||[]).forEach(function(g){if(!found)scan(g);}); }
+  if(db&&db.clientRoot) scan(db.clientRoot);
+  return found;
+}
+function getClientFilterStock(id){ if(!db.clientFilterStock)db.clientFilterStock={}; return db.clientFilterStock[id]||{}; }
+
 function initFilterModule(){
-  // Exposer pour accès client
   window.openFilterTracking=openFilterTracking;
-  window.openFilterStockDialog=openFilterStockDialog;
+  window.closeFilterPanel=closeFilterPanel;
 }
 initFilterModule();
 
