@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v10.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v10.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=10.4', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=10.5', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -5851,7 +5851,7 @@ function renderClientMachineModule(){
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="edit" title="Modifier" aria-label="Modifier">✏️</button>`:''}
           ${isAdmin()?`<button class="btn danger mini" type="button" data-act="delete" title="Supprimer" aria-label="Supprimer">🗑️</button>`:''}
         </div>`:''}
-        ${(typeof isEndoscopeMachine==='function'&&isEndoscopeMachine(m))?`<div data-act="filters" style="position:absolute;top:-6px;left:-6px;background:${typeof getMachineFilterBadgeColor==='function'?getMachineFilterBadgeColor(m):'#bdbdbd'};color:white;font-size:10px;font-weight:900;padding:3px 8px;border-radius:999px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18);z-index:2">🔬 Filtres</div>`:''}
+        ${(typeof isEndoscopeMachine==='function'&&isEndoscopeMachine(m))?`<div data-act="filters" style="position:absolute;top:-6px;left:6px;background:${typeof getMachineFilterBadgeColor==='function'?getMachineFilterBadgeColor(m):'#bdbdbd'};color:white;font-size:10px;font-weight:900;padding:3px 8px;border-radius:999px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.22);z-index:3;white-space:nowrap">🔬 Filtres</div>`:''}
       </div>`;
     const qrBtn=card.querySelector('[data-act=qr]');
     if(qrBtn) qrBtn.onclick=(ev)=>{ev.stopPropagation();ev.preventDefault();clientServiceOpenPublic(m.id);};
@@ -10080,7 +10080,11 @@ var FILTER_TYPES=[
 function isEndoscopeMachine(m){
   if(!m) return false;
   var t=((m.type||'')+(m.model||'')).toLowerCase();
-  return t.indexOf('endoscope')!==-1||t.indexOf('scope')!==-1||t.indexOf('washer')!==-1
+  return t.indexOf('endoscope')!==-1||t.indexOf('scope')!==-1
+    ||t.indexOf('washer')!==-1||t.indexOf('ew ')!==-1
+    ||t.indexOf(' ew')!==-1||t==='ew'||t.startsWith('ew')
+    ||t.indexOf('endow')!==-1||t.indexOf('wash')!==-1
+    ||m.filterTrackingEnabled===true
     ||(m.filterTracking&&Object.keys(m.filterTracking).length>0);
 }
 
