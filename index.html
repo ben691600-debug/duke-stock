@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v10.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v10.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=10.8', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=10.9', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -5840,10 +5840,10 @@ function renderClientMachineModule(){
     })(m);
     // Style languette si endoscope
     if(_isEndo){
-      card.style.cssText='position:relative;margin-top:18px';
+      card.style.cssText='position:relative;margin-top:22px';
     }
     card.innerHTML=
-      (_isEndo?'<div style="position:absolute;top:-18px;left:12px;background:#1a7ad4;color:white;font-size:11px;font-weight:900;padding:4px 12px;border-radius:8px 8px 0 0;letter-spacing:.5px;z-index:1">🔬 Filtre</div>':'')
+      (_isEndo?'<div style="position:absolute;top:-22px;left:0;background:#1a7ad4;color:white;font-size:11px;font-weight:900;padding:5px 16px 8px 16px;border-radius:10px 10px 0 0;letter-spacing:.8px;z-index:1;text-transform:uppercase">🔬 Maintenance</div>':'')
       +`<div class="machineIdentityCell">${(getFaultMachineImageByModel(m.model)||m.image)?`<img class="itemPhoto" src="${getFaultMachineImageByModel(m.model)||m.image}">`:`<div class="itemPhoto">🏭</div>`}</div>
       <div>
         <h3 title="${esc(m.model)}">${esc(m.model)}</h3>
