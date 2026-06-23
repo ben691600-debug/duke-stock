@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v10.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v10.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=10.5', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=10.6', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -10079,13 +10079,20 @@ var FILTER_TYPES=[
 
 function isEndoscopeMachine(m){
   if(!m) return false;
-  var t=((m.type||'')+(m.model||'')).toLowerCase();
-  return t.indexOf('endoscope')!==-1||t.indexOf('scope')!==-1
-    ||t.indexOf('washer')!==-1||t.indexOf('ew ')!==-1
-    ||t.indexOf(' ew')!==-1||t==='ew'||t.startsWith('ew')
-    ||t.indexOf('endow')!==-1||t.indexOf('wash')!==-1
-    ||m.filterTrackingEnabled===true
-    ||(m.filterTracking&&Object.keys(m.filterTracking).length>0);
+  var type=(m.type||'').toLowerCase().trim();
+  var model=(m.model||'').toLowerCase().trim();
+  var both=type+' '+model;
+  // Détection par mots-clés dans type ou modèle
+  var keywords=['endoscope','endoscop','scope','washer','wash','ew ','ew1','ew2','ew3',' ew'];
+  for(var i=0;i<keywords.length;i++){
+    if(both.indexOf(keywords[i])!==-1) return true;
+  }
+  // Modèle commence par EW (ex: EW 1, EW1, EW2...)
+  if(model.startsWith('ew')) return true;
+  // Activé manuellement ou déjà un suivi existant
+  if(m.filterTrackingEnabled===true) return true;
+  if(m.filterTracking&&Object.keys(m.filterTracking).length>0) return true;
+  return false;
 }
 
 // Calcule statut + couleur d'un filtre
