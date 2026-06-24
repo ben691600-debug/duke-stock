@@ -1,5 +1,5 @@
 // Duke Stock Manager - Service Worker v8 - CACHE FIRST avec détection de mise à jour
-const CACHE_NAME = 'duke-stock-v100';
+const CACHE_NAME = 'duke-stock-v101';
 const FILES_TO_CACHE = ['/', '/index.html', '/manifest.json', '/logo.png'];
 
 self.addEventListener('install', event => {

@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v11.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v11.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=11.1', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=11.2', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -2537,6 +2537,14 @@ body.draggingMachine{
   <h2 id="faultMachineFaultTitle" data-i="faultsList">Liste des pannes</h2>
   <div id="faultMachineRowsBox" class="faultMachineRowsBox"></div>
   <button type="button" class="btn secondary" id="faultMachineAddFaultButton" data-i="addFault">+ Ajouter une panne</button>
+
+  <!-- Section Maintenance -->
+  <div style="margin-top:18px;border-top:2px solid var(--line);padding-top:14px">
+    <div style="font-weight:900;font-size:15px;color:#1a7ad4;margin-bottom:12px">🔧 Maintenance préventive</div>
+    <div id="maintenanceRowsBox" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button type="button" class="btn secondary" id="addMaintenanceRowBtn" style="width:100%;margin-top:8px;border-radius:14px">+ Ajouter une maintenance</button>
+  </div>
+
   <div class="formActions">
     <button type="button" class="btn secondary" id="faultMachineFaultCancelButton">Fermer</button>
     <button class="btn primary">Enregistrer</button>
@@ -7687,22 +7695,18 @@ function faultMachineAddFaultRow(number='', text=''){
 
 function faultMachineOpenFaults(machineId){
   faultMachineEnsureDb();
-
   faultMachineActiveFaultId = machineId;
   const machine = db.faultMachines.find(x=>x.id===machineId);
   if(!machine) return;
-
   $('faultMachineFaultTitle').textContent = 'Pannes - ' + (machine.model || '');
-
   const box = $('faultMachineRowsBox');
   box.innerHTML = '';
-
   (machine.faults || []).forEach(f=>faultMachineAddFaultRow(f.number || '', f.text || ''));
-
   if(document.querySelectorAll('#faultMachineRowsBox .faultMachineFaultRow').length===0){
     faultMachineAddFaultRow();
   }
-
+  // Charger les maintenances existantes
+  if(typeof loadMaintenanceRows==='function') loadMaintenanceRows(machine.maintenances||[]);
   $('faultMachineFaultDialog').showModal();
 }
 
@@ -7883,18 +7887,58 @@ $('faultMachineForm').onsubmit = ev=>{
 
 $('faultMachineFaultForm').onsubmit = ev=>{
   ev.preventDefault();
-
   faultMachineEnsureDb();
-
   const machine = db.faultMachines.find(x=>x.id===faultMachineActiveFaultId);
   if(machine){
     machine.faults = faultMachineReadFaultRows();
+    // Lire les maintenances
+    machine.maintenances = readMaintenanceRows();
     save();
   }
-
   $('faultMachineFaultDialog').close();
   faultMachineRender();
 };
+
+// ── Maintenance préventive ──────────────────────────────────
+function addMaintenanceRow(data){
+  data=data||{};
+  var box=$('maintenanceRowsBox');
+  if(!box) return;
+  var row=document.createElement('div');
+  row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px';
+  row.innerHTML='<div style="display:flex;gap:8px;align-items:center">'
+    +'<input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
+    +'<button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+    +'<span style="font-size:12px;color:#666;white-space:nowrap">Fréquence tous les</span>'
+    +'<input type="number" min="1" max="120" value="'+(data.freqMonths||'')+'" placeholder="?" class="maintFreq" style="width:60px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'
+    +'<span style="font-size:12px;color:#666">mois</span>'
+    +'</div>';
+  row.querySelector('button').onclick=function(){ row.remove(); };
+  box.appendChild(row);
+}
+
+function readMaintenanceRows(){
+  var rows=[];
+  var box=$('maintenanceRowsBox');
+  if(!box) return rows;
+  box.querySelectorAll('div[style*="f0f7ff"]').forEach(function(row){
+    var desc=(row.querySelector('.maintDesc')||{}).value||'';
+    var freq=parseInt((row.querySelector('.maintFreq')||{}).value)||0;
+    if(desc||freq) rows.push({id:uid(),description:desc,freqMonths:freq});
+  });
+  return rows;
+}
+
+function loadMaintenanceRows(maintenances){
+  var box=$('maintenanceRowsBox');
+  if(!box) return;
+  box.innerHTML='';
+  (maintenances||[]).forEach(function(m){ addMaintenanceRow(m); });
+}
+
+if($('addMaintenanceRowBtn')) $('addMaintenanceRowBtn').onclick=function(){ addMaintenanceRow({}); };
 
 translate();
 
