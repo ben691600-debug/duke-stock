@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v12.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v12.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=12.4', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=12.5', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -4959,7 +4959,22 @@ function updateOperatorFormFields(role){
   if(supplierLabel){
     supplierLabel.style.display=isClient?'':'none';
     var supSel=$('operatorAssignedSupplier');
-    if(supSel&&isClient){var pv=supSel.value;supSel.innerHTML='<option value="">— Aucun fournisseur —</option>';(db.suppliers||[]).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(s){var o=document.createElement('option');o.value=s.id;o.textContent=s.name||'(sans nom)';supSel.appendChild(o);});if(pv)supSel.value=pv;}
+    if(supSel&&isClient){
+      var pv=supSel.value;
+      supSel.innerHTML='<option value="">— Aucun fournisseur —</option>';
+      // Lister tous les groupes fournisseurs récursivement
+      function _addSupplierOpts(node, prefix){
+        (node.groups||node.subgroups||[]).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(s){
+          var o=document.createElement('option');
+          o.value=s.id;
+          o.textContent=(prefix?prefix+' › ':'')+( s.name||'(sans nom)');
+          supSel.appendChild(o);
+          _addSupplierOpts(s, (prefix?prefix+' › ':'')+s.name);
+        });
+      }
+      _addSupplierOpts({groups:db.suppliers||[]},'');
+      if(pv) supSel.value=pv;
+    }
   }
 }
 // Écouter le changement de rôle
@@ -7143,12 +7158,10 @@ $('machineServiceForm').onsubmit=e=>{
 
 
 // ══════════════════════════════════════════════════════════
-// MODULE FOURNISSEURS — copie exacte du client machine
-// Groupe = Fournisseur/Sous-groupe  |  Machine = Pièce
+// MODULE FOURNISSEURS v12.5 — copie exacte client machine
 // ══════════════════════════════════════════════════════════
-
-let supplierImageData='', partImageData='', subgroupImageData='';
-let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
+let supplierImageData='', partImageData='';
+let editingSupplierId=null, editingPartId=null;
 let supplierPathIds=[];
 let sgMovingGroupId=null, sgLongPressTimer=null, sgDragGroupId=null;
 let sgTouchDragActive=false, sgTouchDragGhost=null;
@@ -7178,8 +7191,7 @@ function currentSupplierNode(){
 
 function findSupplierGroupWithParent(groupId, node=null){
   if(!node){ supplierEnsureDb(); node=db.supplierRoot; }
-  node.groups = node.groups||[];
-  for(const g of node.groups){
+  for(const g of (node.groups||[])){
     if(g.id===groupId) return {group:g, parent:node};
     const found = findSupplierGroupWithParent(groupId, g);
     if(found) return found;
@@ -7187,7 +7199,6 @@ function findSupplierGroupWithParent(groupId, node=null){
   return null;
 }
 
-// Trouver un groupe fournisseur par NOM (pour la corrélation client)
 function findSupplierGroupByName(name, node=null){
   if(!node){ supplierEnsureDb(); node=db.supplierRoot; }
   const nameLower=(name||'').trim().toLowerCase();
@@ -7200,25 +7211,20 @@ function findSupplierGroupByName(name, node=null){
 }
 
 function isDescendantSupplierGroup(parentId, childId){
-  const found = findSupplierGroupWithParent(parentId);
-  if(!found) return false;
+  const found=findSupplierGroupWithParent(parentId); if(!found) return false;
   function walk(g){ if((g.groups||[]).some(x=>x.id===childId)) return true; return (g.groups||[]).some(x=>walk(x)); }
   return walk(found.group);
 }
 
 function moveSgGroupInto(targetGroupId){
-  const sourceId = sgMovingGroupId || sgDragGroupId;
-  if(!sourceId || sourceId===targetGroupId){ clearMovingSgGroup(); renderSuppliersModule(); return; }
-  if(isDescendantSupplierGroup(sourceId, targetGroupId)){
-    alert(T('moveGroupImpossible')); clearMovingSgGroup(); renderSuppliersModule(); return;
-  }
-  const src = findSupplierGroupWithParent(sourceId);
-  const dst = findSupplierGroupWithParent(targetGroupId);
+  const sourceId=sgMovingGroupId||sgDragGroupId;
+  if(!sourceId||sourceId===targetGroupId){ clearMovingSgGroup(); renderSuppliersModule(); return; }
+  if(isDescendantSupplierGroup(sourceId,targetGroupId)){ alert(T('moveGroupImpossible')); clearMovingSgGroup(); renderSuppliersModule(); return; }
+  const src=findSupplierGroupWithParent(sourceId), dst=findSupplierGroupWithParent(targetGroupId);
   if(!src||!dst){ alert(T('moveGroupImpossible')); clearMovingSgGroup(); renderSuppliersModule(); return; }
-  src.parent.groups = (src.parent.groups||[]).filter(g=>g.id!==sourceId);
-  dst.group.groups = dst.group.groups||[];
-  dst.group.groups.push(src.group);
-  db.suppliers = db.supplierRoot.groups;
+  src.parent.groups=(src.parent.groups||[]).filter(g=>g.id!==sourceId);
+  dst.group.groups=dst.group.groups||[]; dst.group.groups.push(src.group);
+  db.suppliers=db.supplierRoot.groups;
   log('MOVE_SUPPLIER_GROUP', src.group.name+' → '+dst.group.name);
   save(); clearMovingSgGroup(); renderSuppliersModule();
 }
@@ -7229,19 +7235,17 @@ function clearMovingSgGroup(){
   if($('sgMoveHelp')) $('sgMoveHelp').classList.add('hidden');
 }
 
-// Drag touch — COPIE MOT POUR MOT de startRealTouchGroupDrag
+// Drag touch — MOT POUR MOT de startRealTouchGroupDrag
 function startSgTouchDrag(groupId, x, y){
-  const found = findSupplierGroupWithParent(groupId); if(!found) return;
+  const found=findSupplierGroupWithParent(groupId); if(!found) return;
   sgTouchDragActive=true; sgSuppressNextClick=true;
   sgTouchDragSourceId=groupId; sgDragGroupId=groupId;
   lastPointerX=x; lastPointerY=y;
   document.body.classList.add('draggingSupplierGroup');
   if($('sgMoveHelp')){ $('sgMoveHelp').textContent=T('moveGroupHelp')+' ('+found.group.name+')'; $('sgMoveHelp').classList.remove('hidden'); }
   sgTouchDragGhost=document.createElement('div');
-  sgTouchDragGhost.className='dragGhost';
-  sgTouchDragGhost.textContent=found.group.name;
-  document.body.appendChild(sgTouchDragGhost);
-  moveSgTouchDragGhost(x,y);
+  sgTouchDragGhost.className='dragGhost'; sgTouchDragGhost.textContent=found.group.name;
+  document.body.appendChild(sgTouchDragGhost); moveSgTouchDragGhost(x,y);
 }
 function moveSgTouchDragGhost(x,y){
   lastPointerX=x; lastPointerY=y;
@@ -7251,21 +7255,19 @@ function moveSgTouchDragGhost(x,y){
   if(ghost) ghost.style.display='none';
   const el=document.elementFromPoint(x,y);
   if(ghost) ghost.style.display='';
-  const target = el ? el.closest('#supplierGroupsGrid .groupCard') : null;
-  if(target && target.dataset.groupId && target.dataset.groupId!==sgTouchDragSourceId)
-    target.classList.add('groupDropTarget');
+  const target=el?el.closest('#supplierGroupsGrid .groupCard'):null;
+  if(target&&target.dataset.groupId&&target.dataset.groupId!==sgTouchDragSourceId) target.classList.add('groupDropTarget');
 }
 function finishSgTouchDrag(x,y){
   if(!sgTouchDragActive) return;
-  const sourceId=sgTouchDragSourceId;
-  const ghost=sgTouchDragGhost;
+  const sourceId=sgTouchDragSourceId, ghost=sgTouchDragGhost;
   if(ghost) ghost.style.display='none';
   const el=document.elementFromPoint(x,y);
   if(ghost) ghost.style.display='';
-  const target = el ? el.closest('#supplierGroupsGrid .groupCard') : null;
-  const targetId = target && target.dataset.groupId ? target.dataset.groupId : null;
+  const target=el?el.closest('#supplierGroupsGrid .groupCard'):null;
+  const targetId=target&&target.dataset.groupId?target.dataset.groupId:null;
   cleanupSgTouchDrag(false);
-  if(targetId && targetId!==sourceId){ sgMovingGroupId=sourceId; moveSgGroupInto(targetId); }
+  if(targetId&&targetId!==sourceId){ sgMovingGroupId=sourceId; moveSgGroupInto(targetId); }
   else { renderSuppliersModule(); }
   setTimeout(()=>{sgSuppressNextClick=false;},400);
   setTimeout(()=>{sgSuppressNextClick=false;},1000);
@@ -7280,7 +7282,7 @@ function cleanupSgTouchDrag(resetClick=true){
   if(resetClick){ setTimeout(()=>{sgSuppressNextClick=false;},300); setTimeout(()=>{sgSuppressNextClick=false;},800); }
 }
 
-// Listeners globaux drag sg (copie exacte des listeners globaux client)
+// Listeners globaux drag (copie exacte)
 document.addEventListener('pointermove',ev=>{
   if(sgTouchDragActive){ ev.preventDefault(); moveSgTouchDragGhost(ev.clientX,ev.clientY); }
 },{passive:false});
@@ -7295,9 +7297,9 @@ document.addEventListener('pointercancel',()=>{
 function renderSuppliersModule(){
   supplierEnsureDb();
   if(!$('supplierGroupsGrid')) return;
-  const node = currentSupplierNode();
-  const isRoot = supplierPathIds.length===0;
-  $('supplierUpBtn').classList.toggle('hidden', isRoot);
+  const node=currentSupplierNode();
+  const isRoot=supplierPathIds.length===0;
+  $('supplierUpBtn').classList.toggle('hidden',isRoot);
   $('supplierEmptyGroups').classList.add('hidden');
   $('supplierEmptyParts').classList.add('hidden');
   // Fil d'Ariane
@@ -7325,50 +7327,36 @@ function renderSuppliersModule(){
     return !q||txt.includes(q);
   }).forEach(g=>{
     const card=document.createElement('div');
-    card.className='groupCard';
-    card.dataset.groupId=g.id;
-    card.draggable=isAdmin();
+    card.className='groupCard'; card.dataset.groupId=g.id; card.draggable=isAdmin();
     if(sgMovingGroupId===g.id) card.classList.add('groupMoveSelected');
-    const isNotRoot=(()=>{ const s=findSupplierGroupWithParent(g.id); return s && s.parent!==db.supplierRoot; })();
-    const pCount=(g.parts||[]).length;
-    const gCount=(g.groups||[]).length;
+    const isNotRoot=(()=>{ const s=findSupplierGroupWithParent(g.id); return s&&s.parent!==db.supplierRoot; })();
+    const pCount=(g.parts||[]).length, gCount=(g.groups||[]).length;
     card.innerHTML=`
-      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:"🧰"}</div>
+      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🧰'}</div>
       <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
       <p>${gCount} sous-groupe${gCount!==1?'s':''} · ${pCount} pièce${pCount!==1?'s':''}</p>
       ${!isClientUser()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
         ${isAdmin()?`<div style="display:flex;gap:6px">
           <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
-          ${isNotRoot?`<button class="btn secondary mini" data-act="moveup" style="flex:1">⬆️</button>`:`<div style="flex:1"></div>`}
+          ${isNotRoot?`<button class="btn secondary mini" data-act="moveup" style="flex:1">⬆️</button>`:'<div style="flex:1"></div>'}
           <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
-        </div>`:''}</div>`:''
-      }`;
-    const editBtn=card.querySelector('[data-act=edit]');
-    if(editBtn) editBtn.onclick=ev=>{ev.stopPropagation();openEditSupplierGroup(g.id);};
-    const moveUpBtn=card.querySelector('[data-act=moveup]');
-    if(moveUpBtn) moveUpBtn.onclick=ev=>{ev.stopPropagation();moveSgGroupToParent(g.id);};
-    const delBtn=card.querySelector('[data-act=delete]');
-    if(delBtn) delBtn.onclick=ev=>{ev.stopPropagation();deleteSupplierGroup(g.id);};
+        </div>`:''}
+      </div>`:''}`;
+    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplierGroup(g.id);};
+    const mub=card.querySelector('[data-act=moveup]'); if(mub) mub.onclick=ev=>{ev.stopPropagation();moveSgGroupToParent(g.id);};
+    const db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSupplierGroup(g.id);};
     card.onclick=ev=>{
       if(ev.target.closest('button')) return;
       if(sgTouchDragActive||sgSuppressNextClick){ev.preventDefault();ev.stopPropagation();return;}
       if(sgMovingGroupId){ moveSgGroupInto(g.id); return; }
       supplierPathIds.push(g.id); renderSuppliersModule();
     };
-    // HTML5 drag souris
-    card.addEventListener('dragstart',ev=>{
-      if(!isAdmin()){ev.preventDefault();return;} if(sgTouchDragActive){ev.preventDefault();return;}
-      sgDragGroupId=g.id; card.classList.add('groupDragSource');
-      ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',g.id);
-    });
+    // HTML5 drag
+    card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}if(sgTouchDragActive){ev.preventDefault();return;}sgDragGroupId=g.id;card.classList.add('groupDragSource');ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',g.id);});
     card.addEventListener('dragend',()=>{card.classList.remove('groupDragSource');document.querySelectorAll('#supplierGroupsGrid .groupDropTarget').forEach(x=>x.classList.remove('groupDropTarget'));sgDragGroupId=null;});
     card.addEventListener('dragover',ev=>{if(sgDragGroupId&&sgDragGroupId!==g.id){ev.preventDefault();card.classList.add('groupDropTarget');}});
     card.addEventListener('dragleave',()=>card.classList.remove('groupDropTarget'));
-    card.addEventListener('drop',ev=>{
-      ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');
-      const payload=ev.dataTransfer.getData('text/plain')||sgDragGroupId;
-      if(payload&&payload!==g.id){sgMovingGroupId=payload;moveSgGroupInto(g.id);}
-    });
+    card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const p=ev.dataTransfer.getData('text/plain')||sgDragGroupId;if(p&&p!==g.id){sgMovingGroupId=p;moveSgGroupInto(g.id);}});
     // Touch drag — MOT POUR MOT du client machine
     card.addEventListener('contextmenu',ev=>ev.preventDefault());
     card.addEventListener('pointerdown',ev=>{
@@ -7376,21 +7364,21 @@ function renderSuppliersModule(){
       ev.preventDefault(); clearTimeout(sgLongPressTimer);
       try{card.setPointerCapture(ev.pointerId);}catch(e){}
       card.classList.add('dragArmed');
-      sgLongPressTimer=setTimeout(()=>{ startSgTouchDrag(g.id, ev.clientX, ev.clientY); },520);
+      sgLongPressTimer=setTimeout(()=>{startSgTouchDrag(g.id,ev.clientX,ev.clientY);},520);
     },{passive:false});
     card.addEventListener('pointermove',ev=>{
       if(ev.target.closest('button')) return;
-      const dx=Math.abs(ev.clientX-lastPointerX), dy=Math.abs(ev.clientY-lastPointerY);
+      const dx=Math.abs(ev.clientX-lastPointerX),dy=Math.abs(ev.clientY-lastPointerY);
       if(!sgTouchDragActive&&(dx>12||dy>12)){clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');}
       if(sgTouchDragActive){ev.preventDefault();moveSgTouchDragGhost(ev.clientX,ev.clientY);}
     },{passive:false});
     card.addEventListener('pointerup',ev=>{
-      clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+      clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');
       try{card.releasePointerCapture(ev.pointerId);}catch(e){}
       if(sgTouchDragActive){ev.preventDefault();finishSgTouchDrag(ev.clientX,ev.clientY);}
     },{passive:false});
     card.addEventListener('pointercancel',ev=>{
-      clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+      clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');
       try{card.releasePointerCapture(ev.pointerId);}catch(e){}
       if(sgTouchDragActive) cleanupSgTouchDrag();
     },{passive:false});
@@ -7404,9 +7392,9 @@ function renderSuppliersModule(){
     (node.parts||[]).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q)).forEach(p=>{
       const item=document.createElement('div'); item.className='item';
       item.style.cssText='display:flex;gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:8px';
-      item.innerHTML=`<div style="width:44px;height:44px;border-radius:10px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${p.image?`<img src="${p.image}" style="width:44px;height:44px;object-fit:contain;border-radius:10px">`:"⚙️"}</div>
+      item.innerHTML=`<div style="width:44px;height:44px;border-radius:10px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${p.image?`<img src="${p.image}" style="width:44px;height:44px;object-fit:contain;border-radius:10px">`:'⚙️'}</div>
         <div style="flex:1;min-width:0">
-          <p style="font-weight:700;font-size:14px;margin:0;color:var(--blue)">${esc(p.name||p.partNumber||'')} </p>
+          <p style="font-weight:700;font-size:14px;margin:0;color:var(--blue)">${esc(p.name||p.partNumber||'')}</p>
           <p style="font-size:12px;color:#6f7b87;margin:2px 0">${T('partNo')}: ${esc(p.partNumber||'-')}</p>
           <p style="font-size:12px;color:#6f7b87;margin:0">${T('price')}: ${esc(p.price||'0')}</p>
         </div>
@@ -7414,8 +7402,8 @@ function renderSuppliersModule(){
           <button class="btn secondary mini" data-act="edit">✏️</button>
           <button class="btn danger mini" data-act="delete">🗑️</button>
         </div>`:''}`;
-      const eb=item.querySelector('[data-act=edit]'); if(eb) eb.onclick=()=>openEditSupplierPart(p.id);
-      const db2=item.querySelector('[data-act=delete]'); if(db2) db2.onclick=()=>deleteSupplierPart(p.id);
+      const eb2=item.querySelector('[data-act=edit]'); if(eb2) eb2.onclick=()=>openEditSupplierPart(p.id);
+      const db3=item.querySelector('[data-act=delete]'); if(db3) db3.onclick=()=>deleteSupplierPart(p.id);
       partsList.appendChild(item);
     });
     if(!(node.parts||[]).length) $('supplierEmptyParts').textContent='Aucune pièce dans ce groupe.';
@@ -7424,17 +7412,17 @@ function renderSuppliersModule(){
 
 // CRUD groupes
 function moveSgGroupToParent(groupId){
-  supplierEnsureDb(); const src=findSupplierGroupWithParent(groupId); if(!src)return;
-  if(src.parent===db.supplierRoot){alert(T('moveGroupImpossible'));return;}
+  supplierEnsureDb(); const src=findSupplierGroupWithParent(groupId); if(!src) return;
+  if(src.parent===db.supplierRoot){ alert(T('moveGroupImpossible')); return; }
   function findParentOf(t,n,p){if(n===t)return p;for(const g of(n.groups||[])){const f=findParentOf(t,g,n);if(f!==undefined)return f;}return undefined;}
   const gp=findParentOf(src.parent,db.supplierRoot,null);
   const dest=(gp!=null)?gp:db.supplierRoot;
   src.parent.groups=(src.parent.groups||[]).filter(g=>g.id!==groupId);
-  dest.groups=dest.groups||[];dest.groups.push(src.group);
+  dest.groups=dest.groups||[]; dest.groups.push(src.group);
   db.suppliers=db.supplierRoot.groups; log('MOVE_SUPPLIER_GROUP_UP',src.group.name); save(); renderSuppliersModule();
 }
 function openEditSupplierGroup(id){
-  supplierEnsureDb(); const found=findSupplierGroupWithParent(id); if(!found)return;
+  supplierEnsureDb(); const found=findSupplierGroupWithParent(id); if(!found) return;
   const g=found.group; editingSupplierId=id; supplierImageData=g.image||'';
   $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent='✏️ Fournisseur/Groupe';
   $('supplierNameInput').value=g.name||''; $('supplierEmailInput').value=g.email||'';
@@ -7444,7 +7432,7 @@ function openEditSupplierGroup(id){
 }
 function deleteSupplierGroup(id){
   if(!isAdmin())return; if(!confirm(T('deleteGroupConfirm')))return;
-  supplierEnsureDb(); const found=findSupplierGroupWithParent(id); if(!found)return;
+  supplierEnsureDb(); const found=findSupplierGroupWithParent(id); if(!found) return;
   found.parent.groups=(found.parent.groups||[]).filter(g=>g.id!==id);
   db.suppliers=db.supplierRoot.groups; moveToTrash('supplier',found.group,{}); log('DELETE_SUPPLIER_GROUP',found.group.name); save(); renderSuppliersModule();
 }
@@ -7495,7 +7483,7 @@ if($('partForm')) $('partForm').onsubmit=e=>{
 };
 function openEditSupplierPart(id){
   supplierEnsureDb(); const node=currentSupplierNode();
-  const p=(node.parts||[]).find(x=>x.id===id); if(!p)return;
+  const p=(node.parts||[]).find(x=>x.id===id); if(!p) return;
   editingPartId=id; partImageData=p.image||''; $('partForm').reset();
   $('partDialog').querySelector('h2').textContent='✏️ '+T('addPart');
   $('partNameInput').value=p.name||''; $('sparePartNumberInput').value=p.partNumber||''; $('partPriceInput').value=p.price||'';
@@ -7507,59 +7495,8 @@ function deleteSupplierPart(id){
   if(!isAdmin())return; if(!confirm(T('deletePartConfirm')))return;
   supplierEnsureDb(); const node=currentSupplierNode();
   const p=(node.parts||[]).find(x=>x.id===id);
-  node.parts=(node.parts||[]).filter(x=>x.id!==id);
-  db.suppliers=db.supplierRoot.groups;
-  if(p)moveToTrash('part',p,{}); log('DELETE_PART',p?p.partNumber:id); save(); renderSuppliersModule();
-}
-
-// ── Corrélation client/stock ─────────────────────────────
-// Si le groupe client assigné a le même nom qu'un groupe fournisseur
-// → le client voit un bouton 📦 qui ouvre son stock en lecture seule
-function _injectClientStockBtn(){
-  const u=currentUser; if(!u||u.role!=='client') return;
-  const ex=document.getElementById('clientStockBtn'); if(ex) ex.remove();
-  supplierEnsureDb();
-  // Trouver le groupe client assigné
-  let clientGroupName='';
-  if(u.assignedGroupId){
-    function _findClientGroup(id, node){
-      if(!node||!id) return null; if(node.id===id) return node;
-      for(const g of (node.groups||[])){ const f=_findClientGroup(id,g); if(f) return f; }
-      return null;
-    }
-    const cg=_findClientGroup(u.assignedGroupId, db.clientRoot||{groups:[]});
-    if(cg) clientGroupName=(cg.name||'').trim();
-  }
-  // Chercher un groupe fournisseur avec le même nom
-  const sgLinked = clientGroupName ? findSupplierGroupByName(clientGroupName) : null;
-  if(!sgLinked) return;
-  // Créer le bouton
-  const btn=document.createElement('button'); btn.id='clientStockBtn'; btn.className='btn primary';
-  btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;border-radius:50px;padding:12px 20px;font-size:15px;font-weight:800;box-shadow:0 4px 18px rgba(10,124,194,.35)';
-  btn.innerHTML='📦 '+esc(sgLinked.name);
-  btn.onclick=()=>{
-    // Naviguer jusqu'au groupe fournisseur correspondant
-    supplierEnsureDb();
-    // Construire le chemin vers ce groupe
-    function _buildPath(targetId, node, path){
-      for(const g of (node.groups||[])){
-        if(g.id===targetId) return [...path, g.id];
-        const found=_buildPath(targetId, g, [...path, g.id]);
-        if(found) return found;
-      }
-      return null;
-    }
-    const path=_buildPath(sgLinked.id, db.supplierRoot, []);
-    supplierPathIds = path || [sgLinked.id];
-    show('suppliersView');renderSuppliersModule();
-    // Masquer les boutons d'édition en mode client
-    setTimeout(()=>{
-      ['addSupplierBtn','addPartBtn'].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
-      document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(el=>el.style.display='none');
-      document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(el=>el.style.display='none');
-    },200);
-  };
-  document.body.appendChild(btn);
+  node.parts=(node.parts||[]).filter(x=>x.id!==id); db.suppliers=db.supplierRoot.groups;
+  if(p) moveToTrash('part',p,{}); log('DELETE_PART',p?p.partNumber:id); save(); renderSuppliersModule();
 }
 
 if($('vehicleGlobalSearch')) $('vehicleGlobalSearch').oninput=renderCars;
@@ -8235,14 +8172,13 @@ $('faultMachineFaultForm').onsubmit = ev=>{
 // ── Maintenance préventive ──────────────────────────────────
 function addMaintenanceRow(data){
   data=data||{};
-  var box=$('maintenanceRowsBox');
-  if(!box) return;
+  var box=$('maintenanceRowsBox'); if(!box) return;
   var row=document.createElement('div');
   row.className='maintRow';
   row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%';
   var monthOpts='<option value="">?</option>';
   for(var mi=1;mi<=12;mi++) monthOpts+='<option value="'+mi+'"'+(data.freqMonths===mi?' selected':'')+'>'+mi+'</option>';
-  // Liste machines filtrée par modèle de la faultMachine active
+  // Machines filtrées par modèle
   var serialOpts='<option value="">— Toutes les machines du modèle —</option>';
   try{
     var _dbx2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
@@ -8262,7 +8198,7 @@ function addMaintenanceRow(data){
     }
     _collectSerials(_dbx2.clientRoot||{groups:[],machines:[]});
   }catch(e){}
-  // Pièces fournisseur (récursif dans la nouvelle structure)
+  // Pièces fournisseur récursif
   var partOpts='<option value="">— Pièce liée (optionnel) —</option>';
   try{
     var _dbx=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
@@ -8293,20 +8229,17 @@ function addMaintenanceRow(data){
 
 function readMaintenanceRows(){
   var rows=[];
-  var box=$('maintenanceRowsBox');
-  if(!box) return rows;
+  var box=$('maintenanceRowsBox'); if(!box) return rows;
   box.querySelectorAll('.maintRow').forEach(function(row){
     var desc=(row.querySelector('.maintDesc')||{}).value||'';
-    var freqEl=row.querySelector('.maintFreq');
-    var freq=freqEl?parseInt(freqEl.value)||0:0;
-    var serialEl=row.querySelector('.maintSerial');
-    var specificSerial=serialEl?serialEl.value||'':'';
-    var partEl=row.querySelector('.maintPart');
-    var linkedPartId=partEl?partEl.value||'':'';
+    var freqEl=row.querySelector('.maintFreq'); var freq=freqEl?parseInt(freqEl.value)||0:0;
+    var serialEl=row.querySelector('.maintSerial'); var specificSerial=serialEl?serialEl.value||'':'';
+    var partEl=row.querySelector('.maintPart'); var linkedPartId=partEl?partEl.value||'':'';
     if(desc||freq) rows.push({id:uid(),description:desc,freqMonths:freq,specificSerial:specificSerial,linkedPartId:linkedPartId});
   });
   return rows;
 }
+
 
 function loadMaintenanceRows(maintenances){
   var box=$('maintenanceRowsBox');
