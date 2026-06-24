@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v12.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v12.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=12.6', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=12.7', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3863,46 +3863,16 @@ function openApp(){
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
-  if(currentUser && currentUser.role==='client'){
-    // Chercher le groupe fournisseur assigné (par ID ou par nom)
-    var _targetGroup=null;
-    supplierEnsureDb();
-    // Méthode 1 : par assignedSupplierId
-    if(currentUser.assignedSupplierId){
-      function _findSgById2(id,nodes){for(var i=0;i<(nodes||[]).length;i++){if(nodes[i].id===id)return nodes[i];var f=_findSgById2(id,(nodes[i].groups||[]));if(f)return f;}return null;}
-      _targetGroup=_findSgById2(currentUser.assignedSupplierId, db.suppliers||[]);
-    }
-    // Méthode 2 : par nom du groupe client
-    if(!_targetGroup && currentUser.assignedGroupId){
-      function _findCG2(id,node){if(!node||!id)return null;if(node.id===id)return node;for(var _g of(node.groups||[])){var _f=_findCG2(id,_g);if(_f)return _f;}return null;}
-      var _cg=_findCG2(currentUser.assignedGroupId, db.clientRoot||{groups:[]});
-      if(_cg&&_cg.name){
-        var _n=(_cg.name||'').trim().toLowerCase();
-        function _findSgByName2(name,node){if(!node)return null;for(var _g of(node.groups||[])){if((_g.name||'').trim().toLowerCase()===name)return _g;var _f=_findSgByName2(name,_g);if(_f)return _f;}return null;}
-        _targetGroup=_findSgByName2(_n, db.supplierRoot);
-      }
-    }
-    if(_targetGroup){
-      // Le client a accès à un stock fournisseur → ouvrir suppliersView directement
-      function _buildPath2(targetId,node,path){for(var _g of(node.groups||[])){if(_g.id===targetId)return path.concat([_g.id]);var _f=_buildPath2(targetId,_g,path.concat([_g.id]));if(_f)return _f;}return null;}
-      var _path=_buildPath2(_targetGroup.id, db.supplierRoot, []);
-      supplierPathIds=_path||[_targetGroup.id];
-      show('suppliersView');
-      renderSuppliersModule();
-      // Masquer les boutons d'édition — client = lecture seule
-      setTimeout(function(){
-        ['addSupplierBtn','addPartBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-        document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(function(el){el.style.display='none';});
-        document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-      },200);
-    } else {
-      // Pas de stock fournisseur → afficher gestion client machine normale
-      clientPathIds=[];
-      show('clientsView');
-      renderClientMachineModule();
-    }
-  } else {
-    var _csb=document.getElementById('clientStockBtn'); if(_csb) _csb.remove();
+  if(currentUser&&currentUser.role==='client'){
+    // Client → gestion machines normale
+    clientPathIds=[];
+    show('clientsView');
+    renderClientMachineModule();
+    // + bouton 📦 stock fournisseur si assigné
+    _injectClientStockBtn();
+  }else{
+    var _csb=document.getElementById('clientStockBtn');
+    if(_csb) _csb.remove();
     show('moduleView');
   }
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);
@@ -7192,7 +7162,7 @@ $('machineServiceForm').onsubmit=e=>{
 
 
 // ══════════════════════════════════════════════════════════
-// MODULE FOURNISSEURS v12.6 — copie exacte client machine
+// MODULE FOURNISSEURS v12.7 — copie exacte client machine
 // ══════════════════════════════════════════════════════════
 let supplierImageData='', partImageData='';
 let editingSupplierId=null, editingPartId=null;
@@ -7205,16 +7175,16 @@ function supplierEnsureDb(){
   db.suppliers=db.suppliers||[];
   if(!db.supplierRoot||typeof db.supplierRoot!=='object'){
     db.supplierRoot={id:'__root__',name:'Fournisseurs',groups:db.suppliers,parts:[]};
-  }else{ db.supplierRoot.groups=db.suppliers; }
+  }else{db.supplierRoot.groups=db.suppliers;}
 }
 function currentSupplierNode(){
   supplierEnsureDb();let node=db.supplierRoot;
   for(const gid of supplierPathIds){const f=(node.groups||[]).find(g=>g.id===gid);if(!f)return db.supplierRoot;node=f;}
   node.groups=node.groups||[];node.parts=node.parts||[];return node;
 }
-function findSupplierGroupWithParent(groupId,node=null){
+function findSupplierGroupWithParent(gId,node=null){
   if(!node){supplierEnsureDb();node=db.supplierRoot;}
-  for(const g of(node.groups||[])){if(g.id===groupId)return{group:g,parent:node};const f=findSupplierGroupWithParent(groupId,g);if(f)return f;}
+  for(const g of(node.groups||[])){if(g.id===gId)return{group:g,parent:node};const f=findSupplierGroupWithParent(gId,g);if(f)return f;}
   return null;
 }
 function isDescendantSupplierGroup(pId,cId){
@@ -7222,15 +7192,16 @@ function isDescendantSupplierGroup(pId,cId){
   function walk(g){if((g.groups||[]).some(x=>x.id===cId))return true;return(g.groups||[]).some(x=>walk(x));}
   return walk(f.group);
 }
-function moveSgGroupInto(targetId){
+function moveSgGroupInto(tId){
   const srcId=sgMovingGroupId||sgDragGroupId;
-  if(!srcId||srcId===targetId){clearMovingSgGroup();renderSuppliersModule();return;}
-  if(isDescendantSupplierGroup(srcId,targetId)){alert(T('moveGroupImpossible'));clearMovingSgGroup();renderSuppliersModule();return;}
-  const src=findSupplierGroupWithParent(srcId),dst=findSupplierGroupWithParent(targetId);
+  if(!srcId||srcId===tId){clearMovingSgGroup();renderSuppliersModule();return;}
+  if(isDescendantSupplierGroup(srcId,tId)){alert(T('moveGroupImpossible'));clearMovingSgGroup();renderSuppliersModule();return;}
+  const src=findSupplierGroupWithParent(srcId),dst=findSupplierGroupWithParent(tId);
   if(!src||!dst){alert(T('moveGroupImpossible'));clearMovingSgGroup();renderSuppliersModule();return;}
   src.parent.groups=(src.parent.groups||[]).filter(g=>g.id!==srcId);
   dst.group.groups=dst.group.groups||[];dst.group.groups.push(src.group);
-  db.suppliers=db.supplierRoot.groups;log('MOVE_SG',src.group.name+'→'+dst.group.name);save();clearMovingSgGroup();renderSuppliersModule();
+  db.suppliers=db.supplierRoot.groups;log('MOVE_SG',src.group.name+'→'+dst.group.name);
+  save();clearMovingSgGroup();renderSuppliersModule();
 }
 function clearMovingSgGroup(){
   if(sgTouchDragActive)return;sgMovingGroupId=null;sgDragGroupId=null;
@@ -7241,8 +7212,8 @@ function startSgTouchDrag(gId,x,y){
   sgTouchDragActive=true;sgSuppressNextClick=true;sgTouchDragSourceId=gId;sgDragGroupId=gId;
   lastPointerX=x;lastPointerY=y;document.body.classList.add('draggingSupplierGroup');
   if($('sgMoveHelp')){$('sgMoveHelp').textContent=T('moveGroupHelp')+' ('+f.group.name+')';$('sgMoveHelp').classList.remove('hidden');}
-  sgTouchDragGhost=document.createElement('div');sgTouchDragGhost.className='dragGhost';sgTouchDragGhost.textContent=f.group.name;
-  document.body.appendChild(sgTouchDragGhost);moveSgDragGhost(x,y);
+  sgTouchDragGhost=document.createElement('div');sgTouchDragGhost.className='dragGhost';
+  sgTouchDragGhost.textContent=f.group.name;document.body.appendChild(sgTouchDragGhost);moveSgDragGhost(x,y);
 }
 function moveSgDragGhost(x,y){
   lastPointerX=x;lastPointerY=y;
@@ -7276,39 +7247,50 @@ document.addEventListener('pointermove',ev=>{if(sgTouchDragActive){ev.preventDef
 document.addEventListener('pointerup',ev=>{if(sgTouchDragActive){ev.preventDefault();finishSgTouchDrag(ev.clientX,ev.clientY);}},{passive:false});
 document.addEventListener('pointercancel',()=>{if(sgTouchDragActive)cleanupSgTouchDrag();},{passive:false});
 
+function _applyClientReadOnly(){
+  if(!currentUser||currentUser.role!=='client')return;
+  setTimeout(function(){
+    ['addSupplierBtn','addPartBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+    document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(function(el){el.style.display='none';});
+    document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+  },100);
+}
+
 function renderSuppliersModule(){
   supplierEnsureDb();if(!$('supplierGroupsGrid'))return;
   const node=currentSupplierNode(),isRoot=supplierPathIds.length===0;
   $('supplierUpBtn').classList.toggle('hidden',isRoot);
   $('supplierEmptyGroups').classList.add('hidden');$('supplierEmptyParts').classList.add('hidden');
-  const pathEl=$('supplierPath');
-  if(pathEl){
-    pathEl.innerHTML='';
+  const pe=$('supplierPath');
+  if(pe){
+    pe.innerHTML='';
     const rb=document.createElement('button');rb.className='btn secondary';rb.textContent='Fournisseurs';
-    rb.onclick=()=>{supplierPathIds=[];renderSuppliersModule();_applyClientReadOnly();};pathEl.appendChild(rb);
-    let temp=db.supplierRoot;
+    rb.onclick=()=>{supplierPathIds=[];renderSuppliersModule();_applyClientReadOnly();};pe.appendChild(rb);
+    let tmp=db.supplierRoot;
     supplierPathIds.forEach((gid,idx)=>{
-      const g=(temp.groups||[]).find(x=>x.id===gid);if(!g)return;
-      const sep=document.createElement('span');sep.textContent='›';pathEl.appendChild(sep);
+      const g=(tmp.groups||[]).find(x=>x.id===gid);if(!g)return;
+      const sep=document.createElement('span');sep.textContent='›';pe.appendChild(sep);
       const b=document.createElement('button');b.className='btn secondary';b.textContent=g.name;
       b.onclick=()=>{supplierPathIds=supplierPathIds.slice(0,idx+1);renderSuppliersModule();_applyClientReadOnly();};
-      pathEl.appendChild(b);temp=g;
+      pe.appendChild(b);tmp=g;
     });
   }
   const q=(($('supplierGlobalSearch')||{}).value||'').toLowerCase().trim();
   $('supplierGroupsGrid').innerHTML='';
   (node.groups||[]).filter(g=>{
-    const txt=[g.name,(g.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')].join(' ').toLowerCase();
-    return !q||txt.includes(q);
+    return !q||[g.name,(g.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')].join(' ').toLowerCase().includes(q);
   }).forEach(g=>{
     const card=document.createElement('div');card.className='groupCard';card.dataset.groupId=g.id;card.draggable=isAdmin();
     if(sgMovingGroupId===g.id)card.classList.add('groupMoveSelected');
     const isNotRoot=(()=>{const s=findSupplierGroupWithParent(g.id);return s&&s.parent!==db.supplierRoot;})();
     const pC=(g.parts||[]).length,gC=(g.groups||[]).length;
     card.innerHTML=`<div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🧰'}</div>
-      <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
-      <p>${gC} sous-groupe${gC!==1?'s':''} · ${pC} pièce${pC!==1?'s':''}</p>
-      ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"><div style="display:flex;gap:6px"><button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>${isNotRoot?`<button class="btn secondary mini" data-act="moveup" style="flex:1">⬆️</button>`:'<div style="flex:1"></div>'}<button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button></div></div>`:''}`;
+      <h3 title="${esc(g.name)}">${esc(g.name)}</h3><p>${gC} sous-groupe${gC!==1?'s':''} · ${pC} pièce${pC!==1?'s':''}</p>
+      ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"><div style="display:flex;gap:6px">
+        <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
+        ${isNotRoot?`<button class="btn secondary mini" data-act="moveup" style="flex:1">⬆️</button>`:'<div style="flex:1"></div>'}
+        <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
+      </div></div>`:''}`;
     const eb=card.querySelector('[data-act=edit]');if(eb)eb.onclick=ev=>{ev.stopPropagation();openEditSupplierGroup(g.id);};
     const mub=card.querySelector('[data-act=moveup]');if(mub)mub.onclick=ev=>{ev.stopPropagation();moveSgGroupToParent(g.id);};
     const db2=card.querySelector('[data-act=delete]');if(db2)db2.onclick=ev=>{ev.stopPropagation();deleteSupplierGroup(g.id);};
@@ -7348,16 +7330,6 @@ function renderSuppliersModule(){
   }
 }
 
-// Masquer les boutons d'édition si client
-function _applyClientReadOnly(){
-  if(!currentUser||currentUser.role!=='client') return;
-  setTimeout(function(){
-    ['addSupplierBtn','addPartBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-    document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(function(el){el.style.display='none';});
-    document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-  },100);
-}
-
 function moveSgGroupToParent(gId){
   supplierEnsureDb();const src=findSupplierGroupWithParent(gId);if(!src)return;
   if(src.parent===db.supplierRoot){alert(T('moveGroupImpossible'));return;}
@@ -7391,7 +7363,8 @@ if($('supplierForm'))$('supplierForm').onsubmit=e=>{
   editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule();
 };
 if($('supplierUpBtn'))$('supplierUpBtn').onclick=()=>{
-  if(supplierPathIds.length>0){supplierPathIds.pop();renderSuppliersModule();_applyClientReadOnly();}else{show('moduleView');}
+  if(supplierPathIds.length>0){supplierPathIds.pop();renderSuppliersModule();_applyClientReadOnly();}
+  else{show(currentUser&&currentUser.role==='client'?'clientsView':'moduleView');if(currentUser&&currentUser.role==='client')renderClientMachineModule();}
 };
 if($('openSuppliersModule'))$('openSuppliersModule').onclick=()=>{
   if(!requireAdminAccess())return;supplierPathIds=[];supplierEnsureDb();
@@ -8093,20 +8066,19 @@ $('faultMachineFaultForm').onsubmit = ev=>{
 // ── Maintenance préventive ──────────────────────────────────
 function addMaintenanceRow(data){
   data=data||{};var box=$('maintenanceRowsBox');if(!box)return;
-  var row=document.createElement('div');
-  row.className='maintRow';
+  var row=document.createElement('div');row.className='maintRow';
   row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%';
   var mo='<option value="">?</option>';for(var mi=1;mi<=12;mi++)mo+='<option value="'+mi+'"'+(data.freqMonths===mi?' selected':'')+'>'+mi+'</option>';
   var so='<option value="">— Toutes les machines du modèle —</option>';
   try{var _d2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
     var _af=(_d2.faultMachines||[]).find(function(fm){return fm.id===faultMachineActiveFaultId;});
     var _am=(_af&&_af.model||'').toLowerCase().trim();var _sl=[];
-    function _cs(node){(node.machines||[]).forEach(function(m){var mm=(m.model||'').toLowerCase().trim();if(_am&&mm&&mm!==_am)return;var s=(m.serial||m.serialNumber||'').trim();if(!s||_sl.indexOf(s)!==-1)return;_sl.push(s);so+='<option value="'+esc(s)+'"'+(data.specificSerial===s?' selected':'')+'>'+esc((m.model||'')+' — '+s)+'</option>';});(node.groups||[]).forEach(function(g){_cs(g);});}
+    function _cs(n){(n.machines||[]).forEach(function(m){var mm=(m.model||'').toLowerCase().trim();if(_am&&mm&&mm!==_am)return;var s=(m.serial||m.serialNumber||'').trim();if(!s||_sl.indexOf(s)!==-1)return;_sl.push(s);so+='<option value="'+esc(s)+'"'+(data.specificSerial===s?' selected':'')+'>'+esc((m.model||'')+' — '+s)+'</option>';});(n.groups||[]).forEach(function(g){_cs(g);});}
     _cs(_d2.clientRoot||{groups:[],machines:[]});
   }catch(e){}
   var po='<option value="">— Pièce liée (optionnel) —</option>';
   try{var _d=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
-    function _cp(node,pfx){(node.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+esc(p.name||p.partNumber||'')+(p.price?' ('+esc(p.price)+')':'')+' </option>';});(node.groups||[]).forEach(function(g){_cp(g,pfx+' › '+g.name);});}
+    function _cp(n,pfx){(n.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+esc(p.name||p.partNumber||'')+(p.price?' ('+esc(p.price)+')':'')+' </option>';});(n.groups||[]).forEach(function(g){_cp(g,pfx+' › '+g.name);});}
     (_d.suppliers||[]).forEach(function(s){_cp(s,s.name);});
   }catch(e){}
   row.innerHTML='<div style="display:flex;gap:8px;align-items:center"><input type="text" placeholder="Description" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;min-width:0;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px"><button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button></div>'
