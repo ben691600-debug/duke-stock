@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3885,17 +3885,52 @@ function _setupClientSupplierBtn(){
   var u=currentUser;
   if(!u||u.role!=='client'||!u.assignedSupplierId){row.style.display='none';return;}
   row.style.display='block';
-  function _findS(id,arr){for(var i=0;i<(arr||[]).length;i++){if(arr[i].id===id)return arr[i];var f=_findS(id,arr[i].subgroups||arr[i].groups||[]);if(f)return f;}return null;}
-  var sf=_findS(u.assignedSupplierId,db.suppliers||[]);
-  if(lbl)lbl.textContent=sf?(sf.name||'Stock fournisseur'):'Stock fournisseur';
+
+  // Chercher le fournisseur RACINE qui contient l'ID assigné
+  // (l'ID peut être un fournisseur racine OU un sous-groupe)
+  function _findRootSupplier(targetId, suppliers){
+    for(var i=0;i<(suppliers||[]).length;i++){
+      var s=suppliers[i];
+      // C'est directement un fournisseur racine
+      if(s.id===targetId) return {rootSupplier:s, subgroup:null};
+      // Chercher dans les sous-groupes
+      var subs=s.subgroups||[];
+      for(var j=0;j<subs.length;j++){
+        if(subs[j].id===targetId) return {rootSupplier:s, subgroup:subs[j]};
+        // Sous-sous-groupes si nécessaire
+        var subsubs=subs[j].subgroups||[];
+        for(var k=0;k<subsubs.length;k++){
+          if(subsubs[k].id===targetId) return {rootSupplier:s, subgroup:subsubs[k]};
+        }
+      }
+    }
+    return null;
+  }
+
+  var found=_findRootSupplier(u.assignedSupplierId, db.suppliers||[]);
+  if(lbl) lbl.textContent=found?(found.subgroup?found.subgroup.name:found.rootSupplier.name):'Stock fournisseur';
+
   btn.onclick=function(){
-    var sf2=_findS(u.assignedSupplierId,db.suppliers||[]);
-    if(!sf2){alert('Patiente quelques secondes et réessaie.');return;}
-    selectedSupplierId=sf2.id;selectedSupplierSubgroupId=null;
-    _supplierShowLevel(1);renderSupplierParts();show('suppliersView');
+    var found2=_findRootSupplier(u.assignedSupplierId, db.suppliers||[]);
+    if(!found2){alert('Patiente quelques secondes et réessaie.');return;}
+    // Ouvrir le fournisseur racine
+    selectedSupplierId=found2.rootSupplier.id;
+    selectedSupplierSubgroupId=null;
+    _supplierShowLevel(1);
+    renderSupplierParts();
+    show('suppliersView');
+    // Si c'était un sous-groupe, l'ouvrir directement
+    if(found2.subgroup){
+      selectedSupplierSubgroupId=found2.subgroup.id;
+      _supplierShowLevel(2);
+      renderSubgroupParts();
+    }
+    // Masquer boutons édition
     setTimeout(function(){
       document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-      ['addSubgroupBtn','addPartBtn','addSupplierBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+      ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){
+        var el=document.getElementById(id);if(el)el.style.display='none';
+      });
       var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
     },150);
   };
