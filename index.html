@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v11.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v11.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=11.6', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=11.7', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -289,7 +289,7 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 #clientEmptyGroups,#clientEmptyMachines{display:none!important}
 
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
-.supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
+.supplierCard.sgDropTarget{border:2.5px dashed #1a7ad4!important;background:#e8f4fd!important;transform:scale(1.03);transition:transform .15s;}.supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
 .supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
 .supplierCard h3{font-size:15px;line-height:1.15;margin:0;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2181,20 +2181,17 @@ body.draggingMachine{
 </section>
 
 <section id="suppliersView" class="hidden">
-  <!-- Barre d'action principale -->
   <div class="toolbar moduleActionToolbar supplierTopActions">
     <div class="actions moduleActionButtons oneButton">
       <button class="btn primary" id="addSupplierBtn" data-i="addSupplier">+ Fournisseur</button>
     </div>
   </div>
   <button class="btn secondary backSymbolBtn floatingBackBtn hidden" id="supplierUpBtn" title="Retour">←</button>
-
-  <!-- Niveau 0 : liste des fournisseurs -->
+  <!-- Niveau 0 : liste fournisseurs -->
   <div id="suppliersRoot">
     <input class="search" id="supplierGlobalSearch" data-i-placeholder="searchSuppliers" placeholder="Rechercher fournisseur, téléphone, mail, pièce, modèle...">
     <div class="supplierGrid" id="supplierGrid"></div>
   </div>
-
   <!-- Niveau 1 : détail fournisseur (sous-groupes + pièces directes) -->
   <div id="supplierDetail" class="hidden">
     <div class="toolbar moduleActionToolbar" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2206,13 +2203,10 @@ body.draggingMachine{
       <p id="supplierDetailSub"></p>
     </div>
     <input class="search" id="partSearch" data-i-placeholder="searchParts" placeholder="Rechercher pièce, prix, modèle...">
-    <!-- Sous-groupes du fournisseur -->
     <div id="supplierSubgroupGrid" class="supplierGrid" style="margin-bottom:12px"></div>
-    <!-- Pièces directes du fournisseur -->
     <div class="partGrid" id="partGrid"></div>
   </div>
-
-  <!-- Niveau 2 : détail sous-groupe (pièces) -->
+  <!-- Niveau 2 : détail sous-groupe -->
   <div id="supplierSubgroupDetail" class="hidden">
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons oneButton">
@@ -3879,38 +3873,6 @@ function show(view){
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
 function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
-function _injectClientStockBtn(){
-  var u=currentUser;
-  if(!u||u.role!=='client'||!u.assignedSupplierId) return;
-  var existing=document.getElementById('clientStockBtn');
-  if(existing) existing.remove();
-  var s=(db.suppliers||[]).find(function(x){return x.id===u.assignedSupplierId;});
-  if(!s) return;
-  var btn=document.createElement('button');
-  btn.id='clientStockBtn';
-  btn.className='btn primary';
-  btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;border-radius:50px;padding:12px 20px;font-size:15px;font-weight:800;box-shadow:0 4px 18px rgba(10,124,194,.35)';
-  btn.innerHTML='📦 '+esc(s.name);
-  btn.onclick=function(){_openClientSupplierView(s.id);};
-  document.body.appendChild(btn);
-}
-
-function _openClientSupplierView(supplierId){
-  selectedSupplierId=supplierId;
-  selectedSupplierSubgroupId=null;
-  if($('partSearch')) $('partSearch').value='';
-  if($('addSupplierBtn')) $('addSupplierBtn').classList.add('hidden');
-  if($('supplierUpBtn')) $('supplierUpBtn').classList.remove('hidden');
-  $('suppliersRoot').classList.add('hidden');
-  $('supplierDetail').classList.remove('hidden');
-  $('supplierSubgroupDetail').classList.add('hidden');
-  show('suppliersView');
-  renderSupplierParts();
-  setTimeout(function(){
-    document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"],[data-act="addsubgroup"],[id="addSubgroupBtn"],[id="addPartBtn"]').forEach(function(el){el.style.display='none';});
-  },150);
-}
-
 function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appView').classList.remove('hidden');$('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';renderAll();if(currentUser&&currentUser.role==='client'){clientPathIds=[];show('clientsView');renderClientMachineModule();_injectClientStockBtn();}else{var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();show('moduleView')} setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);}
 
 function renderAll(){
@@ -5015,14 +4977,11 @@ function updateOperatorFormFields(role){
   if(supplierLabel){
     supplierLabel.style.display=isClient?'':'none';
     var supSel=$('operatorAssignedSupplier');
-    if(supSel && isClient){
+    if(supSel&&isClient){
       var prevVal=supSel.value;
       supSel.innerHTML='<option value="">— Aucun fournisseur —</option>';
       (db.suppliers||[]).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(s){
-        var opt=document.createElement('option');
-        opt.value=s.id;
-        opt.textContent=s.name||'(sans nom)';
-        supSel.appendChild(opt);
+        var opt=document.createElement('option');opt.value=s.id;opt.textContent=s.name||'(sans nom)';supSel.appendChild(opt);
       });
       if(prevVal) supSel.value=prevVal;
     }
@@ -5062,11 +5021,7 @@ function openEditOperator(username){
   updateOperatorFormFields(u.role||'operator');
   if(u.role==='client'){
     populateGroupDropdown(u.assignedGroupId||'');
-    setTimeout(function(){
-      if($('operatorAssignedSupplier') && u.assignedSupplierId){
-        $('operatorAssignedSupplier').value=u.assignedSupplierId;
-      }
-    },50);
+    setTimeout(function(){if($('operatorAssignedSupplier')&&u.assignedSupplierId) $('operatorAssignedSupplier').value=u.assignedSupplierId;},50);
   } else {
     if($('operatorVehiclePlate')) $('operatorVehiclePlate').value=u.vehiclePlate||u.assignedVehiclePlate||'';
   }
@@ -7220,15 +7175,16 @@ $('machineServiceForm').onsubmit=e=>{
 
 
 let selectedSupplierId=null, selectedSupplierSubgroupId=null, supplierImageData='', partImageData='', subgroupImageData='', editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
+// Drag & drop fournisseur/sous-groupe
+let _supDragActive=false, _supDragSourceId=null, _supDragType=null, _supDragGhost=null, _supSuppressClick=false;
 
-// ── Helpers navigation fournisseur ──────────────────────────
+// ── Navigation niveaux ──────────────────────────────────────
 function _supplierShowLevel(level){
-  // level 0 = racine, 1 = détail fournisseur, 2 = sous-groupe
-  $('suppliersRoot').classList.toggle('hidden', level!==0);
-  $('supplierDetail').classList.toggle('hidden', level!==1);
-  $('supplierSubgroupDetail').classList.toggle('hidden', level!==2);
-  if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden', level!==0);
-  if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden', level===0);
+  $('suppliersRoot').classList.toggle('hidden',level!==0);
+  $('supplierDetail').classList.toggle('hidden',level!==1);
+  if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden',level!==2);
+  if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden',level!==0);
+  if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
 // ── Niveau 0 : liste fournisseurs ───────────────────────────
@@ -7236,15 +7192,15 @@ function renderSuppliersModule(){
   if(!$('supplierGrid')) return;
   $('supplierGrid').innerHTML='';
   db.suppliers=db.suppliers||[];
-  const supplierQuery=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
+  const q=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
   db.suppliers.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).filter(s=>{
     const sgText=(s.subgroups||[]).map(sg=>(sg.name||'')+' '+((sg.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' '))).join(' ');
     const partsText=(s.parts||[]).map(p=>[p.name,p.partNumber,p.price].join(' ')).join(' ');
-    const txt=[s.name,s.email,s.firstName,s.lastName,s.phone,partsText,sgText].join(' ').toLowerCase();
-    return !supplierQuery || txt.includes(supplierQuery);
+    return !q||[s.name,s.email,s.firstName,s.lastName,s.phone,partsText,sgText].join(' ').toLowerCase().includes(q);
   }).forEach(s=>{
     const card=document.createElement('div');
     card.className='supplierCard';
+    card.dataset.supplierId=s.id;
     const sgCount=(s.subgroups||[]).length;
     card.innerHTML=`<div class="supplierImage">${s.image?`<img src="${s.image}">`:'🧰'}</div>
       <h3 title="${esc(s.name)}">${esc(s.name)}</h3>
@@ -7252,12 +7208,14 @@ function renderSuppliersModule(){
       ${sgCount>0?`<p style="font-size:11px;color:#1a7ad4;font-weight:700">📁 ${sgCount} sous-groupe${sgCount>1?'s':''}</p>`:''}
       <div class="supplierContact"><div class="supplierContactIcon">👤</div><div><p><b>${esc(((s.firstName||'')+' '+(s.lastName||'')).trim()||'-')}</b></p><p>${esc(s.phone||'-')}</p></div></div>
       <div class="supplierActions"><button class="btn primary mini" data-act="open">${T('open')}</button>${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}<button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}</div>`;
-    card.querySelector('[data-act=open]').onclick=(ev)=>{ev.stopPropagation();openSupplier(s.id)};
-    card.querySelector('[data-act=edit]').onclick=(ev)=>{ev.stopPropagation();openEditSupplier(s.id)};
-    var callBtn3=card.querySelector('[data-act=call]');if(callBtn3) callBtn3.onclick=(ev)=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
-    var mailBtn3=card.querySelector('[data-act=mail]');if(mailBtn3) mailBtn3.onclick=(ev)=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
-    const del=card.querySelector('[data-act=delete]');if(del) del.onclick=(ev)=>{ev.stopPropagation();deleteSupplier(s.id)};
-    card.onclick=()=>openSupplier(s.id);
+    card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();if(!_supSuppressClick) openSupplier(s.id);};
+    card.querySelector('[data-act=edit]').onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
+    var c=card.querySelector('[data-act=call]');if(c) c.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
+    var m=card.querySelector('[data-act=mail]');if(m) m.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
+    var d=card.querySelector('[data-act=delete]');if(d) d.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
+    card.onclick=()=>{if(!_supSuppressClick) openSupplier(s.id);};
+    // Drag & drop : appui long → déplacer un fournisseur dans un autre (rare) — on skip ce cas,
+    // le drag utile est fournisseur → sous-groupe du même fournisseur, fait au niveau 1
     $('supplierGrid').appendChild(card);
   });
 }
@@ -7270,20 +7228,20 @@ function renderSupplierParts(){
   if($('supplierDetailTitle')) $('supplierDetailTitle').textContent=s.name;
   if($('supplierDetailSub')) $('supplierDetailSub').textContent=`${T('email')}: ${s.email||'-'} | ${T('contactPhone')}: ${s.phone||'-'}`;
 
-  // -- Sous-groupes --
+  // Sous-groupes avec drag & drop
   const sgGrid=$('supplierSubgroupGrid');
   if(sgGrid){
     sgGrid.innerHTML='';
-    // Récupérer le nom du groupe client assigné au client connecté (pour mise en avant)
     var clientGroupName='';
-    if(isClientUser && isClientUser() && currentUser && currentUser.assignedGroupId){
-      var _cg=_findGroupById(currentUser.assignedGroupId, db.clientRoot||{groups:[]});
+    if(typeof isClientUser==='function'&&isClientUser()&&currentUser&&currentUser.assignedGroupId){
+      var _cg=_findGroupById(currentUser.assignedGroupId,db.clientRoot||{groups:[]});
       if(_cg) clientGroupName=(_cg.name||'').toLowerCase().trim();
     }
     (s.subgroups||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(sg=>{
-      const isLinked=clientGroupName && (sg.name||'').toLowerCase().trim()===clientGroupName;
+      const isLinked=clientGroupName&&(sg.name||'').toLowerCase().trim()===clientGroupName;
       const card=document.createElement('div');
       card.className='supplierCard';
+      card.dataset.sgId=sg.id;
       card.style.cssText=isLinked?'border:2px solid #1a7ad4;background:#f0f7ff':'';
       const pCount=(sg.parts||[]).length;
       card.innerHTML=`<div class="supplierImage" style="font-size:32px">${sg.image?`<img src="${sg.image}">`:'📁'}</div>
@@ -7293,113 +7251,154 @@ function renderSupplierParts(){
           <button class="btn primary mini" data-act="open">${T('open')}</button>
           ${isAdmin()?`<button class="btn secondary mini" data-act="edit">✏️</button><button class="btn danger mini" data-act="delete">🗑️</button>`:''}
         </div>`;
-      card.querySelector('[data-act=open]').onclick=(ev)=>{ev.stopPropagation();openSupplierSubgroup(sg.id);};
-      const editBtn=card.querySelector('[data-act=edit]');if(editBtn) editBtn.onclick=(ev)=>{ev.stopPropagation();openEditSubgroup(sg.id);};
-      const delBtn=card.querySelector('[data-act=delete]');if(delBtn) delBtn.onclick=(ev)=>{ev.stopPropagation();deleteSubgroup(sg.id);};
-      card.onclick=()=>openSupplierSubgroup(sg.id);
+      card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();if(!_supSuppressClick) openSupplierSubgroup(sg.id);};
+      var eb=card.querySelector('[data-act=edit]');if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
+      var db2=card.querySelector('[data-act=delete]');if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
+      card.onclick=()=>{if(!_supSuppressClick) openSupplierSubgroup(sg.id);};
+      // Drag long press pour réordonner les sous-groupes
+      _attachSupDrag(card, sg.id, 'subgroup', sg.name);
       sgGrid.appendChild(card);
     });
   }
 
-  // -- Pièces directes du fournisseur --
+  // Pièces directes
   $('partGrid').innerHTML='';
   const partQuery=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
   (s.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>{
-    const txt=[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase();
-    return !partQuery || txt.includes(partQuery);
+    return !partQuery||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(partQuery);
   }).forEach(p=>{
     const models=p.models||[];
     const card=document.createElement('div');card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,false);
-    const del=card.querySelector('[data-act=delete]');if(del) del.onclick=()=>deletePart(p.id,false);
+    var del=card.querySelector('[data-act=delete]');if(del) del.onclick=()=>deletePart(p.id,false);
     $('partGrid').appendChild(card);
   });
 }
 
-// Helper pour trouver un groupe client par ID
-function _findGroupById(id, node){
+function _findGroupById(id,node){
   if(!node||!id) return null;
   if(node.id===id) return node;
-  for(const g of (node.groups||[])){
-    const found=_findGroupById(id,g);
-    if(found) return found;
-  }
+  for(const g of (node.groups||[])){const f=_findGroupById(id,g);if(f) return f;}
   return null;
 }
 
 // ── Niveau 2 : détail sous-groupe ──────────────────────────
 function renderSubgroupParts(){
-  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);
-  if(!s) return;
-  const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);
-  if(!sg) return;
+  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s) return;
+  const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);if(!sg) return;
   if($('supplierSubgroupDetailTitle')) $('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
   if($('supplierSubgroupDetailSub')) $('supplierSubgroupDetailSub').textContent=(sg.parts||[]).length+' pièce(s)';
   const grid=$('subgroupPartGrid');if(!grid) return;
   grid.innerHTML='';
   const q=($('subgroupPartSearch')?$('subgroupPartSearch').value.toLowerCase().trim():'');
   (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>{
-    const txt=[p.name,p.partNumber,p.price].join(' ').toLowerCase();
-    return !q||txt.includes(q);
+    return !q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q);
   }).forEach(p=>{
     const models=p.models||[];
     const card=document.createElement('div');card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,true);
-    const del=card.querySelector('[data-act=delete]');if(del) del.onclick=()=>deletePart(p.id,true);
+    var del=card.querySelector('[data-act=delete]');if(del) del.onclick=()=>deletePart(p.id,true);
     grid.appendChild(card);
   });
 }
 
-// ── Navigation ──────────────────────────────────────────────
-function openSupplier(id){
-  selectedSupplierId=id;selectedSupplierSubgroupId=null;
-  if($('partSearch')) $('partSearch').value='';
-  _supplierShowLevel(1);
+// ── Drag & drop fournisseur → déplacer sous-groupes ─────────
+function _attachSupDrag(card, id, type, label){
+  var _pt=null;
+  card.addEventListener('pointerdown',function(e){
+    _pt=setTimeout(function(){
+      _pt=null;
+      _startSupDrag(id,type,label,e.clientX,e.clientY);
+    },600);
+  });
+  card.addEventListener('pointerup',function(){if(_pt){clearTimeout(_pt);_pt=null;}});
+  card.addEventListener('pointercancel',function(){if(_pt){clearTimeout(_pt);_pt=null;}});
+  card.addEventListener('pointermove',function(e){
+    if(_supDragActive){e.preventDefault();_moveSupDrag(e.clientX,e.clientY);}
+  },{passive:false});
+}
+function _startSupDrag(id,type,label,x,y){
+  _supDragActive=true;_supSuppressClick=true;
+  _supDragSourceId=id;_supDragType=type;
+  _supDragGhost=document.createElement('div');
+  _supDragGhost.className='dragGhost';
+  _supDragGhost.textContent=label;
+  document.body.appendChild(_supDragGhost);
+  _moveSupDrag(x,y);
+  document.addEventListener('pointermove',_onSupDragMove,{passive:false});
+  document.addEventListener('pointerup',_onSupDragEnd);
+}
+function _onSupDragMove(e){e.preventDefault();_moveSupDrag(e.clientX,e.clientY);}
+function _moveSupDrag(x,y){
+  if(_supDragGhost){_supDragGhost.style.left=x+'px';_supDragGhost.style.top=y+'px';}
+  document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
+  if(_supDragGhost) _supDragGhost.style.display='none';
+  const el=document.elementFromPoint(x,y);
+  if(_supDragGhost) _supDragGhost.style.display='';
+  const target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  if(target&&target.dataset.sgId&&target.dataset.sgId!==_supDragSourceId) target.classList.add('sgDropTarget');
+}
+function _onSupDragEnd(e){
+  if(!_supDragActive){_cleanupSupDrag();return;}
+  if(_supDragGhost) _supDragGhost.style.display='none';
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  if(_supDragGhost) _supDragGhost.style.display='';
+  const target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  const targetSgId=target?target.dataset.sgId:null;
+  const sourceSgId=_supDragSourceId;
+  _cleanupSupDrag();
+  if(targetSgId&&sourceSgId&&targetSgId!==sourceSgId){
+    // Réordonner : déplacer sourceId avant targetId dans le tableau
+    const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);
+    if(s&&s.subgroups){
+      const sgs=s.subgroups;
+      const srcIdx=sgs.findIndex(x=>x.id===sourceSgId);
+      const dstIdx=sgs.findIndex(x=>x.id===targetSgId);
+      if(srcIdx!==-1&&dstIdx!==-1){
+        const [moved]=sgs.splice(srcIdx,1);
+        sgs.splice(dstIdx,0,moved);
+        log('REORDER_SUBGROUP',moved.name);save();
+      }
+    }
+  }
+  setTimeout(()=>{_supSuppressClick=false;},350);
   renderSupplierParts();
 }
-
-function openSupplierSubgroup(sgId){
-  selectedSupplierSubgroupId=sgId;
-  if($('subgroupPartSearch')) $('subgroupPartSearch').value='';
-  _supplierShowLevel(2);
-  renderSubgroupParts();
+function _cleanupSupDrag(){
+  _supDragActive=false;_supDragSourceId=null;_supDragType=null;
+  document.removeEventListener('pointermove',_onSupDragMove);
+  document.removeEventListener('pointerup',_onSupDragEnd);
+  document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
+  if(_supDragGhost){_supDragGhost.remove();_supDragGhost=null;}
 }
 
-if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
-  if(!$('supplierSubgroupDetail').classList.contains('hidden')){
-    // Niveau 2 → Niveau 1
-    selectedSupplierSubgroupId=null;
-    _supplierShowLevel(1);
-    renderSupplierParts();
-  } else if(!$('supplierDetail').classList.contains('hidden')){
-    // Niveau 1 → Niveau 0
-    selectedSupplierId=null;
-    _supplierShowLevel(0);
-    renderSuppliersModule();
-  } else {
-    show('moduleView');
-  }
-};
+// ── Bouton retour ────────────────────────────────────────────
+function openSupplier(id){selectedSupplierId=id;selectedSupplierSubgroupId=null;if($('partSearch')) $('partSearch').value='';_supplierShowLevel(1);renderSupplierParts();}
+function openSupplierSubgroup(sgId){selectedSupplierSubgroupId=sgId;if($('subgroupPartSearch')) $('subgroupPartSearch').value='';_supplierShowLevel(2);renderSubgroupParts();}
 
+if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
+  if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){
+    selectedSupplierSubgroupId=null;_supplierShowLevel(1);renderSupplierParts();
+  } else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){
+    selectedSupplierId=null;_supplierShowLevel(0);renderSuppliersModule();
+  } else {show('moduleView');}
+};
 if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
   if(!requireAdminAccess())return;
   selectedSupplierId=null;selectedSupplierSubgroupId=null;
   if($('supplierGlobalSearch')) $('supplierGlobalSearch').value='';
-  _supplierShowLevel(0);
-  show('suppliersView');
-  renderSuppliersModule();
+  _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
 };
 
 // ── CRUD Fournisseur ────────────────────────────────────────
 function readSupplierImage(input,callback,previewId){
   const file=input.files[0];if(!file){callback('');return;}
   const r=new FileReader();
-  r.onload=()=>{ compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}}); };
+  r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});};
   r.readAsDataURL(file);
 }
-
 if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
 if($('supplierImageInput')) $('supplierImageInput').onchange=e=>readSupplierImage(e.target,v=>supplierImageData=v,'supplierPreview');
 if($('supplierForm')) $('supplierForm').onsubmit=e=>{
@@ -7417,13 +7416,7 @@ function openEditSupplier(id){const s=(db.suppliers||[]).find(x=>x.id===id);if(!
 function deleteSupplier(id){if(!isAdmin())return;if(!confirm(T('deleteSupplierConfirm')))return;const s=(db.suppliers||[]).find(x=>x.id===id);db.suppliers=(db.suppliers||[]).filter(x=>x.id!==id);if(s) moveToTrash('supplier',s,{});log('DELETE_SUPPLIER',s?s.name:id);save();renderSuppliersModule();}
 
 // ── CRUD Sous-groupe ────────────────────────────────────────
-if($('addSubgroupBtn')) $('addSubgroupBtn').onclick=()=>{
-  editingSubgroupId=null;subgroupImageData='';
-  $('supplierSubgroupForm').reset();
-  $('supplierSubgroupDialogTitle').textContent='+ Sous-groupe';
-  $('subgroupPreview').classList.add('hidden');
-  $('supplierSubgroupDialog').showModal();
-};
+if($('addSubgroupBtn')) $('addSubgroupBtn').onclick=()=>{editingSubgroupId=null;subgroupImageData='';$('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='+ Sous-groupe';$('subgroupPreview').classList.add('hidden');$('supplierSubgroupDialog').showModal();};
 if($('subgroupImageInput')) $('subgroupImageInput').onchange=e=>readSupplierImage(e.target,v=>subgroupImageData=v,'subgroupPreview');
 if($('supplierSubgroupForm')) $('supplierSubgroupForm').onsubmit=e=>{
   e.preventDefault();
@@ -7442,50 +7435,26 @@ function openEditSubgroup(sgId){
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;
   const sg=(s.subgroups||[]).find(x=>x.id===sgId);if(!sg)return;
   editingSubgroupId=sgId;subgroupImageData=sg.image||'';
-  $('supplierSubgroupForm').reset();
-  $('supplierSubgroupDialogTitle').textContent='✏️ Sous-groupe';
+  $('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='✏️ Sous-groupe';
   $('subgroupNameInput').value=sg.name||'';
   if(sg.image){$('subgroupPreview').style.backgroundImage=`url(${sg.image})`;$('subgroupPreview').classList.remove('hidden');}else $('subgroupPreview').classList.add('hidden');
   $('supplierSubgroupDialog').showModal();
 }
 function deleteSubgroup(sgId){
-  if(!isAdmin())return;
-  if(!confirm('Supprimer ce sous-groupe et ses pièces ?'))return;
+  if(!isAdmin())return;if(!confirm('Supprimer ce sous-groupe et ses pièces ?'))return;
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;
   s.subgroups=(s.subgroups||[]).filter(x=>x.id!==sgId);
   log('DELETE_SUBGROUP',sgId);save();renderSupplierParts();
 }
 
-// ── CRUD Pièces (niveau 1 direct OU niveau 2 sous-groupe) ──
-// inSubgroup=false → pièce directe du fournisseur
-// inSubgroup=true  → pièce dans le sous-groupe sélectionné
+// ── CRUD Pièces ─────────────────────────────────────────────
 function _getPartTarget(inSubgroup){
-  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return null;
-  if(inSubgroup){
-    const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);
-    return sg?{container:sg,supplier:s,subgroup:sg}:null;
-  }
+  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s) return null;
+  if(inSubgroup){const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);return sg?{container:sg,supplier:s,subgroup:sg}:null;}
   return {container:s,supplier:s,subgroup:null};
 }
-
-// Bouton + Pièce niveau 1 (fournisseur direct)
-if($('addPartBtn')) $('addPartBtn').onclick=()=>{
-  editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);
-  $('partDialog').querySelector('h2').textContent=T('addPart');
-  $('partPreview').classList.add('hidden');
-  $('partDialog').dataset.inSubgroup='false';
-  $('partDialog').showModal();
-};
-
-// Bouton + Pièce niveau 2 (sous-groupe)
-if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').onclick=()=>{
-  editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);
-  $('partDialog').querySelector('h2').textContent=T('addPart');
-  $('partPreview').classList.add('hidden');
-  $('partDialog').dataset.inSubgroup='true';
-  $('partDialog').showModal();
-};
-
+if($('addPartBtn')) $('addPartBtn').onclick=()=>{editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='false';$('partDialog').showModal();};
+if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').onclick=()=>{editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='true';$('partDialog').showModal();};
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
 if($('partForm')) $('partForm').onsubmit=e=>{
   e.preventDefault();
@@ -7503,29 +7472,48 @@ if($('partForm')) $('partForm').onsubmit=e=>{
   editingPartId=null;save();$('partDialog').close();
   if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}
 };
-
 function openEditPart(id,inSubgroup){
   const target=_getPartTarget(inSubgroup);if(!target)return;
   const p=(target.container.parts||[]).find(x=>x.id===id);if(!p)return;
   editingPartId=id;partImageData=p.image||'';
-  $('partForm').reset();
-  $('partDialog').querySelector('h2').textContent='✏️ '+T('addPart');
+  $('partForm').reset();$('partDialog').querySelector('h2').textContent='✏️ '+T('addPart');
   $('partNameInput').value=p.name||'';$('sparePartNumberInput').value=p.partNumber||'';$('partPriceInput').value=p.price||'';
   populatePartModelsSelect(p.models||[]);
   if(partImageData){$('partPreview').style.backgroundImage=`url(${partImageData})`;$('partPreview').classList.remove('hidden');}else $('partPreview').classList.add('hidden');
   $('partDialog').dataset.inSubgroup=inSubgroup?'true':'false';
   $('partDialog').showModal();
 }
-
 function deletePart(id,inSubgroup){
-  if(!isAdmin())return;
-  const target=_getPartTarget(inSubgroup);if(!target)return;
+  if(!isAdmin())return;const target=_getPartTarget(inSubgroup);if(!target)return;
   if(!confirm(T('deletePartConfirm')))return;
   const p=(target.container.parts||[]).find(x=>x.id===id);
   target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id);
   if(p) moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null});
   log('DELETE_PART',p?p.partNumber:id);save();
   if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}
+}
+
+// ── Client bouton stock ─────────────────────────────────────
+function _injectClientStockBtn(){
+  var u=currentUser;if(!u||u.role!=='client'||!u.assignedSupplierId) return;
+  var existing=document.getElementById('clientStockBtn');if(existing) existing.remove();
+  var s=(db.suppliers||[]).find(function(x){return x.id===u.assignedSupplierId;});if(!s) return;
+  var btn=document.createElement('button');
+  btn.id='clientStockBtn';btn.className='btn primary';
+  btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;border-radius:50px;padding:12px 20px;font-size:15px;font-weight:800;box-shadow:0 4px 18px rgba(10,124,194,.35)';
+  btn.innerHTML='📦 '+esc(s.name);
+  btn.onclick=function(){
+    selectedSupplierId=s.id;selectedSupplierSubgroupId=null;
+    if($('addSupplierBtn')) $('addSupplierBtn').classList.add('hidden');
+    if($('addSubgroupBtn')) $('addSubgroupBtn').classList.add('hidden');
+    if($('addPartBtn')) $('addPartBtn').classList.add('hidden');
+    _supplierShowLevel(1);show('suppliersView');renderSupplierParts();
+    setTimeout(function(){
+      document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+      document.querySelectorAll('#suppliersView button.btn.primary:not(#supplierUpBtn)').forEach(function(el){el.style.display='none';});
+    },150);
+  };
+  document.body.appendChild(btn);
 }
 
 
@@ -8212,35 +8200,17 @@ function addMaintenanceRow(data){
   for(var m=1;m<=12;m++) monthOpts+='<option value="'+m+'"'+(data.freqMonths===m?' selected':'')+'>'+m+'</option>';
   var partOpts='<option value="">— Pièce liée (optionnel) —</option>';
   try{
-    var _db2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
-    (_db2.suppliers||[]).forEach(function(s){
-      (s.parts||[]).forEach(function(p){
-        var isSel=(data.linkedPartId===p.id)?' selected':'';
-        partOpts+='<option value="'+p.id+'"'+isSel+'>['+esc(s.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';
-      });
-      (s.subgroups||[]).forEach(function(sg){
-        (sg.parts||[]).forEach(function(p){
-          var isSel=(data.linkedPartId===p.id)?' selected':'';
-          partOpts+='<option value="'+p.id+'"'+isSel+'>['+esc(s.name)+' › '+esc(sg.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';
-        });
-      });
+    var _dbx=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    (_dbx.suppliers||[]).forEach(function(s){
+      (s.parts||[]).forEach(function(p){var isSel=(data.linkedPartId===p.id)?' selected':'';partOpts+='<option value="'+p.id+'"'+isSel+'>['+esc(s.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';});
+      (s.subgroups||[]).forEach(function(sg){(sg.parts||[]).forEach(function(p){var isSel=(data.linkedPartId===p.id)?' selected':'';partOpts+='<option value="'+p.id+'"'+isSel+'>['+esc(s.name)+' › '+esc(sg.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';});});
     });
   }catch(e){}
-  row.innerHTML='<div style="display:flex;gap:8px;align-items:center">'
-    +'<input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
-    +'<button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button>'
-    +'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px">'
-    +'<span style="font-size:12px;color:#666;white-space:nowrap">Fréquence tous les</span>'
-    +'<select class="maintFreq" style="width:70px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select>'
-    +'<span style="font-size:12px;color:#666">mois</span>'
-    +'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px">'
-    +'<span style="font-size:12px;color:#666;white-space:nowrap">🔢 N° série spécifique</span>'
-    +'<input type="text" class="maintSerial" value="'+esc(data.specificSerial||'')+'" placeholder="Laisser vide = tous" style="flex:1;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
-    +'</div>'
+  row.innerHTML='<div style="display:flex;gap:8px;align-items:center"><input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px"><button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button></div>'
+    +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#666;white-space:nowrap">Fréquence tous les</span><select class="maintFreq" style="width:70px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select><span style="font-size:12px;color:#666">mois</span></div>'
+    +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#666;white-space:nowrap">🔢 N° série spécifique</span><input type="text" class="maintSerial" value="'+esc(data.specificSerial||'')+'" placeholder="Laisser vide = tous" style="flex:1;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:13px"></div>'
     +'<select class="maintPart" style="width:100%;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+partOpts+'</select>';
-  row.querySelector('button').onclick=function(){ row.remove(); };
+  row.querySelector('button').onclick=function(){row.remove();};
   box.appendChild(row);
 }
 
@@ -8279,7 +8249,8 @@ translate();
     machinePhotoClient:{label:'Image machine client', preview:'machineClientPreview', variable:'clientMachineImage'},
     supplierImageInput:{label:'Image fournisseur', preview:'supplierPreview', variable:'supplierImageData'},
     partImageInput:{label:'Image pièce', preview:'partPreview', variable:'partImageData'},
-    faultMachineImageInput:{label:'Image machine panne', preview:'faultMachineImagePreview', variable:'faultMachineImageData'}
+    faultMachineImageInput:{label:'Image machine panne', preview:'faultMachineImagePreview', variable:'faultMachineImageData'},
+    subgroupImageInput:{label:'Image sous-groupe', preview:'subgroupPreview', variable:'subgroupImageData'}
   };
   let targetInputId = null;
 
@@ -8332,6 +8303,7 @@ translate();
       else if(name === 'supplierImageData') supplierImageData = data;
       else if(name === 'partImageData') partImageData = data;
       else if(name === 'faultMachineImageData') faultMachineImageData = data;
+      else if(name === 'subgroupImageData') subgroupImageData = data;
       else window[name] = data;
     }catch(e){ window[name] = data; }
   }
