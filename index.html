@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v12.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=12.9', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=13.0', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3861,40 +3861,20 @@ function openApp(){
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
-  if(currentUser && currentUser.role==='client'){
-    var u=currentUser;
-    // Initialiser la structure fournisseur
-    db.suppliers=db.suppliers||[];
-    if(!db.supplierRoot||typeof db.supplierRoot!=='object'){
-      db.supplierRoot={id:'__root__',name:'Fournisseurs',groups:db.suppliers,parts:[]};
-    }else{db.supplierRoot.groups=db.suppliers;}
-    // ── Cas 1 : client a un stock fournisseur assigné ──
-    if(u.assignedSupplierId){
-      // Recherche récursive par ID
-      function _findRec(id,nodes){for(var i=0;i<(nodes||[]).length;i++){if(nodes[i].id===id)return nodes[i];var f=_findRec(id,nodes[i].groups||[]);if(f)return f;}return null;}
-      var tg=_findRec(u.assignedSupplierId,db.suppliers||[]);
-      if(tg){
-        // Construire le chemin vers ce groupe (identique à clientPathIds pour la machine)
-        function _path(tId,node,p){for(var g of(node.groups||[])){if(g.id===tId)return p.concat([g.id]);var f=_path(tId,g,p.concat([g.id]));if(f)return f;}return null;}
-        var path=_path(tg.id,db.supplierRoot,[]);
-        supplierPathIds=path||[tg.id];
-        // Afficher suppliersView (identique à show('clientsView') pour la machine)
-        show('suppliersView');
-        renderSuppliersModule();
-        // Lecture seule
-        setTimeout(function(){
-          ['addSupplierBtn','addPartBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-          document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(function(el){el.style.display='none';});
-          document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-        },200);
-        setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
-        return; // ← sortir : pas besoin de montrer la gestion machine
-      }
+  if(currentUser&&currentUser.role==='client'){
+    // Exactement comme renderClientMachineModule pour les machines :
+    // Si assignedSupplierId → ouvrir suppliersView sur son groupe
+    // Sinon → ouvrir clientsView sur ses machines
+    if(currentUser.assignedSupplierId){
+      supplierPathIds=[];
+      show('suppliersView');
+      renderSuppliersModule();
+    } else {
+      clientPathIds=[];
+      show('clientsView');
+      renderClientMachineModule();
     }
-    // ── Cas 2 : client n'a que la gestion machine (assignedGroupId) ──
-    clientPathIds=[];
-    show('clientsView');
-    renderClientMachineModule();
+    _injectClientStockBtn();
   }else{
     var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
     show('moduleView');
@@ -7186,7 +7166,8 @@ $('machineServiceForm').onsubmit=e=>{
 
 
 // ══════════════════════════════════════════════════════════
-// MODULE FOURNISSEURS v12.9 — copie exacte client machine
+// MODULE FOURNISSEURS v13.0 — logique IDENTIQUE client machine
+// sgMatchesCurrentClient ≡ groupMatchesCurrentClient
 // ══════════════════════════════════════════════════════════
 let supplierImageData='',partImageData='';
 let editingSupplierId=null,editingPartId=null;
@@ -7211,6 +7192,44 @@ function findSupplierGroupWithParent(gId,node=null){
   for(const g of(node.groups||[])){if(g.id===gId)return{group:g,parent:node};const f=findSupplierGroupWithParent(gId,g);if(f)return f;}
   return null;
 }
+
+// ── Accès client — IDENTIQUE à groupMatchesCurrentClient ──
+function sgMatchesCurrentClient(g){
+  if(!isClientUser()||!g) return false;
+  const u=currentUser||{};
+  // Correspondance par assignedSupplierId (identique à assignedGroupId pour machine)
+  if(u.assignedSupplierId && g.id && u.assignedSupplierId===g.id) return true;
+  return false;
+}
+function sgHasCurrentClientAccess(g,inherited=false){
+  if(!isClientUser()) return true;
+  const now=!!inherited||sgMatchesCurrentClient(g);
+  if(now) return true;
+  return (g.groups||[]).some(child=>sgHasCurrentClientAccess(child,false));
+}
+function sgPathHasAccess(){
+  if(!isClientUser()) return true;
+  let node=db.supplierRoot; let ok=false;
+  for(const gid of supplierPathIds){
+    const g=(node.groups||[]).find(x=>x.id===gid); if(!g) break;
+    if(ok||sgMatchesCurrentClient(g)) ok=true;
+    node=g;
+  }
+  return ok;
+}
+function sgAllowedChildGroups(node,inherited){
+  const arr=(node&&node.groups)||[];
+  if(!isClientUser()) return arr;
+  return arr.filter(g=>!!inherited||sgMatchesCurrentClient(g)||(g.groups||[]).some(child=>sgHasCurrentClientAccess(child,false)));
+}
+function sgAllowedParts(node,inherited){
+  const arr=(node&&node.parts)||[];
+  if(!isClientUser()) return arr;
+  const allowed=!!inherited||sgPathHasAccess();
+  return allowed ? arr : [];
+}
+
+// Drag — identique au client machine
 function isDescendantSg(pId,cId){
   const f=findSupplierGroupWithParent(pId);if(!f)return false;
   function w(g){if((g.groups||[]).some(x=>x.id===cId))return true;return(g.groups||[]).some(x=>w(x));}
@@ -7270,40 +7289,38 @@ document.addEventListener('pointermove',ev=>{if(sgTouchDragActive){ev.preventDef
 document.addEventListener('pointerup',ev=>{if(sgTouchDragActive){ev.preventDefault();finishSgDrag(ev.clientX,ev.clientY);}},{passive:false});
 document.addEventListener('pointercancel',()=>{if(sgTouchDragActive)cleanupSgDrag();},{passive:false});
 
-// Masquer boutons édition pour client — identique à la gestion machine
-function _sgClientReadOnly(){
-  if(!currentUser||currentUser.role!=='client')return;
-  setTimeout(function(){
-    ['addSupplierBtn','addPartBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-    document.querySelectorAll('#supplierGroupsGrid [data-act="edit"],[data-act="delete"],[data-act="moveup"]').forEach(function(el){el.style.display='none';});
-    document.querySelectorAll('#supplierPartsList [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-  },100);
-}
-
+// ── renderSuppliersModule — IDENTIQUE à renderClientMachineModule ──
 function renderSuppliersModule(){
-  supplierEnsureDb();if(!$('supplierGroupsGrid'))return;
-  const node=currentSupplierNode(),isRoot=supplierPathIds.length===0;
+  supplierEnsureDb();
+  if(!$('supplierGroupsGrid')) return;
+  const node=currentSupplierNode();
+  const isRoot=supplierPathIds.length===0;
+  const inherited=sgPathHasAccess();
   $('supplierUpBtn').classList.toggle('hidden',isRoot);
-  $('supplierEmptyGroups').classList.add('hidden');$('supplierEmptyParts').classList.add('hidden');
-  // Fil d'Ariane — identique au clientPath
+  $('supplierEmptyGroups').classList.add('hidden');
+  $('supplierEmptyParts').classList.add('hidden');
+  // Fil d'Ariane
   const pe=$('supplierPath');
   if(pe){
     pe.innerHTML='';
     const rb=document.createElement('button');rb.className='btn secondary';rb.textContent='Fournisseurs';
-    rb.onclick=()=>{supplierPathIds=[];renderSuppliersModule();_sgClientReadOnly();};pe.appendChild(rb);
+    rb.onclick=()=>{supplierPathIds=[];renderSuppliersModule();};pe.appendChild(rb);
     let tmp=db.supplierRoot;
     supplierPathIds.forEach((gid,idx)=>{
       const g=(tmp.groups||[]).find(x=>x.id===gid);if(!g)return;
       const sep=document.createElement('span');sep.textContent='›';pe.appendChild(sep);
       const b=document.createElement('button');b.className='btn secondary';b.textContent=g.name;
-      b.onclick=()=>{supplierPathIds=supplierPathIds.slice(0,idx+1);renderSuppliersModule();_sgClientReadOnly();};
+      b.onclick=()=>{supplierPathIds=supplierPathIds.slice(0,idx+1);renderSuppliersModule();};
       pe.appendChild(b);tmp=g;
     });
   }
   const q=(($('supplierGlobalSearch')||{}).value||'').toLowerCase().trim();
-  // Groupes — identique au groupGrid client machine
+  // Groupes — filtrés par sgAllowedChildGroups (identique à clientAllowedChildGroups)
   $('supplierGroupsGrid').innerHTML='';
-  (node.groups||[]).filter(g=>!q||[g.name,(g.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')].join(' ').toLowerCase().includes(q)).forEach(g=>{
+  const allowedGroups=sgAllowedChildGroups(node,inherited).filter(g=>
+    !q||[g.name,(g.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')].join(' ').toLowerCase().includes(q)
+  );
+  allowedGroups.forEach(g=>{
     const card=document.createElement('div');card.className='groupCard';card.dataset.groupId=g.id;card.draggable=isAdmin();
     if(sgMovingGroupId===g.id)card.classList.add('groupMoveSelected');
     const isNotRoot=(()=>{const s=findSupplierGroupWithParent(g.id);return s&&s.parent!==db.supplierRoot;})();
@@ -7323,15 +7340,13 @@ function renderSuppliersModule(){
       if(ev.target.closest('button'))return;
       if(sgTouchDragActive||sgSuppressNextClick){ev.preventDefault();ev.stopPropagation();return;}
       if(sgMovingGroupId){moveSgInto(g.id);return;}
-      supplierPathIds.push(g.id);renderSuppliersModule();_sgClientReadOnly();
+      supplierPathIds.push(g.id);renderSuppliersModule();
     };
-    // HTML5 drag
     card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}if(sgTouchDragActive){ev.preventDefault();return;}sgDragGroupId=g.id;card.classList.add('groupDragSource');ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',g.id);});
     card.addEventListener('dragend',()=>{card.classList.remove('groupDragSource');document.querySelectorAll('#supplierGroupsGrid .groupDropTarget').forEach(x=>x.classList.remove('groupDropTarget'));sgDragGroupId=null;});
     card.addEventListener('dragover',ev=>{if(sgDragGroupId&&sgDragGroupId!==g.id){ev.preventDefault();card.classList.add('groupDropTarget');}});
     card.addEventListener('dragleave',()=>card.classList.remove('groupDropTarget'));
     card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const p=ev.dataTransfer.getData('text/plain')||sgDragGroupId;if(p&&p!==g.id){sgMovingGroupId=p;moveSgInto(g.id);}});
-    // Touch drag — MOT POUR MOT client machine
     card.addEventListener('contextmenu',ev=>ev.preventDefault());
     card.addEventListener('pointerdown',ev=>{if(!isAdmin())return;if(ev.target.closest('button'))return;ev.preventDefault();clearTimeout(sgLongPressTimer);try{card.setPointerCapture(ev.pointerId);}catch(e){}card.classList.add('dragArmed');sgLongPressTimer=setTimeout(()=>{startSgDrag(g.id,ev.clientX,ev.clientY);},520);},{passive:false});
     card.addEventListener('pointermove',ev=>{if(ev.target.closest('button'))return;const dx=Math.abs(ev.clientX-lastPointerX),dy=Math.abs(ev.clientY-lastPointerY);if(!sgTouchDragActive&&(dx>12||dy>12)){clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');}if(sgTouchDragActive){ev.preventDefault();moveSgGhost(ev.clientX,ev.clientY);}},{passive:false});
@@ -7339,12 +7354,13 @@ function renderSuppliersModule(){
     card.addEventListener('pointercancel',ev=>{clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');try{card.releasePointerCapture(ev.pointerId);}catch(e){}if(sgTouchDragActive)cleanupSgDrag();},{passive:false});
     $('supplierGroupsGrid').appendChild(card);
   });
-  if(!(node.groups||[]).length)$('supplierEmptyGroups').textContent='Aucun groupe.';
-  // Pièces — identique aux machines client
+  if(!allowedGroups.length)$('supplierEmptyGroups').textContent=isClientUser()?'':'Aucun groupe.';
+  // Pièces — filtrées par sgAllowedParts (identique à clientAllowedMachines)
   const pl=$('supplierPartsList');
   if(pl){
     pl.innerHTML='';
-    (node.parts||[]).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q)).forEach(p=>{
+    const allowedParts=sgAllowedParts(node,inherited).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q));
+    allowedParts.forEach(p=>{
       const item=document.createElement('div');item.className='item';
       item.style.cssText='display:flex;gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:8px';
       item.innerHTML=`<div style="width:44px;height:44px;border-radius:10px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${p.image?`<img src="${p.image}" style="width:44px;height:44px;object-fit:contain;border-radius:10px">`:'⚙️'}</div>
@@ -7354,12 +7370,11 @@ function renderSuppliersModule(){
       const db3=item.querySelector('[data-act=delete]');if(db3)db3.onclick=()=>deletePart2(p.id);
       pl.appendChild(item);
     });
-    if(!(node.parts||[]).length)$('supplierEmptyParts').textContent='Aucune pièce.';
+    if(!allowedParts.length)$('supplierEmptyParts').textContent='Aucune pièce.';
   }
-  _sgClientReadOnly();
 }
 
-// CRUD — identique aux fonctions groupe/machine client
+// CRUD
 function moveSgUp(gId){
   supplierEnsureDb();const src=findSupplierGroupWithParent(gId);if(!src)return;
   if(src.parent===db.supplierRoot){alert(T('moveGroupImpossible'));return;}
@@ -7392,9 +7407,8 @@ if($('supplierForm'))$('supplierForm').onsubmit=e=>{
   else{const g={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),groups:[],parts:[]};node.groups=node.groups||[];node.groups.push(g);db.suppliers=db.supplierRoot.groups;log('ADD_SG',g.name);}
   editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule();
 };
-// Bouton retour — identique au clientUpBtn
 if($('supplierUpBtn'))$('supplierUpBtn').onclick=()=>{
-  if(supplierPathIds.length>0){supplierPathIds.pop();renderSuppliersModule();_sgClientReadOnly();}
+  if(supplierPathIds.length>0){supplierPathIds.pop();renderSuppliersModule();}
   else{show('moduleView');}
 };
 if($('openSuppliersModule'))$('openSuppliersModule').onclick=()=>{
@@ -7423,6 +7437,10 @@ function deletePart2(id){
   node.parts=(node.parts||[]).filter(x=>x.id!==id);db.suppliers=db.supplierRoot.groups;
   if(p)moveToTrash('part',p,{});log('DEL_PART',p?p.partNumber:id);save();renderSuppliersModule();
 }
+
+// _injectClientStockBtn — plus nécessaire avec la nouvelle logique
+// mais gardé pour compatibilité
+function _injectClientStockBtn(){}
 
 if($('vehicleGlobalSearch'))$('vehicleGlobalSearch').oninput=renderCars;
 if($('supplierGlobalSearch'))$('supplierGlobalSearch').oninput=renderSuppliersModule;
