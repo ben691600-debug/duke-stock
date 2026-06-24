@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v12.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v12.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=12.1', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=12.2', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -289,15 +289,15 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 #clientEmptyGroups,#clientEmptyMachines{display:none!important}
 
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
-.supplierCard{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;}
-.supplierCard h3,.supplierCard p,.supplierCard .supplierImage{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;pointer-events:none;}
+.supplierCard{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;touch-action:manipulation;}
+.supplierCard h3,.supplierCard p,.supplierCard .supplierImage,.supplierCard .supplierContact{pointer-events:none;-webkit-touch-callout:none!important;}
 .supplierCard.dragArmed{outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDragSource{opacity:.55;outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDropTarget{outline:3px solid #0A7CC2;background:#EAF4FB!important;}
 body.draggingSupplierGroup{overflow:hidden;touch-action:none;}
 .supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
-.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none;-webkit-user-drag:none;}
+.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none}
 .supplierCard h3{font-size:15px;line-height:1.15;margin:0;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierCard p{font-size:12px;line-height:1.25;margin:0;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierContact{display:flex;gap:7px;align-items:center;background:#f4f9fd;border:1px solid var(--line);border-radius:12px;padding:6px}
@@ -5870,7 +5870,11 @@ function renderClientMachineModule(){
     if(_mSt==='open') card.classList.add('clientMachineOpenFault');
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
     var _faultMachine=(db.faultMachines||[]).find(function(fm){var mn=(fm.model||'').toLowerCase().trim();var mm=(m.model||'').toLowerCase().trim();return mn===mm;});
-    var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){if(!maint.specificSerial) return true;return (maint.specificSerial.trim().toLowerCase()===(m.serial||m.serialNumber||'').trim().toLowerCase());});
+    var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){
+      if(!maint.specificSerial) return true;
+      var mSerial=(m.serial||m.serialNumber||'').trim().toLowerCase();
+      return maint.specificSerial.trim().toLowerCase()===mSerial;
+    });
     var _isEndo=(function(m){
       var model=(m.model||'').toLowerCase().trim();
       var type=(m.type||'').toLowerCase().trim();
@@ -7320,6 +7324,7 @@ function renderSupplierParts(){
         clearTimeout(sgLongPressTimer);
         try{ card.setPointerCapture(ev.pointerId); }catch(e){}
         card.classList.add('dragArmed');
+        card.style.touchAction='none'; // bloquer scroll pendant longpress
         sgLastPointerX=ev.clientX; sgLastPointerY=ev.clientY;
         sgLongPressTimer=setTimeout(()=>{
           startSgTouchDrag(sg.id, ev.clientX, ev.clientY);
@@ -7332,6 +7337,7 @@ function renderSupplierParts(){
         if(!sgTouchDragActive && (dx>12||dy>12)){
           clearTimeout(sgLongPressTimer);
           card.classList.remove('dragArmed');
+          card.style.touchAction='';
         }
         if(sgTouchDragActive){
           ev.preventDefault();
@@ -7341,6 +7347,7 @@ function renderSupplierParts(){
       card.addEventListener('pointerup', ev=>{
         clearTimeout(sgLongPressTimer);
         card.classList.remove('dragArmed');
+        card.style.touchAction='';
         try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
         if(sgTouchDragActive){
           ev.preventDefault();
@@ -7350,6 +7357,7 @@ function renderSupplierParts(){
       card.addEventListener('pointercancel', ev=>{
         clearTimeout(sgLongPressTimer);
         card.classList.remove('dragArmed');
+        card.style.touchAction='';
         try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
         if(sgTouchDragActive) cleanupSgTouchDrag();
       }, {passive:false});
@@ -8103,20 +8111,8 @@ $('faultMachineFaultForm').onsubmit = ev=>{
   const machine = db.faultMachines.find(x=>x.id===faultMachineActiveFaultId);
   if(machine){
     machine.faults = faultMachineReadFaultRows();
+    // Lire les maintenances
     machine.maintenances = readMaintenanceRows();
-    // CORRECTIF : écrire directement dans localStorage avant syncToRTDB
-    // pour éviter qu'un snapshot Firebase intermédiaire écrase les maintenances
-    try{
-      const _stored = JSON.parse(localStorage.getItem(STORE)||'{}');
-      if(Array.isArray(_stored.faultMachines)){
-        const _idx = _stored.faultMachines.findIndex(x=>x.id===machine.id);
-        if(_idx!==-1){
-          _stored.faultMachines[_idx].faults = machine.faults;
-          _stored.faultMachines[_idx].maintenances = machine.maintenances;
-          localStorage.setItem(STORE, JSON.stringify(_stored));
-        }
-      }
-    }catch(e){}
     save();
   }
   $('faultMachineFaultDialog').close();
@@ -8129,9 +8125,28 @@ function addMaintenanceRow(data){
   var box=$('maintenanceRowsBox');
   if(!box) return;
   var row=document.createElement('div');
+  row.className='maintRow'; // ← classe stable pour querySelectorAll
   row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%';
   var monthOpts='<option value="">?</option>';
   for(var mi=1;mi<=12;mi++) monthOpts+='<option value="'+mi+'"'+(data.freqMonths===mi?' selected':'')+'>'+mi+'</option>';
+
+  // Liste déroulante numéros de série : collecter toutes les machines existantes
+  var serialOpts='<option value="">vide = toutes les machines</option>';
+  try{
+    var _dbx2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    var _serials=[];
+    function _collectSerials(node){
+      (node.machines||[]).forEach(function(m){
+        var s=(m.serial||m.serialNumber||'').trim();
+        var label=(m.model||'')+(s?' — '+s:'');
+        if(s && _serials.indexOf(s)===-1){ _serials.push(s); serialOpts+='<option value="'+esc(s)+'"'+(data.specificSerial===s?' selected':'')+'>'+esc(label)+'</option>'; }
+      });
+      (node.groups||[]).forEach(function(g){ _collectSerials(g); });
+    }
+    _collectSerials(_dbx2.clientRoot||{groups:[],machines:[]});
+  }catch(e){}
+
+  // Pièces fournisseur
   var partOpts='<option value="">— Pièce liée (optionnel) —</option>';
   try{
     var _dbx=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
@@ -8140,6 +8155,7 @@ function addMaintenanceRow(data){
       (s.subgroups||[]).forEach(function(sg){(sg.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';partOpts+='<option value="'+p.id+'"'+sel+'>['+esc(s.name)+' › '+esc(sg.name)+'] '+esc(p.name||p.partNumber||'')+(p.price?' ('+esc(p.price)+')':'')+' </option>';});});
     });
   }catch(e){}
+
   row.innerHTML=
     '<div style="display:flex;gap:8px;align-items:center">'
       +'<input type="text" placeholder="Description" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;min-width:0;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
@@ -8150,9 +8166,9 @@ function addMaintenanceRow(data){
       +'<select class="maintFreq" style="width:66px;flex-shrink:0;padding:6px 2px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select>'
       +'<span style="font-size:12px;color:#666;flex-shrink:0">mois</span>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:6px">'
-      +'<span style="font-size:12px;color:#666;white-space:nowrap;flex-shrink:0">🔢 N° série</span>'
-      +'<input type="text" class="maintSerial" value="'+esc(data.specificSerial||'')+'" placeholder="vide = tous" style="flex:1;min-width:0;padding:6px 8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
+    +'<div style="display:flex;flex-direction:column;gap:4px">'
+      +'<span style="font-size:12px;color:#666;flex-shrink:0">🔢 Machine spécifique (optionnel)</span>'
+      +'<select class="maintSerial" style="width:100%;box-sizing:border-box;padding:7px 8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+serialOpts+'</select>'
     +'</div>'
     +'<select class="maintPart" style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+partOpts+'</select>';
   row.querySelector('button').onclick=function(){ row.remove(); };
@@ -8163,7 +8179,8 @@ function readMaintenanceRows(){
   var rows=[];
   var box=$('maintenanceRowsBox');
   if(!box) return rows;
-  box.querySelectorAll('div[style*="f0f7ff"]').forEach(function(row){
+  // Utiliser la classe .maintRow — stable même si le navigateur normalise le style inline
+  box.querySelectorAll('.maintRow').forEach(function(row){
     var desc=(row.querySelector('.maintDesc')||{}).value||'';
     var freqEl=row.querySelector('.maintFreq');
     var freq=freqEl?parseInt(freqEl.value)||0:0;
