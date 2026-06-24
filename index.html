@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v11.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v11.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=11.8', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=11.9', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -289,11 +289,12 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 #clientEmptyGroups,#clientEmptyMachines{display:none!important}
 
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.supplierCard{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
 .supplierCard.sgDropTarget{border:2.5px dashed #1a7ad4!important;background:#e8f4fd!important;transform:scale(1.04);transition:transform .15s;}
 .supplierCard.sgDragSource{opacity:.45;}
 .supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
-.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
+.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none;user-select:none}
 .supplierCard h3{font-size:15px;line-height:1.15;margin:0;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierCard p{font-size:12px;line-height:1.25;margin:0;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierContact{display:flex;gap:7px;align-items:center;background:#f4f9fd;border:1px solid var(--line);border-radius:12px;padding:6px}
@@ -4961,8 +4962,8 @@ function populateGroupDropdown(selectedId){
 function updateOperatorFormFields(role){
   var vehicleLabel=$('operatorVehicleLabel');var groupLabel=$('operatorGroupLabel');
   if(!vehicleLabel||!groupLabel) return;
-  var isClient=(role==='client');var isAdmin2=(role==='admin');
-  vehicleLabel.style.display=(isClient||isAdmin2)?'none':'';
+  var isClient=(role==='client');var isAdm=(role==='admin');
+  vehicleLabel.style.display=(isClient||isAdm)?'none':'';
   groupLabel.style.display=isClient?'':'none';
   if(isClient) populateGroupDropdown(null);
   var supplierLabel=$('operatorSupplierLabel');
@@ -7152,17 +7153,14 @@ $('machineServiceForm').onsubmit=e=>{
 
 
 // ══════════════════════════════════════════════════════════
-// MODULE FOURNISSEURS / PIÈCES — avec sous-groupes et drag
+// MODULE FOURNISSEURS / PIÈCES
 // ══════════════════════════════════════════════════════════
 let selectedSupplierId=null, selectedSupplierSubgroupId=null;
 let supplierImageData='', partImageData='', subgroupImageData='';
 let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
+let _sgDragId=null,_sgDragActive=false,_sgDragGhost=null,_sgDragSourceId=null;
+let _sgSuppressClick=false,_sgLongPressTimer=null,_sgLastX=0,_sgLastY=0;
 
-// ── Variables drag sous-groupes (même principe que client machine) ─
-let _sgDragId=null, _sgDragActive=false, _sgDragGhost=null, _sgDragSourceId=null;
-let _sgSuppressClick=false, _sgLongPressTimer=null, _sgLastX=0, _sgLastY=0;
-
-// ── Helpers navigation ────────────────────────────────────
 function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
   $('supplierDetail').classList.toggle('hidden',level!==1);
@@ -7170,65 +7168,50 @@ function _supplierShowLevel(level){
   if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden',level!==0);
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
-
-// ── Drag ghost helpers ─────────────────────────────────────
-function _startSgTouchDrag(sgId, x, y){
-  const s=(db.suppliers||[]).find(f=>f.id===selectedSupplierId);if(!s) return;
-  const sg=(s.subgroups||[]).find(f=>f.id===sgId);if(!sg) return;
-  _sgDragActive=true;_sgSuppressClick=true;
-  _sgDragSourceId=sgId;_sgDragId=sgId;
-  _sgLastX=x;_sgLastY=y;
-  if($('sgMoveHelp')){$('sgMoveHelp').textContent='📁 Déplace «'+sg.name+'» vers un autre sous-groupe pour réordonner';$('sgMoveHelp').classList.remove('hidden');}
-  _sgDragGhost=document.createElement('div');
-  _sgDragGhost.className='dragGhost';
-  _sgDragGhost.textContent=sg.name;
-  document.body.appendChild(_sgDragGhost);
-  _moveSgDragGhost(x,y);
+function _startSgTouchDrag(sgId,x,y){
+  const s=(db.suppliers||[]).find(f=>f.id===selectedSupplierId);if(!s)return;
+  const sg=(s.subgroups||[]).find(f=>f.id===sgId);if(!sg)return;
+  _sgDragActive=true;_sgSuppressClick=true;_sgDragSourceId=sgId;_sgDragId=sgId;_sgLastX=x;_sgLastY=y;
+  if($('sgMoveHelp')){$('sgMoveHelp').textContent='📁 Glisse «'+sg.name+'» vers un autre sous-groupe';$('sgMoveHelp').classList.remove('hidden');}
+  _sgDragGhost=document.createElement('div');_sgDragGhost.className='dragGhost';_sgDragGhost.textContent=sg.name;
+  document.body.appendChild(_sgDragGhost);_moveSgGhost(x,y);
 }
-function _moveSgDragGhost(x,y){
+function _moveSgGhost(x,y){
   _sgLastX=x;_sgLastY=y;
   if(_sgDragGhost){_sgDragGhost.style.left=x+'px';_sgDragGhost.style.top=y+'px';}
   document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
-  if(_sgDragGhost) _sgDragGhost.style.display='none';
+  if(_sgDragGhost)_sgDragGhost.style.display='none';
   const el=document.elementFromPoint(x,y);
-  if(_sgDragGhost) _sgDragGhost.style.display='';
+  if(_sgDragGhost)_sgDragGhost.style.display='';
   const target=el?el.closest('.supplierCard[data-sg-id]'):null;
-  if(target&&target.dataset.sgId&&target.dataset.sgId!==_sgDragSourceId) target.classList.add('sgDropTarget');
+  if(target&&target.dataset.sgId&&target.dataset.sgId!==_sgDragSourceId)target.classList.add('sgDropTarget');
 }
-function _finishSgTouchDrag(x,y){
-  if(!_sgDragActive) return;
+function _finishSgDrag(x,y){
+  if(!_sgDragActive)return;
   const sourceId=_sgDragSourceId;
-  if(_sgDragGhost) _sgDragGhost.style.display='none';
+  if(_sgDragGhost)_sgDragGhost.style.display='none';
   const el=document.elementFromPoint(x,y);
-  if(_sgDragGhost) _sgDragGhost.style.display='';
+  if(_sgDragGhost)_sgDragGhost.style.display='';
   const target=el?el.closest('.supplierCard[data-sg-id]'):null;
   const targetId=target?target.dataset.sgId:null;
-  _cleanupSgTouchDrag(false);
+  _cleanupSgDrag(false);
   if(targetId&&targetId!==sourceId){
     const s=(db.suppliers||[]).find(f=>f.id===selectedSupplierId);
-    if(s&&s.subgroups){
-      const sgs=s.subgroups;
-      const si=sgs.findIndex(x=>x.id===sourceId),di=sgs.findIndex(x=>x.id===targetId);
-      if(si!==-1&&di!==-1){const [mv]=sgs.splice(si,1);sgs.splice(di,0,mv);log('REORDER_SUBGROUP',mv.name);save();}
-    }
+    if(s&&s.subgroups){const sgs=s.subgroups;const si=sgs.findIndex(x=>x.id===sourceId),di=sgs.findIndex(x=>x.id===targetId);if(si!==-1&&di!==-1){const [mv]=sgs.splice(si,1);sgs.splice(di,0,mv);log('REORDER_SUBGROUP',mv.name);save();}}
   }
   renderSupplierParts();
-  setTimeout(()=>{_sgSuppressClick=false;},400);
-  setTimeout(()=>{_sgSuppressClick=false;},1000);
+  setTimeout(()=>{_sgSuppressClick=false;},400);setTimeout(()=>{_sgSuppressClick=false;},1000);
 }
-function _cleanupSgTouchDrag(resetClick=true){
+function _cleanupSgDrag(resetClick=true){
   _sgDragActive=false;_sgDragSourceId=null;_sgDragId=null;
   document.querySelectorAll('.supplierCard.sgDragSource').forEach(el=>el.classList.remove('sgDragSource'));
   document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
   if(_sgDragGhost){_sgDragGhost.remove();_sgDragGhost=null;}
-  if($('sgMoveHelp')) $('sgMoveHelp').classList.add('hidden');
+  if($('sgMoveHelp'))$('sgMoveHelp').classList.add('hidden');
   if(resetClick){setTimeout(()=>{_sgSuppressClick=false;},300);setTimeout(()=>{_sgSuppressClick=false;},800);}
 }
-
-// ── Niveau 0 : liste fournisseurs ─────────────────────────
 function renderSuppliersModule(){
-  if(!$('supplierGrid')) return;
-  $('supplierGrid').innerHTML='';db.suppliers=db.suppliers||[];
+  if(!$('supplierGrid'))return;$('supplierGrid').innerHTML='';db.suppliers=db.suppliers||[];
   const q=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
   db.suppliers.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).filter(s=>{
     const sgT=(s.subgroups||[]).map(sg=>(sg.name||'')+(sg.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')).join(' ');
@@ -7244,38 +7227,28 @@ function renderSuppliersModule(){
       <div class="supplierActions"><button class="btn primary mini" data-act="open">${T('open')}</button>${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}<button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}</div>`;
     card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();openSupplier(s.id);};
     card.querySelector('[data-act=edit]').onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
-    var cc=card.querySelector('[data-act=call]');if(cc) cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
-    var mc=card.querySelector('[data-act=mail]');if(mc) mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
-    var dc=card.querySelector('[data-act=delete]');if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
+    var cc=card.querySelector('[data-act=call]');if(cc)cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
+    var mc=card.querySelector('[data-act=mail]');if(mc)mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
+    var dc=card.querySelector('[data-act=delete]');if(dc)dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
     card.onclick=()=>openSupplier(s.id);
     $('supplierGrid').appendChild(card);
   });
 }
-
-// ── Niveau 1 : détail fournisseur ────────────────────────
 function renderSupplierParts(){
-  if(!$('partGrid')) return;
-  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s) return;
-  if($('supplierDetailTitle')) $('supplierDetailTitle').textContent=s.name;
-  if($('supplierDetailSub')) $('supplierDetailSub').textContent=`${T('email')}: ${s.email||'-'} | ${T('contactPhone')}: ${s.phone||'-'}`;
-
-  // Sous-groupes avec DRAG identique au client machine
+  if(!$('partGrid'))return;
+  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;
+  if($('supplierDetailTitle'))$('supplierDetailTitle').textContent=s.name;
+  if($('supplierDetailSub'))$('supplierDetailSub').textContent=`${T('email')}: ${s.email||'-'} | ${T('contactPhone')}: ${s.phone||'-'}`;
   const sgGrid=$('supplierSubgroupGrid');
   if(sgGrid){
     sgGrid.innerHTML='';
-    var clientGrpName='';
-    if(typeof isClientUser==='function'&&isClientUser()&&currentUser&&currentUser.assignedGroupId){
-      var _cg=_findSupplierGroupById(currentUser.assignedGroupId,db.clientRoot||{groups:[]});
-      if(_cg) clientGrpName=(_cg.name||'').toLowerCase().trim();
-    }
+    var cln='';
+    if(typeof isClientUser==='function'&&isClientUser()&&currentUser&&currentUser.assignedGroupId){var _cg=_findSgById(currentUser.assignedGroupId,db.clientRoot||{groups:[]});if(_cg)cln=(_cg.name||'').toLowerCase().trim();}
     (s.subgroups||[]).forEach(sg=>{
-      const isLinked=clientGrpName&&(sg.name||'').toLowerCase().trim()===clientGrpName;
-      const card=document.createElement('div');
-      card.className='supplierCard';
-      card.dataset.sgId=sg.id;
-      card.draggable=isAdmin();
-      if(_sgDragId===sg.id) card.classList.add('sgDragSource');
-      card.style.cssText=isLinked?'border:2px solid #1a7ad4;background:#f0f7ff':'';
+      const isLinked=cln&&(sg.name||'').toLowerCase().trim()===cln;
+      const card=document.createElement('div');card.className='supplierCard';card.dataset.sgId=sg.id;card.draggable=isAdmin();
+      if(_sgDragId===sg.id)card.classList.add('sgDragSource');
+      if(isLinked)card.style.cssText='border:2px solid #1a7ad4;background:#f0f7ff';
       const pC=(sg.parts||[]).length;
       card.innerHTML=`<div class="supplierImage" style="font-size:32px">${sg.image?`<img src="${sg.image}">`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
@@ -7284,180 +7257,104 @@ function renderSupplierParts(){
           <button class="btn primary mini" data-act="open">${T('open')}</button>
           ${isAdmin()?`<button class="btn secondary mini" data-act="edit">✏️</button><button class="btn danger mini" data-act="delete">🗑️</button>`:''}
         </div>`;
-      card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();if(!_sgSuppressClick) openSupplierSubgroup(sg.id);};
-      var eb=card.querySelector('[data-act=edit]');if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
-      var db2=card.querySelector('[data-act=delete]');if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
-      card.onclick=()=>{if(!_sgSuppressClick) openSupplierSubgroup(sg.id);};
-
-      // ── Drag HTML5 (souris / desktop) ────────────────────
-      card.addEventListener('dragstart',ev=>{
-        if(!isAdmin()){ev.preventDefault();return;}
-        if(_sgDragActive){ev.preventDefault();return;}
-        _sgDragId=sg.id;card.classList.add('sgDragSource');
-        ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',sg.id);
-      });
+      card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();if(!_sgSuppressClick)openSupplierSubgroup(sg.id);};
+      var eb=card.querySelector('[data-act=edit]');if(eb)eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
+      var db2=card.querySelector('[data-act=delete]');if(db2)db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
+      card.onclick=()=>{if(!_sgSuppressClick)openSupplierSubgroup(sg.id);};
+      // Drag HTML5 souris
+      card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}if(_sgDragActive){ev.preventDefault();return;}_sgDragId=sg.id;card.classList.add('sgDragSource');ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',sg.id);});
       card.addEventListener('dragend',()=>{card.classList.remove('sgDragSource');document.querySelectorAll('.supplierCard.sgDropTarget').forEach(x=>x.classList.remove('sgDropTarget'));_sgDragId=null;});
       card.addEventListener('dragover',ev=>{if(_sgDragId&&_sgDragId!==sg.id){ev.preventDefault();card.classList.add('sgDropTarget');}});
       card.addEventListener('dragleave',()=>card.classList.remove('sgDropTarget'));
-      card.addEventListener('drop',ev=>{
-        ev.preventDefault();ev.stopPropagation();card.classList.remove('sgDropTarget');
-        const srcId=ev.dataTransfer.getData('text/plain')||_sgDragId;
-        if(!srcId||srcId===sg.id) return;
-        const sgs=s.subgroups;
-        const si=sgs.findIndex(x=>x.id===srcId),di=sgs.findIndex(x=>x.id===sg.id);
-        if(si!==-1&&di!==-1){const [mv]=sgs.splice(si,1);sgs.splice(di,0,mv);log('REORDER_SUBGROUP',mv.name);save();}
-        _sgDragId=null;renderSupplierParts();
-      });
-
-      // ── Drag touch / pointer (mobile) — copie exacte du client machine ─
+      card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('sgDropTarget');const srcId=ev.dataTransfer.getData('text/plain')||_sgDragId;if(!srcId||srcId===sg.id)return;const sgs=s.subgroups;const si=sgs.findIndex(x=>x.id===srcId),di=sgs.findIndex(x=>x.id===sg.id);if(si!==-1&&di!==-1){const [mv]=sgs.splice(si,1);sgs.splice(di,0,mv);log('REORDER_SUBGROUP',mv.name);save();}_sgDragId=null;renderSupplierParts();});
+      // Drag touch mobile — copie exacte du mécanisme client machine
       card.addEventListener('contextmenu',ev=>ev.preventDefault());
       card.addEventListener('pointerdown',ev=>{
-        if(!isAdmin()) return;
-        if(ev.target.closest('button')) return;
-        ev.preventDefault();
-        clearTimeout(_sgLongPressTimer);
+        if(!isAdmin())return;if(ev.target.closest('button'))return;
+        ev.preventDefault();clearTimeout(_sgLongPressTimer);
         try{card.setPointerCapture(ev.pointerId);}catch(e){}
-        card.classList.add('sgDragSource');
-        _sgLastX=ev.clientX;_sgLastY=ev.clientY;
-        _sgLongPressTimer=setTimeout(()=>{
-          _startSgTouchDrag(sg.id,ev.clientX,ev.clientY);
-        },520);
+        card.classList.add('sgDragSource');_sgLastX=ev.clientX;_sgLastY=ev.clientY;
+        _sgLongPressTimer=setTimeout(()=>{_startSgTouchDrag(sg.id,ev.clientX,ev.clientY);},520);
       },{passive:false});
       card.addEventListener('pointermove',ev=>{
-        if(ev.target.closest('button')) return;
+        if(ev.target.closest('button'))return;
         const dx=Math.abs(ev.clientX-_sgLastX),dy=Math.abs(ev.clientY-_sgLastY);
         if(!_sgDragActive&&(dx>12||dy>12)){clearTimeout(_sgLongPressTimer);card.classList.remove('sgDragSource');}
-        if(_sgDragActive){ev.preventDefault();_moveSgDragGhost(ev.clientX,ev.clientY);}
+        if(_sgDragActive){ev.preventDefault();_moveSgGhost(ev.clientX,ev.clientY);}
       },{passive:false});
       card.addEventListener('pointerup',ev=>{
         clearTimeout(_sgLongPressTimer);card.classList.remove('sgDragSource');
         try{card.releasePointerCapture(ev.pointerId);}catch(e){}
-        if(_sgDragActive){ev.preventDefault();_finishSgTouchDrag(ev.clientX,ev.clientY);}
+        if(_sgDragActive){ev.preventDefault();_finishSgDrag(ev.clientX,ev.clientY);}
       },{passive:false});
       card.addEventListener('pointercancel',ev=>{
         clearTimeout(_sgLongPressTimer);card.classList.remove('sgDragSource');
         try{card.releasePointerCapture(ev.pointerId);}catch(e){}
-        if(_sgDragActive) _cleanupSgTouchDrag();
+        if(_sgDragActive)_cleanupSgDrag();
       },{passive:false});
-
       sgGrid.appendChild(card);
     });
   }
-
-  // Pièces directes du fournisseur
   $('partGrid').innerHTML='';
   const pq=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
   (s.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
     const models=p.models||[];const card=document.createElement('div');card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,false);
-    var dl=card.querySelector('[data-act=delete]');if(dl) dl.onclick=()=>deletePart(p.id,false);
+    var dl=card.querySelector('[data-act=delete]');if(dl)dl.onclick=()=>deletePart(p.id,false);
     $('partGrid').appendChild(card);
   });
 }
-
-function _findSupplierGroupById(id,node){
-  if(!node||!id) return null;if(node.id===id) return node;
-  for(const g of (node.groups||[])){const f=_findSupplierGroupById(id,g);if(f) return f;}
-  return null;
-}
-
-// ── Niveau 2 : détail sous-groupe ──────────────────────────
+function _findSgById(id,node){if(!node||!id)return null;if(node.id===id)return node;for(const g of (node.groups||[])){const f=_findSgById(id,g);if(f)return f;}return null;}
 function renderSubgroupParts(){
-  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s) return;
-  const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);if(!sg) return;
-  if($('supplierSubgroupDetailTitle')) $('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
-  if($('supplierSubgroupDetailSub')) $('supplierSubgroupDetailSub').textContent=(sg.parts||[]).length+' pièce(s)';
-  const grid=$('subgroupPartGrid');if(!grid) return;grid.innerHTML='';
+  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;
+  const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);if(!sg)return;
+  if($('supplierSubgroupDetailTitle'))$('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
+  if($('supplierSubgroupDetailSub'))$('supplierSubgroupDetailSub').textContent=(sg.parts||[]).length+' pièce(s)';
+  const grid=$('subgroupPartGrid');if(!grid)return;grid.innerHTML='';
   const q=($('subgroupPartSearch')?$('subgroupPartSearch').value.toLowerCase().trim():'');
   (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q)).forEach(p=>{
     const models=p.models||[];const card=document.createElement('div');card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,true);
-    var dl=card.querySelector('[data-act=delete]');if(dl) dl.onclick=()=>deletePart(p.id,true);
+    var dl=card.querySelector('[data-act=delete]');if(dl)dl.onclick=()=>deletePart(p.id,true);
     grid.appendChild(card);
   });
 }
-
-// ── Navigation ─────────────────────────────────────────────
-function openSupplier(id){selectedSupplierId=id;selectedSupplierSubgroupId=null;if($('partSearch')) $('partSearch').value='';_supplierShowLevel(1);renderSupplierParts();}
-function openSupplierSubgroup(sgId){selectedSupplierSubgroupId=sgId;if($('subgroupPartSearch')) $('subgroupPartSearch').value='';_supplierShowLevel(2);renderSubgroupParts();}
+function openSupplier(id){selectedSupplierId=id;selectedSupplierSubgroupId=null;if($('partSearch'))$('partSearch').value='';_supplierShowLevel(1);renderSupplierParts();}
+function openSupplierSubgroup(sgId){selectedSupplierSubgroupId=sgId;if($('subgroupPartSearch'))$('subgroupPartSearch').value='';_supplierShowLevel(2);renderSubgroupParts();}
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
   if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){selectedSupplierSubgroupId=null;_supplierShowLevel(1);renderSupplierParts();}
   else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){selectedSupplierId=null;_supplierShowLevel(0);renderSuppliersModule();}
-  else{show('moduleView');}
+  else show('moduleView');
 };
-if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
-  if(!requireAdminAccess())return;
-  selectedSupplierId=null;selectedSupplierSubgroupId=null;
-  if($('supplierGlobalSearch')) $('supplierGlobalSearch').value='';
-  _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
-};
-
-// ── CRUD Fournisseur ────────────────────────────────────────
-function readSupplierImage(input,callback,previewId){
-  const file=input.files[0];if(!file){callback('');return;}
-  const r=new FileReader();r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});};r.readAsDataURL(file);
-}
+if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{if(!requireAdminAccess())return;selectedSupplierId=null;selectedSupplierSubgroupId=null;if($('supplierGlobalSearch'))$('supplierGlobalSearch').value='';_supplierShowLevel(0);show('suppliersView');renderSuppliersModule();};
+function readSupplierImage(input,callback,previewId){const file=input.files[0];if(!file){callback('');return;}const r=new FileReader();r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});};r.readAsDataURL(file);}
 if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
 if($('supplierImageInput')) $('supplierImageInput').onchange=e=>readSupplierImage(e.target,v=>supplierImageData=v,'supplierPreview');
-if($('supplierForm')) $('supplierForm').onsubmit=e=>{
-  e.preventDefault();db.suppliers=db.suppliers||[];
-  if(editingSupplierId){const s=db.suppliers.find(x=>x.id===editingSupplierId);if(s){s.name=$('supplierNameInput').value.trim();s.image=supplierImageData;s.email=$('supplierEmailInput').value.trim();s.firstName=$('supplierFirstNameInput').value.trim();s.lastName=$('supplierLastNameInput').value.trim();s.phone=$('supplierPhoneInput').value.trim();log('EDIT_SUPPLIER',s.name);}}
-  else{const s={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),parts:[],subgroups:[]};db.suppliers.push(s);log('ADD_SUPPLIER',s.name);}
-  editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule();
-};
+if($('supplierForm')) $('supplierForm').onsubmit=e=>{e.preventDefault();db.suppliers=db.suppliers||[];if(editingSupplierId){const s=db.suppliers.find(x=>x.id===editingSupplierId);if(s){s.name=$('supplierNameInput').value.trim();s.image=supplierImageData;s.email=$('supplierEmailInput').value.trim();s.firstName=$('supplierFirstNameInput').value.trim();s.lastName=$('supplierLastNameInput').value.trim();s.phone=$('supplierPhoneInput').value.trim();log('EDIT_SUPPLIER',s.name);}}else{const s={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),parts:[],subgroups:[]};db.suppliers.push(s);log('ADD_SUPPLIER',s.name);}editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule();};
 function openEditSupplier(id){const s=(db.suppliers||[]).find(x=>x.id===id);if(!s)return;editingSupplierId=id;supplierImageData=s.image||'';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent='✏️ '+T('supplier');$('supplierNameInput').value=s.name||'';$('supplierEmailInput').value=s.email||'';$('supplierFirstNameInput').value=s.firstName||'';$('supplierLastNameInput').value=s.lastName||'';$('supplierPhoneInput').value=s.phone||'';if(supplierImageData){$('supplierPreview').style.backgroundImage=`url(${supplierImageData})`;$('supplierPreview').classList.remove('hidden');}else $('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();}
-function deleteSupplier(id){if(!isAdmin())return;if(!confirm(T('deleteSupplierConfirm')))return;const s=(db.suppliers||[]).find(x=>x.id===id);db.suppliers=(db.suppliers||[]).filter(x=>x.id!==id);if(s) moveToTrash('supplier',s,{});log('DELETE_SUPPLIER',s?s.name:id);save();renderSuppliersModule();}
-
-// ── CRUD Sous-groupe ────────────────────────────────────────
+function deleteSupplier(id){if(!isAdmin())return;if(!confirm(T('deleteSupplierConfirm')))return;const s=(db.suppliers||[]).find(x=>x.id===id);db.suppliers=(db.suppliers||[]).filter(x=>x.id!==id);if(s)moveToTrash('supplier',s,{});log('DELETE_SUPPLIER',s?s.name:id);save();renderSuppliersModule();}
 if($('addSubgroupBtn')) $('addSubgroupBtn').onclick=()=>{editingSubgroupId=null;subgroupImageData='';$('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='+ Sous-groupe';$('subgroupPreview').classList.add('hidden');$('supplierSubgroupDialog').showModal();};
 if($('subgroupImageInput')) $('subgroupImageInput').onchange=e=>readSupplierImage(e.target,v=>subgroupImageData=v,'subgroupPreview');
-if($('supplierSubgroupForm')) $('supplierSubgroupForm').onsubmit=e=>{
-  e.preventDefault();const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;s.subgroups=s.subgroups||[];
-  if(editingSubgroupId){const sg=s.subgroups.find(x=>x.id===editingSubgroupId);if(sg){sg.name=$('subgroupNameInput').value.trim();if(subgroupImageData) sg.image=subgroupImageData;log('EDIT_SUBGROUP',sg.name);}}
-  else{const sg={id:uid(),name:$('subgroupNameInput').value.trim(),image:subgroupImageData,parts:[]};s.subgroups.push(sg);log('ADD_SUBGROUP',sg.name);}
-  editingSubgroupId=null;save();$('supplierSubgroupDialog').close();renderSupplierParts();
-};
+if($('supplierSubgroupForm')) $('supplierSubgroupForm').onsubmit=e=>{e.preventDefault();const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;s.subgroups=s.subgroups||[];if(editingSubgroupId){const sg=s.subgroups.find(x=>x.id===editingSubgroupId);if(sg){sg.name=$('subgroupNameInput').value.trim();if(subgroupImageData)sg.image=subgroupImageData;log('EDIT_SUBGROUP',sg.name);}}else{const sg={id:uid(),name:$('subgroupNameInput').value.trim(),image:subgroupImageData,parts:[]};s.subgroups.push(sg);log('ADD_SUBGROUP',sg.name);}editingSubgroupId=null;save();$('supplierSubgroupDialog').close();renderSupplierParts();};
 function openEditSubgroup(sgId){const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;const sg=(s.subgroups||[]).find(x=>x.id===sgId);if(!sg)return;editingSubgroupId=sgId;subgroupImageData=sg.image||'';$('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='✏️ Sous-groupe';$('subgroupNameInput').value=sg.name||'';if(sg.image){$('subgroupPreview').style.backgroundImage=`url(${sg.image})`;$('subgroupPreview').classList.remove('hidden');}else $('subgroupPreview').classList.add('hidden');$('supplierSubgroupDialog').showModal();}
 function deleteSubgroup(sgId){if(!isAdmin())return;if(!confirm('Supprimer ce sous-groupe et ses pièces ?'))return;const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return;s.subgroups=(s.subgroups||[]).filter(x=>x.id!==sgId);log('DELETE_SUBGROUP',sgId);save();renderSupplierParts();}
-
-// ── CRUD Pièces ─────────────────────────────────────────────
-function _getPartTarget(inSubgroup){
-  const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s) return null;
-  if(inSubgroup){const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);return sg?{container:sg,supplier:s,subgroup:sg}:null;}
-  return {container:s,supplier:s,subgroup:null};
-}
+function _getPartTarget(inSubgroup){const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId);if(!s)return null;if(inSubgroup){const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);return sg?{container:sg,supplier:s,subgroup:sg}:null;}return{container:s,supplier:s,subgroup:null};}
 if($('addPartBtn')) $('addPartBtn').onclick=()=>{editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='false';$('partDialog').showModal();};
 if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').onclick=()=>{editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='true';$('partDialog').showModal();};
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
-if($('partForm')) $('partForm').onsubmit=e=>{
-  e.preventDefault();const inSubgroup=$('partDialog').dataset.inSubgroup==='true';const target=_getPartTarget(inSubgroup);if(!target)return;
-  target.container.parts=target.container.parts||[];const models=readPartModelsSelect();
-  if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}
-  else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}
-  editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}
-};
+if($('partForm')) $('partForm').onsubmit=e=>{e.preventDefault();const inSubgroup=$('partDialog').dataset.inSubgroup==='true';const target=_getPartTarget(inSubgroup);if(!target)return;target.container.parts=target.container.parts||[];const models=readPartModelsSelect();if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}};
 function openEditPart(id,inSubgroup){const target=_getPartTarget(inSubgroup);if(!target)return;const p=(target.container.parts||[]).find(x=>x.id===id);if(!p)return;editingPartId=id;partImageData=p.image||'';$('partForm').reset();$('partDialog').querySelector('h2').textContent='✏️ '+T('addPart');$('partNameInput').value=p.name||'';$('sparePartNumberInput').value=p.partNumber||'';$('partPriceInput').value=p.price||'';populatePartModelsSelect(p.models||[]);if(partImageData){$('partPreview').style.backgroundImage=`url(${partImageData})`;$('partPreview').classList.remove('hidden');}else $('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup=inSubgroup?'true':'false';$('partDialog').showModal();}
-function deletePart(id,inSubgroup){if(!isAdmin())return;const target=_getPartTarget(inSubgroup);if(!target)return;if(!confirm(T('deletePartConfirm')))return;const p=(target.container.parts||[]).find(x=>x.id===id);target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id);if(p) moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null});log('DELETE_PART',p?p.partNumber:id);save();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}}
-
-// ── Bouton stock client ─────────────────────────────────────
+function deletePart(id,inSubgroup){if(!isAdmin())return;const target=_getPartTarget(inSubgroup);if(!target)return;if(!confirm(T('deletePartConfirm')))return;const p=(target.container.parts||[]).find(x=>x.id===id);target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id);if(p)moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null});log('DELETE_PART',p?p.partNumber:id);save();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();}}
 function _injectClientStockBtn(){
-  var u=currentUser;if(!u||u.role!=='client'||!u.assignedSupplierId) return;
-  var ex=document.getElementById('clientStockBtn');if(ex) ex.remove();
-  var s=(db.suppliers||[]).find(function(x){return x.id===u.assignedSupplierId;});if(!s) return;
+  var u=currentUser;if(!u||u.role!=='client'||!u.assignedSupplierId)return;
+  var ex=document.getElementById('clientStockBtn');if(ex)ex.remove();
+  var s=(db.suppliers||[]).find(function(x){return x.id===u.assignedSupplierId;});if(!s)return;
   var btn=document.createElement('button');btn.id='clientStockBtn';btn.className='btn primary';
   btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;border-radius:50px;padding:12px 20px;font-size:15px;font-weight:800;box-shadow:0 4px 18px rgba(10,124,194,.35)';
   btn.innerHTML='📦 '+esc(s.name);
-  btn.onclick=function(){
-    selectedSupplierId=s.id;selectedSupplierSubgroupId=null;
-    _supplierShowLevel(1);show('suppliersView');renderSupplierParts();
-    setTimeout(function(){
-      document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-      if($('addSubgroupBtn')) $('addSubgroupBtn').style.display='none';
-      if($('addPartBtn')) $('addPartBtn').style.display='none';
-    },150);
-  };
+  btn.onclick=function(){selectedSupplierId=s.id;selectedSupplierSubgroupId=null;_supplierShowLevel(1);show('suppliersView');renderSupplierParts();setTimeout(function(){document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});if($('addSubgroupBtn'))$('addSubgroupBtn').style.display='none';if($('addPartBtn'))$('addPartBtn').style.display='none';},150);};
   document.body.appendChild(btn);
 }
 
@@ -8136,26 +8033,66 @@ $('faultMachineFaultForm').onsubmit = ev=>{
 
 // ── Maintenance préventive ──────────────────────────────────
 function addMaintenanceRow(data){
-  data=data||{};var box=$('maintenanceRowsBox');if(!box) return;
-  var row=document.createElement('div');row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px';
-  var monthOpts='<option value="">?</option>';for(var m=1;m<=12;m++) monthOpts+='<option value="'+m+'"'+(data.freqMonths===m?' selected':'')+'>'+m+'</option>';
+  data=data||{};
+  var box=$('maintenanceRowsBox');
+  if(!box) return;
+  var row=document.createElement('div');
+  row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%;overflow:hidden';
+
+  // Options mois 1-12
+  var monthOpts='<option value="">?</option>';
+  for(var m=1;m<=12;m++) monthOpts+='<option value="'+m+'"'+(data.freqMonths===m?' selected':'')+'>'+m+'</option>';
+
+  // Options pièces fournisseur + sous-groupes
   var partOpts='<option value="">— Pièce liée (optionnel) —</option>';
-  try{var _dbx=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
-    (_dbx.suppliers||[]).forEach(function(s){(s.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';partOpts+='<option value="'+p.id+'"'+sel+'>['+esc(s.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';});(s.subgroups||[]).forEach(function(sg){(sg.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';partOpts+='<option value="'+p.id+'"'+sel+'>['+esc(s.name)+' › '+esc(sg.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';});});});}catch(e){}
-  row.innerHTML='<div style="display:flex;gap:8px;align-items:center"><input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px"><button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button></div>'
-    +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#666;white-space:nowrap">Fréquence tous les</span><select class="maintFreq" style="width:70px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select><span style="font-size:12px;color:#666">mois</span></div>'
-    +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#666;white-space:nowrap">🔢 N° série spécifique</span><input type="text" class="maintSerial" value="'+esc(data.specificSerial||'')+'" placeholder="Laisser vide = tous" style="flex:1;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:13px"></div>'
-    +'<select class="maintPart" style="width:100%;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+partOpts+'</select>';
-  row.querySelector('button').onclick=function(){row.remove();};box.appendChild(row);
+  try{
+    var _dbx=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    (_dbx.suppliers||[]).forEach(function(s){
+      (s.parts||[]).forEach(function(p){
+        var sel=(data.linkedPartId===p.id)?' selected':'';
+        partOpts+='<option value="'+p.id+'"'+sel+'>['+esc(s.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';
+      });
+      (s.subgroups||[]).forEach(function(sg){
+        (sg.parts||[]).forEach(function(p){
+          var sel=(data.linkedPartId===p.id)?' selected':'';
+          partOpts+='<option value="'+p.id+'"'+sel+'>['+esc(s.name)+' › '+esc(sg.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';
+        });
+      });
+    });
+  }catch(e){}
+
+  row.innerHTML=''
+    +'<div style="display:flex;gap:8px;align-items:center">'
+      +'<input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;min-width:0;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
+      +'<button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">'
+      +'<span style="font-size:12px;color:#666;white-space:nowrap;flex-shrink:0">Fréquence tous les</span>'
+      +'<select class="maintFreq" style="width:66px;flex-shrink:0;padding:6px 4px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select>'
+      +'<span style="font-size:12px;color:#666;flex-shrink:0">mois</span>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+      +'<span style="font-size:12px;color:#666;white-space:nowrap;flex-shrink:0">🔢 N° série</span>'
+      +'<input type="text" class="maintSerial" value="'+esc(data.specificSerial||'')+'" placeholder="vide = tous" style="flex:1;min-width:0;padding:6px 8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
+    +'</div>'
+    +'<select class="maintPart" style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+partOpts+'</select>';
+
+  row.querySelector('button').onclick=function(){ row.remove(); };
+  box.appendChild(row);
 }
 
 function readMaintenanceRows(){
-  var rows=[];var box=$('maintenanceRowsBox');if(!box) return rows;
+  var rows=[];
+  var box=$('maintenanceRowsBox');
+  if(!box) return rows;
   box.querySelectorAll('div[style*="f0f7ff"]').forEach(function(row){
-    var desc=(row.querySelector('.maintDesc')||{}).value||'';var freq=parseInt((row.querySelector('.maintFreq')||{}).value)||0;
-    var specificSerial=(row.querySelector('.maintSerial')||{}).value||'';var linkedPartId=(row.querySelector('.maintPart')||{}).value||'';
+    var desc=(row.querySelector('.maintDesc')||{}).value||'';
+    var freq=parseInt((row.querySelector('.maintFreq')||{}).value)||0;
+    var specificSerial=(row.querySelector('.maintSerial')||{}).value||'';
+    var linkedPartId=(row.querySelector('.maintPart')||{}).value||'';
     if(desc||freq) rows.push({id:uid(),description:desc,freqMonths:freq,specificSerial:specificSerial,linkedPartId:linkedPartId});
-  });return rows;
+  });
+  return rows;
 }
 
 function loadMaintenanceRows(maintenances){
