@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v11.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v11.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=11.2', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=11.3', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -5840,12 +5840,18 @@ function renderClientMachineModule(){
     var _mSt=getMachineRequestStatus(m.id);
     if(_mSt==='open') card.classList.add('clientMachineOpenFault');
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
-    // Détection machine endoscope
+    // Détection machine endoscope OU machine avec maintenance définie
+    var _faultMachine=(db.faultMachines||[]).find(function(fm){
+      var mn=(fm.model||'').toLowerCase().trim();
+      var mm=(m.model||'').toLowerCase().trim();
+      return mn===mm;
+    });
+    var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).length>0;
     var _isEndo=(function(m){
       var model=(m.model||'').toLowerCase().trim();
       var type=(m.type||'').toLowerCase().trim();
       return model.startsWith('ew')||model.indexOf('endoscope')!==-1||model.indexOf('scope')!==-1||model.indexOf('washer')!==-1||type.indexOf('endoscope')!==-1||type.indexOf('washer')!==-1;
-    })(m);
+    })(m)||_hasMaint;
     // Wrapper pour la languette
     var wrapper=document.createElement('div');
     wrapper.style.cssText='position:relative;margin-top:'+ (_isEndo?'26px':'0');
