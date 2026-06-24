@@ -289,12 +289,12 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 #clientEmptyGroups,#clientEmptyMachines{display:none!important}
 
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
-.supplierCard{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;touch-action:manipulation;}
-.supplierCard h3,.supplierCard p,.supplierCard .supplierImage,.supplierCard .supplierContact{pointer-events:none;-webkit-touch-callout:none!important;}
+.supplierCard,.supplierCard *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;}
 .supplierCard.dragArmed{outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDragSource{opacity:.55;outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDropTarget{outline:3px solid #0A7CC2;background:#EAF4FB!important;}
 body.draggingSupplierGroup{overflow:hidden;touch-action:none;}
+.supplierImage img{pointer-events:none;-webkit-touch-callout:none;}
 .supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
 .supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none}
@@ -5870,11 +5870,7 @@ function renderClientMachineModule(){
     if(_mSt==='open') card.classList.add('clientMachineOpenFault');
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
     var _faultMachine=(db.faultMachines||[]).find(function(fm){var mn=(fm.model||'').toLowerCase().trim();var mm=(m.model||'').toLowerCase().trim();return mn===mm;});
-    var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){
-      if(!maint.specificSerial) return true;
-      var mSerial=(m.serial||m.serialNumber||'').trim().toLowerCase();
-      return maint.specificSerial.trim().toLowerCase()===mSerial;
-    });
+    var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){if(!maint.specificSerial) return true;return (maint.specificSerial.trim().toLowerCase()===(m.serial||m.serialNumber||'').trim().toLowerCase());});
     var _isEndo=(function(m){
       var model=(m.model||'').toLowerCase().trim();
       var type=(m.type||'').toLowerCase().trim();
@@ -7166,9 +7162,12 @@ let selectedSupplierId=null, selectedSupplierSubgroupId=null;
 let supplierImageData='', partImageData='', subgroupImageData='';
 let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
 // Variables drag sous-groupes — même nommage que client machine
-let sgLongPressTimer=null, sgTouchDragActive=false, sgTouchDragGhost=null;
+// ── Variables drag sg — on réutilise les MÊMES globales que client machine ──
+// longPressTimer, touchDragActive, lastPointerX, lastPointerY (déjà déclarées ligne ~5245)
+// On ajoute seulement les variables spécifiques aux sous-groupes fournisseur
+let sgTouchDragActive=false, sgTouchDragGhost=null;
 let sgTouchDragSourceId=null, sgSuppressNextClick=false;
-let sgLastPointerX=0, sgLastPointerY=0;
+let sgLongPressTimer=null;
 
 function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
@@ -7178,38 +7177,44 @@ function _supplierShowLevel(level){
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
-// ── Drag touch sous-groupes — copie exacte de startRealTouchGroupDrag ──
+// Copie exacte de startRealTouchGroupDrag — mêmes variables globales
 function startSgTouchDrag(sgId, x, y){
   const s=(db.suppliers||[]).find(f=>f.id===selectedSupplierId); if(!s) return;
   const sg=(s.subgroups||[]).find(f=>f.id===sgId); if(!sg) return;
-  sgTouchDragActive=true; sgSuppressNextClick=true;
-  sgTouchDragSourceId=sgId; sgLastPointerX=x; sgLastPointerY=y;
+  sgTouchDragActive=true;
+  sgSuppressNextClick=true;
+  sgTouchDragSourceId=sgId;
+  lastPointerX=x; lastPointerY=y; // ← mêmes globales que client machine
   document.body.classList.add('draggingSupplierGroup');
   const help=$('sgMoveHelp');
-  if(help){ help.textContent='📁 Déplace «'+sg.name+'» vers un autre sous-groupe'; help.classList.remove('hidden'); }
+  if(help){ help.textContent='📁 Glisse «'+sg.name+'» vers un autre sous-groupe'; help.classList.remove('hidden'); }
   sgTouchDragGhost=document.createElement('div');
   sgTouchDragGhost.className='dragGhost';
   sgTouchDragGhost.textContent=sg.name;
   document.body.appendChild(sgTouchDragGhost);
   moveSgTouchGhost(x, y);
 }
+// Copie exacte de moveTouchDragGhost
 function moveSgTouchGhost(x, y){
-  sgLastPointerX=x; sgLastPointerY=y;
+  lastPointerX=x; lastPointerY=y; // ← mêmes globales
   if(sgTouchDragGhost){ sgTouchDragGhost.style.left=x+'px'; sgTouchDragGhost.style.top=y+'px'; }
   document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
-  if(sgTouchDragGhost) sgTouchDragGhost.style.display='none';
+  const ghost=sgTouchDragGhost;
+  if(ghost) ghost.style.display='none';
   const el=document.elementFromPoint(x, y);
-  if(sgTouchDragGhost) sgTouchDragGhost.style.display='';
+  if(ghost) ghost.style.display='';
   const target=el ? el.closest('.supplierCard[data-sg-id]') : null;
   if(target && target.dataset.sgId && target.dataset.sgId!==sgTouchDragSourceId)
     target.classList.add('sgDropTarget');
 }
+// Copie exacte de finishRealTouchGroupDrag
 function finishSgTouchDrag(x, y){
   if(!sgTouchDragActive) return;
   const sourceId=sgTouchDragSourceId;
-  if(sgTouchDragGhost) sgTouchDragGhost.style.display='none';
+  const ghost=sgTouchDragGhost;
+  if(ghost) ghost.style.display='none';
   const el=document.elementFromPoint(x, y);
-  if(sgTouchDragGhost) sgTouchDragGhost.style.display='';
+  if(ghost) ghost.style.display='';
   const target=el ? el.closest('.supplierCard[data-sg-id]') : null;
   const targetId=target ? target.dataset.sgId : null;
   cleanupSgTouchDrag(false);
@@ -7221,12 +7226,16 @@ function finishSgTouchDrag(x, y){
       if(si!==-1 && di!==-1){ const [mv]=sgs.splice(si,1); sgs.splice(di,0,mv); log('REORDER_SUBGROUP',mv.name); save(); }
     }
     renderSupplierParts();
-  } else { renderSupplierParts(); }
+  } else {
+    renderSupplierParts();
+  }
   setTimeout(()=>{ sgSuppressNextClick=false; }, 400);
   setTimeout(()=>{ sgSuppressNextClick=false; }, 1000);
 }
+// Copie exacte de cleanupRealTouchGroupDrag
 function cleanupSgTouchDrag(resetClick=true){
-  sgTouchDragActive=false; sgTouchDragSourceId=null;
+  sgTouchDragActive=false;
+  sgTouchDragSourceId=null;
   document.body.classList.remove('draggingSupplierGroup');
   document.querySelectorAll('.supplierCard.dragArmed').forEach(el=>el.classList.remove('dragArmed'));
   if(sgTouchDragGhost){ sgTouchDragGhost.remove(); sgTouchDragGhost=null; }
@@ -7315,52 +7324,47 @@ function renderSupplierParts(){
         sgDragId=null; renderSupplierParts();
       });
 
-      // ── Touch drag (mobile) — COPIE EXACTE du client machine ─
+      // ── Touch drag mobile — COPIE MOT POUR MOT du client machine ─────
       card.addEventListener('contextmenu', ev=>ev.preventDefault());
-      card.addEventListener('pointerdown', ev=>{
+      card.addEventListener('pointerdown',ev=>{
         if(!isAdmin()) return;
         if(ev.target.closest('button')) return;
         ev.preventDefault();
         clearTimeout(sgLongPressTimer);
-        try{ card.setPointerCapture(ev.pointerId); }catch(e){}
+        try{card.setPointerCapture(ev.pointerId);}catch(e){}
         card.classList.add('dragArmed');
-        card.style.touchAction='none'; // bloquer scroll pendant longpress
-        sgLastPointerX=ev.clientX; sgLastPointerY=ev.clientY;
         sgLongPressTimer=setTimeout(()=>{
           startSgTouchDrag(sg.id, ev.clientX, ev.clientY);
-        }, 520);
-      }, {passive:false});
-      card.addEventListener('pointermove', ev=>{
+        },520);
+      },{passive:false});
+      card.addEventListener('pointermove',ev=>{
         if(ev.target.closest('button')) return;
-        const dx=Math.abs(ev.clientX-sgLastPointerX);
-        const dy=Math.abs(ev.clientY-sgLastPointerY);
+        const dx=Math.abs(ev.clientX-lastPointerX);
+        const dy=Math.abs(ev.clientY-lastPointerY);
         if(!sgTouchDragActive && (dx>12||dy>12)){
           clearTimeout(sgLongPressTimer);
           card.classList.remove('dragArmed');
-          card.style.touchAction='';
         }
         if(sgTouchDragActive){
           ev.preventDefault();
           moveSgTouchGhost(ev.clientX, ev.clientY);
         }
-      }, {passive:false});
-      card.addEventListener('pointerup', ev=>{
+      },{passive:false});
+      card.addEventListener('pointerup',ev=>{
         clearTimeout(sgLongPressTimer);
         card.classList.remove('dragArmed');
-        card.style.touchAction='';
-        try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
+        try{card.releasePointerCapture(ev.pointerId);}catch(e){}
         if(sgTouchDragActive){
           ev.preventDefault();
           finishSgTouchDrag(ev.clientX, ev.clientY);
         }
-      }, {passive:false});
-      card.addEventListener('pointercancel', ev=>{
+      },{passive:false});
+      card.addEventListener('pointercancel',ev=>{
         clearTimeout(sgLongPressTimer);
         card.classList.remove('dragArmed');
-        card.style.touchAction='';
-        try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
+        try{card.releasePointerCapture(ev.pointerId);}catch(e){}
         if(sgTouchDragActive) cleanupSgTouchDrag();
-      }, {passive:false});
+      },{passive:false});
 
       sgGrid.appendChild(card);
     });
@@ -8125,21 +8129,30 @@ function addMaintenanceRow(data){
   var box=$('maintenanceRowsBox');
   if(!box) return;
   var row=document.createElement('div');
-  row.className='maintRow'; // ← classe stable pour querySelectorAll
+  row.className='maintRow';
   row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box;width:100%';
   var monthOpts='<option value="">?</option>';
   for(var mi=1;mi<=12;mi++) monthOpts+='<option value="'+mi+'"'+(data.freqMonths===mi?' selected':'')+'>'+mi+'</option>';
 
-  // Liste déroulante numéros de série : collecter toutes les machines existantes
-  var serialOpts='<option value="">vide = toutes les machines</option>';
+  // Liste machines filtrée par le modèle de la faultMachine active
+  var serialOpts='<option value="">— Toutes les machines du modèle —</option>';
   try{
     var _dbx2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    // Trouver le modèle de la machine active
+    var _activeFm=((_dbx2.faultMachines||[])).find(function(fm){return fm.id===faultMachineActiveFaultId;});
+    var _activeModel=(_activeFm&&_activeFm.model||'').toLowerCase().trim();
     var _serials=[];
     function _collectSerials(node){
       (node.machines||[]).forEach(function(m){
+        var mModel=(m.model||'').toLowerCase().trim();
+        // Si modèle actif connu, filtrer; sinon afficher toutes
+        if(_activeModel && mModel && mModel!==_activeModel) return;
         var s=(m.serial||m.serialNumber||'').trim();
+        if(!s) return;
+        if(_serials.indexOf(s)!==-1) return;
+        _serials.push(s);
         var label=(m.model||'')+(s?' — '+s:'');
-        if(s && _serials.indexOf(s)===-1){ _serials.push(s); serialOpts+='<option value="'+esc(s)+'"'+(data.specificSerial===s?' selected':'')+'>'+esc(label)+'</option>'; }
+        serialOpts+='<option value="'+esc(s)+'"'+(data.specificSerial===s?' selected':'')+'>'+esc(label)+'</option>';
       });
       (node.groups||[]).forEach(function(g){ _collectSerials(g); });
     }
@@ -8179,7 +8192,6 @@ function readMaintenanceRows(){
   var rows=[];
   var box=$('maintenanceRowsBox');
   if(!box) return rows;
-  // Utiliser la classe .maintRow — stable même si le navigateur normalise le style inline
   box.querySelectorAll('.maintRow').forEach(function(row){
     var desc=(row.querySelector('.maintDesc')||{}).value||'';
     var freqEl=row.querySelector('.maintFreq');
