@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v11.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v11.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=11.3', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=11.4', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -291,7 +291,7 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
 .supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
-.supplierImage img{width:100%;height:100%;object-fit:cover}
+.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
 .supplierCard h3{font-size:15px;line-height:1.15;margin:0;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierCard p{font-size:12px;line-height:1.25;margin:0;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierContact{display:flex;gap:7px;align-items:center;background:#f4f9fd;border:1px solid var(--line);border-radius:12px;padding:6px}
@@ -2326,6 +2326,11 @@ body.draggingMachine{
       <option value="" data-i="noAssignedPlace">— Aucun lieu attribué —</option>
     </select>
   </label>
+  <label id="operatorSupplierLabel" style="display:none"><span>📦 Stock fournisseur assigné</span>
+    <select id="operatorAssignedSupplier">
+      <option value="">— Aucun fournisseur —</option>
+    </select>
+  </label>
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
 </form></dialog>
 
@@ -3846,7 +3851,41 @@ function show(view){
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
 function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
-function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appView').classList.remove('hidden');$('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';renderAll();if(currentUser&&currentUser.role==='client'){clientPathIds=[];show('clientsView');renderClientMachineModule();}else{show('moduleView')} setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);}
+function _injectClientStockBtn(){
+  var u=currentUser;
+  if(!u||u.role!=='client'||!u.assignedSupplierId) return;
+  var existing=document.getElementById('clientStockBtn');
+  if(existing) existing.remove();
+  var s=(db.suppliers||[]).find(function(x){return x.id===u.assignedSupplierId;});
+  if(!s) return;
+  var btn=document.createElement('button');
+  btn.id='clientStockBtn';
+  btn.className='btn primary';
+  btn.style.cssText='position:fixed;bottom:80px;right:16px;z-index:999;border-radius:50px;padding:12px 20px;font-size:15px;font-weight:800;box-shadow:0 4px 18px rgba(10,124,194,.35)';
+  btn.innerHTML='📦 '+esc(s.name);
+  btn.onclick=function(){_openClientSupplierView(s.id);};
+  document.body.appendChild(btn);
+}
+
+function _openClientSupplierView(supplierId){
+  selectedSupplierId=supplierId;
+  if($('partSearch')) $('partSearch').value='';
+  if($('addSupplierBtn')) $('addSupplierBtn').classList.add('hidden');
+  if($('supplierUpBtn')) $('supplierUpBtn').classList.remove('hidden');
+  $('suppliersRoot').classList.add('hidden');
+  $('supplierDetail').classList.remove('hidden');
+  show('suppliersView');
+  renderSupplierParts();
+  // Masquer les boutons d'édition/suppression pour le client
+  setTimeout(function(){
+    document.querySelectorAll('#suppliersView .partCard [data-act="edit"], #suppliersView .partCard [data-act="delete"]').forEach(function(el){
+      el.style.display='none';
+    });
+  },100);
+}
+
+function openApp(){_navHistory=[];$('langView').classList.add('hidden');$('appView').classList.remove('hidden');$('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';renderAll();if(currentUser&&currentUser.role==='client'){clientPathIds=[];show('clientsView');renderClientMachineModule();_injectClientStockBtn();}else{// Supprimer le bouton stock client si on reconnecte en admin
+var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();show('moduleView')} setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);}
 
 function renderAll(){
   if(!currentUser)return;
@@ -4945,10 +4984,27 @@ function updateOperatorFormFields(role){
   var isAdmin=(role==='admin');
   // Admin : aucun champ véhicule/lieu
   // Opérateur : véhicule attribué
-  // Client : lieu attribué
+  // Client : lieu attribué + fournisseur assigné
   vehicleLabel.style.display=(isClient||isAdmin)?'none':'';
   groupLabel.style.display=isClient?'':'none';
   if(isClient) populateGroupDropdown(null);
+  // Fournisseur assigné (clients seulement)
+  var supplierLabel=$('operatorSupplierLabel');
+  if(supplierLabel){
+    supplierLabel.style.display=isClient?'':'none';
+    var supSel=$('operatorAssignedSupplier');
+    if(supSel && isClient){
+      var prevVal=supSel.value;
+      supSel.innerHTML='<option value="">— Aucun fournisseur —</option>';
+      (db.suppliers||[]).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(s){
+        var opt=document.createElement('option');
+        opt.value=s.id;
+        opt.textContent=s.name||'(sans nom)';
+        supSel.appendChild(opt);
+      });
+      if(prevVal) supSel.value=prevVal;
+    }
+  }
 }
 // Écouter le changement de rôle
 if($('operatorRole')){
@@ -4984,6 +5040,11 @@ function openEditOperator(username){
   updateOperatorFormFields(u.role||'operator');
   if(u.role==='client'){
     populateGroupDropdown(u.assignedGroupId||'');
+    setTimeout(function(){
+      if($('operatorAssignedSupplier') && u.assignedSupplierId){
+        $('operatorAssignedSupplier').value=u.assignedSupplierId;
+      }
+    },50);
   } else {
     if($('operatorVehiclePlate')) $('operatorVehiclePlate').value=u.vehiclePlate||u.assignedVehiclePlate||'';
   }
@@ -4997,6 +5058,7 @@ $('operatorForm').onsubmit=e=>{
   let phone=$('operatorPhone').value.trim(), email=$('operatorEmail').value.trim();
   let vehiclePlate=(role!=='client' && $('operatorVehiclePlate')) ? $('operatorVehiclePlate').value.trim() : '';
   let assignedGroupId=(role==='client' && $('operatorAssignedGroup')) ? $('operatorAssignedGroup').value : '';
+  let assignedSupplierId=(role==='client' && $('operatorAssignedSupplier')) ? $('operatorAssignedSupplier').value : '';
   if(editingOperatorUsername){
     let u=db.users.find(x=>x.username===editingOperatorUsername);
     if(u){
@@ -5006,6 +5068,7 @@ $('operatorForm').onsubmit=e=>{
       u.email=email;
       u.vehiclePlate=vehiclePlate;
       u.assignedGroupId=assignedGroupId;
+      u.assignedSupplierId=assignedSupplierId;
       log('EDIT_OPERATOR', username);
     }
   } else {
@@ -5020,7 +5083,7 @@ $('operatorForm').onsubmit=e=>{
     if(Array.isArray(db.trashRemovedIds) && db.trashRemovedIds.includes(username)){
       db.trashRemovedIds = db.trashRemovedIds.filter(id=>id!==username);
     }
-    db.users.push({id:uid(),username,password,phone,email,role,vehiclePlate,assignedGroupId});
+    db.users.push({id:uid(),username,password,phone,email,role,vehiclePlate,assignedGroupId,assignedSupplierId});
     log('ADD_OPERATOR',username);
   }
   // Auto-create vehicle if operator has a plate and car doesn't exist yet
@@ -7912,15 +7975,36 @@ function addMaintenanceRow(data){
   if(!box) return;
   var row=document.createElement('div');
   row.style.cssText='background:#f0f7ff;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px';
+
+  // Options mois 1-12
+  var monthOpts='<option value="">?</option>';
+  for(var m=1;m<=12;m++){
+    monthOpts+='<option value="'+m+'"'+(data.freqMonths===m?' selected':'')+'>'+m+'</option>';
+  }
+
+  // Options pièces fournisseur
+  var partOpts='<option value="">— Pièce liée (optionnel) —</option>';
+  try{
+    var _db2=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    (_db2.suppliers||[]).forEach(function(s){
+      (s.parts||[]).forEach(function(p){
+        var sel2=(data.linkedPartId===p.id)?' selected':'';
+        partOpts+='<option value="'+p.id+'"'+sel2+'>['+esc(s.name)+'] '+esc(p.name||p.partNumber||'')+(p.partNumber?' — '+esc(p.partNumber):'')+' '+(p.price?'('+esc(p.price)+')':'')+' </option>';
+      });
+    });
+  }catch(e){}
+
   row.innerHTML='<div style="display:flex;gap:8px;align-items:center">'
     +'<input type="text" placeholder="Description (ex: Nettoyage filtre 5µm...)" value="'+esc(data.description||'')+'" class="maintDesc" style="flex:1;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px">'
     +'<button type="button" style="background:#ffebee;border:none;border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">×</button>'
     +'</div>'
     +'<div style="display:flex;align-items:center;gap:8px">'
     +'<span style="font-size:12px;color:#666;white-space:nowrap">Fréquence tous les</span>'
-    +'<input type="number" min="1" max="120" value="'+(data.freqMonths||'')+'" placeholder="?" class="maintFreq" style="width:60px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'
+    +'<select class="maintFreq" style="width:70px;padding:7px;border:1.5px solid #ccc;border-radius:10px;font-size:14px;font-weight:700;text-align:center">'+monthOpts+'</select>'
     +'<span style="font-size:12px;color:#666">mois</span>'
-    +'</div>';
+    +'</div>'
+    +'<select class="maintPart" style="width:100%;padding:8px;border:1.5px solid #ccc;border-radius:10px;font-size:13px;color:#444">'+partOpts+'</select>';
+
   row.querySelector('button').onclick=function(){ row.remove(); };
   box.appendChild(row);
 }
@@ -7931,8 +8015,10 @@ function readMaintenanceRows(){
   if(!box) return rows;
   box.querySelectorAll('div[style*="f0f7ff"]').forEach(function(row){
     var desc=(row.querySelector('.maintDesc')||{}).value||'';
-    var freq=parseInt((row.querySelector('.maintFreq')||{}).value)||0;
-    if(desc||freq) rows.push({id:uid(),description:desc,freqMonths:freq});
+    var freqVal=(row.querySelector('.maintFreq')||{}).value||'';
+    var freq=parseInt(freqVal)||0;
+    var linkedPartId=(row.querySelector('.maintPart')||{}).value||'';
+    if(desc||freq) rows.push({id:uid(),description:desc,freqMonths:freq,linkedPartId:linkedPartId});
   });
   return rows;
 }
