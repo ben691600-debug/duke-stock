@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=13.2', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=13.1', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3079,7 +3079,13 @@ function initRTDB(){
         console.log('Duke: Firebase vide - les données locales seront envoyées.');
       }
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
-      if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser) renderAll();
+      if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
+        renderAll();
+        // Après le pull Firebase initial : si client avec stock fournisseur assigné → ouvrir suppliersView
+        if(currentUser && currentUser.role==='client' && currentUser.assignedSupplierId){
+          _openClientSupplierView();
+        }
+      }
       queueSyncToRTDB();
     }).catch(function(e){
       _initialPullDone=true;
@@ -3870,6 +3876,32 @@ function show(view){
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
 function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
+// ── Accès client au stock fournisseur ──────────────────────
+function _openClientSupplierView(){
+  if(!currentUser||currentUser.role!=='client'||!currentUser.assignedSupplierId) return false;
+  function _findR(id,arr){
+    for(var i=0;i<(arr||[]).length;i++){
+      if(arr[i].id===id) return arr[i];
+      var f=_findR(id, arr[i].subgroups||arr[i].groups||[]);
+      if(f) return f;
+    }
+    return null;
+  }
+  var sf=_findR(currentUser.assignedSupplierId, db.suppliers||[]);
+  if(!sf) return false;
+  selectedSupplierId=sf.id;
+  selectedSupplierSubgroupId=null;
+  _supplierShowLevel(1);
+  renderSupplierParts();
+  show('suppliersView');
+  setTimeout(function(){
+    document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+    ['addSubgroupBtn','addPartBtn','addSupplierBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+    var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
+  },150);
+  return true;
+}
+
 function openApp(){
   _navHistory=[];
   $('langView').classList.add('hidden');
@@ -3877,50 +3909,14 @@ function openApp(){
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
   if(currentUser&&currentUser.role==='client'){
-    if(currentUser.assignedSupplierId){
-      // Ouvrir le stock fournisseur — avec retry si Firebase pas encore chargé
-      function _openClientSupplier(){
-        function _findSuppRec(id,arr){
-          for(var i=0;i<(arr||[]).length;i++){
-            if(arr[i].id===id) return arr[i];
-            var f=_findSuppRec(id, arr[i].subgroups||arr[i].groups||[]);
-            if(f) return f;
-          }
-          return null;
-        }
-        var _sf=_findSuppRec(currentUser.assignedSupplierId, db.suppliers||[]);
-        if(_sf){
-          selectedSupplierId=_sf.id;
-          selectedSupplierSubgroupId=null;
-          _supplierShowLevel(1);
-          renderSupplierParts();
-          show('suppliersView');
-          setTimeout(function(){
-            document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-            if($('addSubgroupBtn'))  $('addSubgroupBtn').style.display='none';
-            if($('addPartBtn'))      $('addPartBtn').style.display='none';
-            if($('addSupplierBtn'))  $('addSupplierBtn').style.display='none';
-            if($('supplierUpBtn'))   $('supplierUpBtn').classList.remove('hidden');
-          },200);
-          return true;
-        }
-        return false;
-      }
-      // Essai immédiat
-      if(!_openClientSupplier()){
-        // Firebase pas encore chargé → afficher machines en attendant + retry
-        clientPathIds=[];show('clientsView');renderClientMachineModule();
-        var _retryCount=0;
-        var _retryTimer=setInterval(function(){
-          _retryCount++;
-          if(_openClientSupplier()||_retryCount>10) clearInterval(_retryTimer);
-        },500);
-      }
+    if(currentUser.assignedSupplierId && _openClientSupplierView()){
+      // suppliersView ouvert avec données déjà disponibles
+    } else if(currentUser.assignedSupplierId){
+      // Données Firebase pas encore chargées → attendre le pull initial
+      clientPathIds=[];show('clientsView');renderClientMachineModule();
+      // _openClientSupplierView sera rappelé après pull Firebase
     } else {
-      clientPathIds=[];
-      show('clientsView');
-      renderClientMachineModule();
-      _injectClientStockBtn();
+      clientPathIds=[];show('clientsView');renderClientMachineModule();
     }
   } else {
     var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
