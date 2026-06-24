@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2171,6 +2171,9 @@ body.draggingMachine{
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
+  <div id="clientSupplierBtnRow" style="display:none;padding:6px 0 2px">
+    <button id="clientSupplierAccessBtn" class="btn primary" style="width:100%;font-size:15px;font-weight:800;padding:14px;border-radius:16px">📦 <span id="clientSupplierBtnLabel">Stock fournisseur</span></button>
+  </div>
   <input class="search" id="clientSearch" type="search"
     id="clientSearch" placeholder="🔍" data-i-placeholder="searchClients"
     style="margin:8px 0 4px;width:100%;box-sizing:border-box">
@@ -3081,10 +3084,7 @@ function initRTDB(){
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
         renderAll();
-        // Après le pull Firebase initial : si client avec stock fournisseur assigné → ouvrir suppliersView
-        if(currentUser && currentUser.role==='client' && currentUser.assignedSupplierId){
-          _openClientSupplierView();
-        }
+        if(typeof _setupClientSupplierBtn==='function') _setupClientSupplierBtn();
       }
       queueSyncToRTDB();
     }).catch(function(e){
@@ -3876,32 +3876,30 @@ function show(view){
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
 function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
-// ── Accès client au stock fournisseur ──────────────────────
-function _openClientSupplierView(){
-  if(!currentUser||currentUser.role!=='client'||!currentUser.assignedSupplierId) return false;
-  function _findR(id,arr){
-    for(var i=0;i<(arr||[]).length;i++){
-      if(arr[i].id===id) return arr[i];
-      var f=_findR(id, arr[i].subgroups||arr[i].groups||[]);
-      if(f) return f;
-    }
-    return null;
-  }
-  var sf=_findR(currentUser.assignedSupplierId, db.suppliers||[]);
-  if(!sf) return false;
-  selectedSupplierId=sf.id;
-  selectedSupplierSubgroupId=null;
-  _supplierShowLevel(1);
-  renderSupplierParts();
-  show('suppliersView');
-  setTimeout(function(){
-    document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-    ['addSubgroupBtn','addPartBtn','addSupplierBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-    var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
-  },150);
-  return true;
+// Bouton stock fournisseur dans clientsView
+function _setupClientSupplierBtn(){
+  var row=document.getElementById('clientSupplierBtnRow');
+  var btn=document.getElementById('clientSupplierAccessBtn');
+  var lbl=document.getElementById('clientSupplierBtnLabel');
+  if(!row||!btn) return;
+  var u=currentUser;
+  if(!u||u.role!=='client'||!u.assignedSupplierId){row.style.display='none';return;}
+  row.style.display='block';
+  function _findS(id,arr){for(var i=0;i<(arr||[]).length;i++){if(arr[i].id===id)return arr[i];var f=_findS(id,arr[i].subgroups||arr[i].groups||[]);if(f)return f;}return null;}
+  var sf=_findS(u.assignedSupplierId,db.suppliers||[]);
+  if(lbl)lbl.textContent=sf?(sf.name||'Stock fournisseur'):'Stock fournisseur';
+  btn.onclick=function(){
+    var sf2=_findS(u.assignedSupplierId,db.suppliers||[]);
+    if(!sf2){alert('Patiente quelques secondes et réessaie.');return;}
+    selectedSupplierId=sf2.id;selectedSupplierSubgroupId=null;
+    _supplierShowLevel(1);renderSupplierParts();show('suppliersView');
+    setTimeout(function(){
+      document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+      ['addSubgroupBtn','addPartBtn','addSupplierBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+      var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
+    },150);
+  };
 }
-
 function openApp(){
   _navHistory=[];
   $('langView').classList.add('hidden');
@@ -3909,18 +3907,10 @@ function openApp(){
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
   if(currentUser&&currentUser.role==='client'){
-    if(currentUser.assignedSupplierId && _openClientSupplierView()){
-      // suppliersView ouvert avec données déjà disponibles
-    } else if(currentUser.assignedSupplierId){
-      // Données Firebase pas encore chargées → attendre le pull initial
-      clientPathIds=[];show('clientsView');renderClientMachineModule();
-      // _openClientSupplierView sera rappelé après pull Firebase
-    } else {
-      clientPathIds=[];show('clientsView');renderClientMachineModule();
-    }
-  } else {
-    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
-    show('moduleView');
+    clientPathIds=[];show('clientsView');renderClientMachineModule();
+    _setupClientSupplierBtn();
+  }else{
+    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();show('moduleView');
   }
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
 }
