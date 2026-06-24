@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v12.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v12.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=12.0', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=12.1', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -289,14 +289,15 @@ textarea.noteArea{display:block;width:100%;min-height:150px;margin-top:7px;paddi
 #clientEmptyGroups,#clientEmptyMachines{display:none!important}
 
 .supplierGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
-.supplierCard,.supplierCard *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;}
+.supplierCard{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;}
+.supplierCard h3,.supplierCard p,.supplierCard .supplierImage{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;pointer-events:none;}
 .supplierCard.dragArmed{outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDragSource{opacity:.55;outline:3px solid rgba(10,124,194,.35);}
 .supplierCard.sgDropTarget{outline:3px solid #0A7CC2;background:#EAF4FB!important;}
 body.draggingSupplierGroup{overflow:hidden;touch-action:none;}
 .supplierCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;gap:7px;cursor:pointer}
 .supplierImage{height:82px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;color:#738494;font-size:28px}
-.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none}
+.supplierImage img{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box;pointer-events:none;-webkit-touch-callout:none;-webkit-user-drag:none;}
 .supplierCard h3{font-size:15px;line-height:1.15;margin:0;color:var(--blue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierCard p{font-size:12px;line-height:1.25;margin:0;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .supplierContact{display:flex;gap:7px;align-items:center;background:#f4f9fd;border:1px solid var(--line);border-radius:12px;padding:6px}
@@ -8102,8 +8103,20 @@ $('faultMachineFaultForm').onsubmit = ev=>{
   const machine = db.faultMachines.find(x=>x.id===faultMachineActiveFaultId);
   if(machine){
     machine.faults = faultMachineReadFaultRows();
-    // Lire les maintenances
     machine.maintenances = readMaintenanceRows();
+    // CORRECTIF : écrire directement dans localStorage avant syncToRTDB
+    // pour éviter qu'un snapshot Firebase intermédiaire écrase les maintenances
+    try{
+      const _stored = JSON.parse(localStorage.getItem(STORE)||'{}');
+      if(Array.isArray(_stored.faultMachines)){
+        const _idx = _stored.faultMachines.findIndex(x=>x.id===machine.id);
+        if(_idx!==-1){
+          _stored.faultMachines[_idx].faults = machine.faults;
+          _stored.faultMachines[_idx].maintenances = machine.maintenances;
+          localStorage.setItem(STORE, JSON.stringify(_stored));
+        }
+      }
+    }catch(e){}
     save();
   }
   $('faultMachineFaultDialog').close();
