@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=13.1', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=13.2', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3877,41 +3877,56 @@ function openApp(){
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
   if(currentUser&&currentUser.role==='client'){
-    // Chercher le fournisseur assigné (recherche récursive)
-    function _findSuppRec(id,arr){
-      for(var i=0;i<(arr||[]).length;i++){
-        if(arr[i].id===id) return arr[i];
-        var f=_findSuppRec(id, arr[i].subgroups||arr[i].groups||[]);
-        if(f) return f;
+    if(currentUser.assignedSupplierId){
+      // Ouvrir le stock fournisseur — avec retry si Firebase pas encore chargé
+      function _openClientSupplier(){
+        function _findSuppRec(id,arr){
+          for(var i=0;i<(arr||[]).length;i++){
+            if(arr[i].id===id) return arr[i];
+            var f=_findSuppRec(id, arr[i].subgroups||arr[i].groups||[]);
+            if(f) return f;
+          }
+          return null;
+        }
+        var _sf=_findSuppRec(currentUser.assignedSupplierId, db.suppliers||[]);
+        if(_sf){
+          selectedSupplierId=_sf.id;
+          selectedSupplierSubgroupId=null;
+          _supplierShowLevel(1);
+          renderSupplierParts();
+          show('suppliersView');
+          setTimeout(function(){
+            document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+            if($('addSubgroupBtn'))  $('addSubgroupBtn').style.display='none';
+            if($('addPartBtn'))      $('addPartBtn').style.display='none';
+            if($('addSupplierBtn'))  $('addSupplierBtn').style.display='none';
+            if($('supplierUpBtn'))   $('supplierUpBtn').classList.remove('hidden');
+          },200);
+          return true;
+        }
+        return false;
       }
-      return null;
-    }
-    var _sf=currentUser.assignedSupplierId ? _findSuppRec(currentUser.assignedSupplierId, db.suppliers||[]) : null;
-    if(_sf){
-      // Ouvrir suppliersView sur ce fournisseur — utilise les fonctions existantes de v12
-      openSupplier(_sf.id);
-      show('suppliersView');
-      // Cacher boutons édition pour le client
-      setTimeout(function(){
-        document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-        if($('addSubgroupBtn'))  $('addSubgroupBtn').style.display='none';
-        if($('addPartBtn'))      $('addPartBtn').style.display='none';
-        if($('addSupplierBtn'))  $('addSupplierBtn').style.display='none';
-        if($('supplierUpBtn'))   $('supplierUpBtn').classList.remove('hidden');
-      },200);
+      // Essai immédiat
+      if(!_openClientSupplier()){
+        // Firebase pas encore chargé → afficher machines en attendant + retry
+        clientPathIds=[];show('clientsView');renderClientMachineModule();
+        var _retryCount=0;
+        var _retryTimer=setInterval(function(){
+          _retryCount++;
+          if(_openClientSupplier()||_retryCount>10) clearInterval(_retryTimer);
+        },500);
+      }
     } else {
-      // Pas de stock fournisseur → gestion machine normale
       clientPathIds=[];
       show('clientsView');
       renderClientMachineModule();
       _injectClientStockBtn();
     }
   } else {
-    var _csb=document.getElementById('clientStockBtn');
-    if(_csb) _csb.remove();
+    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
     show('moduleView');
   }
-  setTimeout(function(){if(typeof window._checkPendingTransfers==='function') window._checkPendingTransfers();},1500);
+  setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
 }
 
 function renderAll(){
