@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2169,9 +2169,7 @@ body.draggingMachine{
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
-  <div id="clientSupplierBtnRow" style="display:none;padding:6px 0 2px">
-    <button id="clientSupplierAccessBtn" class="btn primary" style="width:100%;font-size:15px;font-weight:800;padding:14px;border-radius:16px">📦 <span id="clientSupplierBtnLabel">Stock fournisseur</span></button>
-  </div>
+
   <input class="search" id="clientSearch" type="search"
     id="clientSearch" placeholder="🔍" data-i-placeholder="searchClients"
     style="margin:8px 0 4px;width:100%;box-sizing:border-box">
@@ -2189,7 +2187,7 @@ body.draggingMachine{
 <section id="suppliersView" class="hidden">
   <div class="toolbar moduleActionToolbar supplierTopActions">
     <div class="actions moduleActionButtons oneButton">
-      <button class="btn primary" id="addSupplierBtn" data-i="addSupplier">+ Fournisseur</button>
+      <button class="btn primary adminOnly" id="addSupplierBtn" data-i="addSupplier">+ Fournisseur</button>
     </div>
   </div>
   <button class="btn secondary backSymbolBtn floatingBackBtn hidden" id="supplierUpBtn" title="Retour">←</button>
@@ -2199,8 +2197,8 @@ body.draggingMachine{
   </div>
   <div id="supplierDetail" class="hidden">
     <div class="toolbar moduleActionToolbar" style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
-      <button class="btn secondary" id="addPartBtn" data-i="addPart" style="flex:1">+ Pièce</button>
+      <button class="btn primary adminOnly" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
+      <button class="btn secondary adminOnly" id="addPartBtn" data-i="addPart" style="flex:1">+ Pièce</button>
     </div>
     <div class="supplierDetailHeader"><h2 id="supplierDetailTitle"></h2><p id="supplierDetailSub"></p></div>
     <div id="sgMoveHelp" class="groupMoveHelp hidden"></div>
@@ -2211,7 +2209,7 @@ body.draggingMachine{
   <div id="supplierSubgroupDetail" class="hidden">
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons oneButton">
-        <button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>
+        <button class="btn primary adminOnly" id="addPartInSubgroupBtn">+ Pièce</button>
       </div>
     </div>
     <div class="supplierDetailHeader"><h2 id="supplierSubgroupDetailTitle"></h2><p id="supplierSubgroupDetailSub"></p></div>
@@ -7352,7 +7350,13 @@ function renderSuppliersModule(){
       <h3 title="${esc(s.name)}">${esc(s.name)}</h3><p>${esc(s.email||'-')}</p>
       ${sgC>0?`<p style="font-size:11px;color:#1a7ad4;font-weight:700">📁 ${sgC} sous-groupe${sgC>1?'s':''}</p>`:''}
       <div class="supplierContact"><div class="supplierContactIcon">👤</div><div><p><b>${esc(((s.firstName||'')+' '+(s.lastName||'')).trim()||'-')}</b></p><p>${esc(s.phone||'-')}</p></div></div>
-      <div class="supplierActions"><button class="btn primary mini" data-act="open">${T('open')}</button>${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}<button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}</div>`;
+      <div class="supplierActions">
+        <button class="btn primary mini" data-act="open">${T('open')}</button>
+        ${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}
+        ${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}
+        ${!isClientUser()?`<button class="btn secondary mini" data-act="edit">✏️</button>`:''}
+        ${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}
+      </div>`;
     card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();openSupplier(s.id);};
     card.querySelector('[data-act=edit]').onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     var cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
