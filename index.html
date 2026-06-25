@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7339,7 +7339,9 @@ function renderSuppliersModule(){
   if(!$('supplierGrid')) return;
   $('supplierGrid').innerHTML=''; db.suppliers=db.suppliers||[];
   const q=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
-  db.suppliers.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).filter(s=>{
+  // Filtrer par assignedSupplierId pour les clients
+  const visibleSuppliers=supplierAllowedList(db.suppliers);
+  visibleSuppliers.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).filter(s=>{
     const sgT=(s.subgroups||[]).map(sg=>(sg.name||'')+(sg.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')).join(' ');
     const pT=(s.parts||[]).map(p=>[p.name,p.partNumber,p.price].join(' ')).join(' ');
     return !q||[s.name,s.email,s.firstName,s.lastName,s.phone,pT,sgT].join(' ').toLowerCase().includes(q);
@@ -7375,7 +7377,11 @@ function renderSupplierParts(){
       var _cg=_findSgGroupById(currentUser.assignedGroupId, db.clientRoot||{groups:[]});
       if(_cg) cln=(_cg.name||'').toLowerCase().trim();
     }
-    (s.subgroups||[]).forEach(sg=>{
+    const visibleSubgroups=supplierAllowedSubgroups(s.subgroups||[]);
+    // Déterminer si le contexte est autorisé pour les pièces
+    const u2=(typeof currentUser!=='undefined')?currentUser:null;
+    const isAssignedCtx=!isClientUser()||(u2&&(u2.assignedSupplierId===s.id||(s.subgroups||[]).some(function(sg){return sg.id===u2.assignedSupplierId;})));
+    visibleSubgroups.forEach(sg=>{
       const isLinked=cln&&(sg.name||'').toLowerCase().trim()===cln;
       const card=document.createElement('div');
       card.className='supplierCard'; card.dataset.sgId=sg.id; card.draggable=isAdmin();
@@ -7460,10 +7466,11 @@ function renderSupplierParts(){
       sgGrid.appendChild(card);
     });
   }
-  // Pièces directes
+  // Pièces directes — seulement si contexte autorisé
   $('partGrid').innerHTML='';
   const pq=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
-  (s.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
+  const visibleParts=supplierAllowedParts(s.parts||[], isAssignedCtx);
+  visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,false);
@@ -7476,6 +7483,50 @@ function _findSgGroupById(id, node){
   if(!node||!id) return null; if(node.id===id) return node;
   for(const g of (node.groups||[])){ const f=_findSgGroupById(id,g); if(f) return f; }
   return null;
+}
+
+// ── Filtrage fournisseur par client — COPIE EXACTE de groupMatchesCurrentClient ──
+function supplierMatchesCurrentClient(s){
+  if(!isClientUser()||!s) return false;
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!u||!u.assignedSupplierId) return false;
+  return u.assignedSupplierId===s.id;
+}
+function supplierHasClientAccess(s){
+  if(!isClientUser()) return true;
+  if(supplierMatchesCurrentClient(s)) return true;
+  // Vérifier aussi dans les sous-groupes
+  return (s.subgroups||[]).some(sg=>u_sgMatchesClient(sg));
+}
+function u_sgMatchesClient(sg){
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!u||!u.assignedSupplierId) return false;
+  return u.assignedSupplierId===sg.id;
+}
+function supplierAllowedList(suppliers){
+  if(!isClientUser()) return suppliers;
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!u||!u.assignedSupplierId) return [];
+  // Montrer seulement le fournisseur racine qui contient l'étiquette assignée
+  return (suppliers||[]).filter(function(s){
+    if(s.id===u.assignedSupplierId) return true;
+    return (s.subgroups||[]).some(function(sg){return sg.id===u.assignedSupplierId;});
+  });
+}
+function supplierAllowedSubgroups(subgroups){
+  if(!isClientUser()) return subgroups;
+  const u=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!u||!u.assignedSupplierId) return [];
+  // Si le fournisseur racine est l'étiquette → voir tous les sous-groupes
+  // Si un sous-groupe est l'étiquette → voir seulement ce sous-groupe
+  const s=(db.suppliers||[]).find(function(x){return x.id===selectedSupplierId;});
+  if(s&&s.id===u.assignedSupplierId) return subgroups; // fournisseur racine assigné → tout visible
+  return (subgroups||[]).filter(function(sg){return sg.id===u.assignedSupplierId;});
+}
+function supplierAllowedParts(parts, isInAssignedContext){
+  if(!isClientUser()) return parts;
+  if(!isInAssignedContext) return [];
+  return parts;
 }
 
 // ── Niveau 2 ───────────────────────────────────────────────
