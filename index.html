@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7574,10 +7574,19 @@ function renderSubgroupParts(){
 function openSupplier(id){ selectedSupplierId=id; selectedSupplierSubgroupId=null; if($('partSearch'))$('partSearch').value=''; _supplierShowLevel(1); renderSupplierParts(); }
 function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subgroupPartSearch'))$('subgroupPartSearch').value=''; _supplierShowLevel(2); renderSubgroupParts(); }
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
-  if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
-  else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){ selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
-  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ _showClientMenu(); }
-  else show('moduleView');
+  var isClient=currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId;
+  if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){
+    // Niveau 2 → retour niveau 1 (détail fournisseur)
+    selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts();
+  } else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){
+    // Niveau 1 → si client : menu, si admin : liste fournisseurs
+    if(isClient){ _showClientMenu(); }
+    else { selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
+  } else {
+    // Niveau 0 → menu
+    if(isClient){ _showClientMenu(); }
+    else { show('moduleView'); }
+  }
 };
 if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
   if(isClientUser()&&currentUser&&currentUser.assignedSupplierId){
@@ -8943,9 +8952,10 @@ translate();
     setHidden(document.getElementById('historyBtn'),!admin() && !hp('viewHistory'));
     setHidden(document.getElementById('exportMainBtn'),!hp('exportExcel'));
     const isClient=(typeof currentUser!=='undefined'&&currentUser&&currentUser.role==='client');
+    const clientHasSupplier=isClient&&currentUser.assignedSupplierId;
     if(isClient){
       setHidden(document.getElementById('openVehiclesModule'),true);
-      setHidden(document.getElementById('openSuppliersModule'),true);
+      if(!clientHasSupplier) setHidden(document.getElementById('openSuppliersModule'),true);
       setHidden(document.getElementById('openFaultMachineModule'),true);
       setHidden(document.getElementById('historyBtn'),true);
       setHidden(document.getElementById('exportMainBtn'),true);
