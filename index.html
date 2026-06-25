@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2353,19 +2353,21 @@ body.draggingMachine{
   </div>
 </dialog>
 
-<dialog class="modal" id="permissionsDialog" style="padding:0;max-height:88vh;display:grid;grid-template-rows:auto 1fr auto">
-  <div style="padding:20px 20px 12px;border-bottom:1px solid var(--line)">
-    <h2 style="margin:0 0 4px">⚙️ Paramètres autorisations</h2>
-    <p class="muted" style="margin:0 0 12px">Configure les droits d'accès par rôle.</p>
-    <div style="display:flex;gap:8px">
-      <button type="button" id="permTabOperator" onclick="openPermissionsDialog('operator')">🔧 Opérateur</button>
-      <button type="button" id="permTabClient" onclick="openPermissionsDialog('client')">🏥 Client</button>
+<dialog class="modal" id="permissionsDialog" style="padding:0;max-height:88vh;overflow:hidden">
+  <div style="display:flex;flex-direction:column;max-height:88vh">
+    <div style="padding:20px 20px 12px;border-bottom:1px solid var(--line);flex-shrink:0">
+      <h2 style="margin:0 0 4px">⚙️ Paramètres autorisations</h2>
+      <p class="muted" style="margin:0 0 12px">Configure les droits d'accès par rôle.</p>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="permTabOperator" onclick="openPermissionsDialog('operator')">🔧 Opérateur</button>
+        <button type="button" id="permTabClient" onclick="openPermissionsDialog('client')">🏥 Client</button>
+      </div>
     </div>
-  </div>
-  <div id="permissionsUsersList" class="permissionsUsersList" style="overflow-y:auto;padding:16px;min-height:0"></div>
-  <div style="padding:12px 20px;border-top:1px solid var(--line);background:var(--bg,#eef8fd);display:flex;gap:10px;justify-content:flex-end">
-    <button type="button" class="btn secondary" id="permCloseBtn">Fermer</button>
-    <button type="button" class="btn primary" id="permissionsSaveBtn">Enregistrer</button>
+    <div id="permissionsUsersList" class="permissionsUsersList" style="overflow-y:auto;padding:16px;flex:1;min-height:100px"></div>
+    <div style="padding:12px 20px;border-top:1px solid var(--line);background:var(--bg,#eef8fd);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
+      <button type="button" class="btn secondary" id="permCloseBtn">Fermer</button>
+      <button type="button" class="btn primary" id="permissionsSaveBtn">Enregistrer</button>
+    </div>
   </div>
 </dialog>
 
