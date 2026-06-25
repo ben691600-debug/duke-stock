@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -9130,13 +9130,18 @@ translate();
   function deny(){alert(T('actionDenied'));}
   document.addEventListener('click',function(e){
     if(admin()) return;
+    // Client avec stock fournisseur assigné → toujours autoriser l'accès aux fournisseurs
+    var _cu=typeof currentUser!=='undefined'?currentUser:null;
+    var _clientHasSupplier=_cu&&_cu.role==='client'&&_cu.assignedSupplierId;
     const hp=window.hasPermission||(()=>true);
     const rules=[
-      ['#openVehiclesModule','viewVehicles'],['#openClientsModule','viewClients'],['#openSuppliersModule','viewSuppliers'],['#openFaultMachineModule','viewFaultMachines'],['#historyBtn','viewHistory'],['#exportMainBtn','exportExcel'],
+      ['#openVehiclesModule','viewVehicles'],['#openClientsModule','viewClients'],
+      _clientHasSupplier?null:['#openSuppliersModule','viewSuppliers'],
+      ['#openFaultMachineModule','viewFaultMachines'],['#historyBtn','viewHistory'],['#exportMainBtn','exportExcel'],
       ['#addBtn','addVehicle'],['#openItemForm','addStock'],['#addClientGroupBtn','addGroup'],['#addMachineBtn','addClientMachine'],['#addSupplierBtn','addSupplier'],['#addPartBtn','addPart'],['#faultMachineCreateButton','addFaultMachine'],
       ['.vehicleParkingBtn','vehicleExpenses'],['#items [data-a="transfer"]','transferStock'],['#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]','editStock'],['#items [data-a="del"]','deleteStock'],
       ['#faultMachineGrid [data-a="faults"],#faultMachineGrid [data-fm="faults"]','editFaultList'],['#faultMachineGrid [data-a="edit"],#faultMachineGrid [data-fm="edit"]','editFaultMachine'],['#faultMachineGrid [data-a="delete"],#faultMachineGrid [data-fm="delete"]','deleteFaultMachine']
-    ];
+    ].filter(Boolean);
     for(const [sel,key] of rules){if(e.target.closest(sel)&&!hp(key)){e.preventDefault();e.stopImmediatePropagation();deny();return;}}
   },true);
   const settingsBtn=document.getElementById('settingsBtn'); if(settingsBtn) settingsBtn.onclick=openPermissionsDialog;
@@ -9159,7 +9164,11 @@ translate();
         const oldShow=show;
         window.show=function(view){
           if(!admin()){
-            const map={carsView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory',stockView:'viewStock'};
+            // Client avec stock fournisseur assigné → autoriser suppliersView
+            var _cu2=typeof currentUser!=='undefined'?currentUser:null;
+            var _clientHasSupplier2=_cu2&&_cu2.role==='client'&&_cu2.assignedSupplierId;
+            const map={carsView:'viewVehicles',clientsView:'viewClients',faultMachineView:'viewFaultMachines',historyView:'viewHistory',stockView:'viewStock'};
+            if(!_clientHasSupplier2) map.suppliersView='viewSuppliers';
             if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
           }
           oldShow.call(this,view);
