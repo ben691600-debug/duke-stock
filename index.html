@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8967,15 +8967,22 @@ var _waitReady=setInterval(function(){
       var _oldShow=show;
       window.show=function(view){
         var cu=(typeof currentUser!=='undefined')?currentUser:null;
-        if(cu&&!admin()){
+        // Bloquer uniquement si utilisateur connecté ET non-admin ET permission manquante
+        if(cu&&cu.role&&cu.role!=='admin'){
           var map={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
           if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
         }
         _oldShow.call(this,view);
-        setTimeout(window.applyPermissionUI,30);
+        // Appliquer UI seulement si non-admin
+        if(cu&&cu.role&&cu.role!=='admin') setTimeout(window.applyPermissionUI,30);
       };
       var _oldRender=renderAll;
-      window.renderAll=function(){_oldRender.apply(this,arguments);setTimeout(window.applyPermissionUI,30);};
+      window.renderAll=function(){
+        _oldRender.apply(this,arguments);
+        // Appliquer UI seulement si un utilisateur non-admin est connecté
+        var cu=(typeof currentUser!=='undefined')?currentUser:null;
+        if(cu&&!admin()) setTimeout(window.applyPermissionUI,30);
+      };
       // Bouton paramètres
       var sb=document.getElementById('settingsBtn');
       if(sb) sb.onclick=function(){window.openPermissionsDialog(_currentPermRole||'operator');};
