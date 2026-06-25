@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4697,7 +4697,7 @@ function savePreparedQty(iid){
 function deleteItem(iid){let c=db.cars.find(x=>x.id===selected);if(!canAccessVehicle(c))return;let it=c.items.find(x=>x.id===iid);if(confirm(T('confirmItem'))){delete pendingQtyChanges[iid];c.items=c.items.filter(i=>i.id!==iid);moveToTrash('vehicleItem',it,{carId:c.id});log('DELETE_ITEM',`${c.plate} | ${it.name} | qty ${it.qty}`);save();renderAll()}}
 function deleteUser(username){const u=db.users.find(x=>x.username===username);db.users=db.users.filter(u=>u.username!==username);if(u) moveToTrash('user',u,{});log('DELETE_OPERATOR',username);save();renderAll()}
 
-$('loginBtn').onclick=secureLogin;
+if($('loginBtn')) $('loginBtn').onclick=secureLogin;
 if($('forgotPasswordBtn')) $('forgotPasswordBtn').onclick=forgotPassword;
 initFirebaseSecurity();
 document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;localStorage.setItem(LANG,lang);translate();openApp()});
@@ -4757,9 +4757,9 @@ function goBackFromLogo(){
   if($('hint')) $('hint').classList.add('hidden');
   renderAll();
 }
-$('backBtn').onclick=goBackFromLogo;
+if($('backBtn')) $('backBtn').onclick=goBackFromLogo;
 // Universal back button wired in DOMContentLoaded (see bottom of page)
-$('brandBackBtn').onclick=goBackFromLogo;
+if($('brandBackBtn')) $('brandBackBtn').onclick=goBackFromLogo;
 if($('carTile')) $('carTile').onclick=()=>{if(!isAdmin())return;removeMode=false;renderAll()};
 if($('delMode')) $('delMode').onclick=()=>{removeMode=!removeMode;renderAll()};
 
