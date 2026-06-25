@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8923,9 +8923,13 @@ if(saveBtn) saveBtn.onclick=function(){
 // ── Appliquer les permissions à l'interface ───────────────
 window.applyPermissionUI=function(){
   function sh(el,hide){if(el){el.classList.toggle('hidden',!!hide);}}
-  sh(document.getElementById('settingsBtn'),!admin());
-  sh(document.getElementById('trashBtn'),!admin());
-  if(admin()) return;
+  // Si personne n'est connecté → rien à faire
+  var cu=(typeof currentUser!=='undefined')?currentUser:null;
+  if(!cu) return;
+  var isAdm=admin();
+  sh(document.getElementById('settingsBtn'),!isAdm);
+  sh(document.getElementById('trashBtn'),!isAdm);
+  if(isAdm) return; // Admin : tout visible, fin
   var hp=window.hasPermission;
   sh(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
   sh(document.getElementById('openClientsModule'),!hp('viewClients'));
@@ -8962,7 +8966,8 @@ var _waitReady=setInterval(function(){
       clearInterval(_waitReady);
       var _oldShow=show;
       window.show=function(view){
-        if(!admin()){
+        var cu=(typeof currentUser!=='undefined')?currentUser:null;
+        if(cu&&!admin()){
           var map={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
           if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
         }
