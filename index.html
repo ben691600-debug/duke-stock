@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -44,8 +44,13 @@ if('serviceWorker' in navigator){
       });
     }).catch(function(e){console.warn('SW error',e);});
     var _reloaded = false;
-    // Rechargement manuel uniquement via le bouton "Mettre à jour"
-    // navigator.serviceWorker.addEventListener('controllerchange') supprimé — pas de reload auto
+    // Rechargement automatique quand le nouveau SW prend le contrôle (après clic "Mettre à jour")
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(_reloaded) return;
+      _reloaded = true;
+      sessionStorage.setItem('duke_just_updated','1');
+      window.location.reload();
+    });
   });
 }
 
@@ -3088,7 +3093,6 @@ function initRTDB(){
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
         renderAll();
-        if(typeof _setupClientSupplierBtn==='function') _setupClientSupplierBtn();
       }
       queueSyncToRTDB();
     }).catch(function(e){
@@ -3890,65 +3894,7 @@ function afterLogin(){
     $('langView').classList.remove('hidden');
   }
 }
-// Bouton stock fournisseur dans clientsView
-function _setupClientSupplierBtn(){
-  var row=document.getElementById('clientSupplierBtnRow');
-  var btn=document.getElementById('clientSupplierAccessBtn');
-  var lbl=document.getElementById('clientSupplierBtnLabel');
-  if(!row||!btn) return;
-  var u=currentUser;
-  if(!u||u.role!=='client'||!u.assignedSupplierId){row.style.display='none';return;}
-  row.style.display='block';
 
-  // Chercher le fournisseur RACINE qui contient l'ID assigné
-  // (l'ID peut être un fournisseur racine OU un sous-groupe)
-  function _findRootSupplier(targetId, suppliers){
-    for(var i=0;i<(suppliers||[]).length;i++){
-      var s=suppliers[i];
-      // C'est directement un fournisseur racine
-      if(s.id===targetId) return {rootSupplier:s, subgroup:null};
-      // Chercher dans les sous-groupes
-      var subs=s.subgroups||[];
-      for(var j=0;j<subs.length;j++){
-        if(subs[j].id===targetId) return {rootSupplier:s, subgroup:subs[j]};
-        // Sous-sous-groupes si nécessaire
-        var subsubs=subs[j].subgroups||[];
-        for(var k=0;k<subsubs.length;k++){
-          if(subsubs[k].id===targetId) return {rootSupplier:s, subgroup:subsubs[k]};
-        }
-      }
-    }
-    return null;
-  }
-
-  var found=_findRootSupplier(u.assignedSupplierId, db.suppliers||[]);
-  if(lbl) lbl.textContent=found?(found.subgroup?found.subgroup.name:found.rootSupplier.name):'Stock fournisseur';
-
-  btn.onclick=function(){
-    var found2=_findRootSupplier(u.assignedSupplierId, db.suppliers||[]);
-    if(!found2){alert('Patiente quelques secondes et réessaie.');return;}
-    // Ouvrir le fournisseur racine
-    selectedSupplierId=found2.rootSupplier.id;
-    selectedSupplierSubgroupId=null;
-    _supplierShowLevel(1);
-    renderSupplierParts();
-    show('suppliersView');
-    // Si c'était un sous-groupe, l'ouvrir directement
-    if(found2.subgroup){
-      selectedSupplierSubgroupId=found2.subgroup.id;
-      _supplierShowLevel(2);
-      renderSubgroupParts();
-    }
-    // Masquer boutons édition
-    setTimeout(function(){
-      document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-      ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){
-        var el=document.getElementById(id);if(el)el.style.display='none';
-      });
-      var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
-    },150);
-  };
-}
 function openApp(){
   _navHistory=[];
   $('langView').classList.add('hidden');
