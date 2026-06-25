@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2357,11 +2357,17 @@ body.draggingMachine{
 </dialog>
 
 <dialog class="modal" id="permissionsDialog">
-  <h2>⚙️ <span data-i="settingsTitle">Paramètres autorisations</span></h2>
-  <p class="muted" data-i="permSettingsDesc">Configure les droits d'accès par rôle. Ces paramètres s'appliquent à tous les utilisateurs du rôle.</p>
+  <h2>⚙️ Paramètres autorisations</h2>
+  <p class="muted">Configure les droits d'accès par rôle. S'applique à tous les utilisateurs du rôle.</p>
+  <!-- Onglets rôles -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid var(--line);padding-bottom:8px">
+    <button type="button" class="btn secondary" id="permTabAdmin" onclick="openPermissionsDialog('admin')">👑 Admin</button>
+    <button type="button" class="btn secondary" id="permTabOperator" onclick="openPermissionsDialog('operator')">🔧 Opérateur</button>
+    <button type="button" class="btn secondary" id="permTabClient" onclick="openPermissionsDialog('client')">🏥 Client</button>
+  </div>
   <div id="permissionsUsersList" class="permissionsUsersList"></div>
   <div class="formActions permissionsMainActions">
-    <button type="button" class="btn secondary close"><span data-i="close">Fermer</span></button>
+    <button type="button" class="btn secondary close">Fermer</button>
     <button type="button" class="btn primary" id="permissionsSaveBtn">Enregistrer</button>
   </div>
 </dialog>
@@ -8742,320 +8748,256 @@ translate();
 
 <script id="adminPermissionsPatch">
 (function(){
-  function getPermissionGroups(){return [
-    {title:'permGroupModules',items:[
-      ['viewVehicles','permViewVehicles'],['viewClients','permViewClients'],['viewSuppliers','permViewSuppliers'],['viewFaultMachines','permViewFaultMachines'],['viewHistory','permViewHistory'],['exportExcel','permExportExcel']
-    ]},
-    {title:'permGroupVehicles',items:[
-      ['addVehicle','permAddVehicle'],['editVehicle','permEditVehicle'],['deleteVehicle','permDeleteVehicle'],['vehicleExpenses','permVehicleExpenses'],['viewStock','permViewStock'],['addStock','permAddStock'],['editStock','permEditStock'],['deleteStock','permDeleteStock'],['transferStock','permTransferStock']
-    ]},
-    {title:'permGroupClients',items:[
-      ['addGroup','permAddGroup'],['editGroup','permEditGroup'],['deleteGroup','permDeleteGroup'],['addClientMachine','permAddClientMachine'],['editClientMachine','permEditClientMachine'],['deleteClientMachine','permDeleteClientMachine'],['serviceHistoryEdit','permServiceHistoryEdit']
-    ]},
-    {title:'permGroupSuppliers',items:[
-      ['addSupplier','permAddSupplier'],['editSupplier','permEditSupplier'],['deleteSupplier','permDeleteSupplier'],['addPart','permAddPart'],['editPart','permEditPart'],['deletePart','permDeletePart']
-    ]},
-    {title:'permGroupFaultMachines',items:[
-      ['addFaultMachine','permAddFaultMachine'],['editFaultMachine','permEditFaultMachine'],['deleteFaultMachine','permDeleteFaultMachine'],['editFaultList','permEditFaultList']
-    ]},
-    {title:'permGroupAttendance',items:[['attendanceSelf','permAttendanceSelf']]}
-  ];}
-  const PERMISSION_GROUPS=getPermissionGroups();
-  const DEFAULT_OPERATOR_PERMISSIONS={
-    viewVehicles:true,viewClients:true,viewStock:true,attendanceSelf:true,
-    vehicleExpenses:false,exportExcel:false,
-    viewSuppliers:false,viewFaultMachines:false,viewHistory:false,
-    addVehicle:false,editVehicle:false,deleteVehicle:false,addStock:false,editStock:false,deleteStock:false,
-    transferStock:true, // Toujours activé pour tous les opérateurs - incontournable
-    addGroup:false,editGroup:false,deleteGroup:false,addClientMachine:false,editClientMachine:false,deleteClientMachine:false,serviceHistoryEdit:false,
-    addSupplier:false,editSupplier:false,deleteSupplier:false,addPart:false,editPart:false,deletePart:false,
-    addFaultMachine:false,editFaultMachine:false,deleteFaultMachine:false,editFaultList:false
-  };
-  const ALL_KEYS=Array.from(new Set(PERMISSION_GROUPS.flatMap(g=>g.items.map(i=>i[0]))));
-  window.PERMISSION_GROUPS=PERMISSION_GROUPS;
-  window.getPermissionGroups=getPermissionGroups;
-  window.DEFAULT_OPERATOR_PERMISSIONS=DEFAULT_OPERATOR_PERMISSIONS;
-  function safeDb(){try{return (typeof db!=='undefined')?db:null}catch(e){return null}}
-  function admin(){try{return typeof isAdmin==='function' && isAdmin()}catch(e){return false}}
-  function userRecord(){try{return typeof currentUserRecord==='function'?currentUserRecord():null}catch(e){return null}}
-  window.hasPermission=function(key){
-    if(admin()) return true;
-    const u=userRecord();
-    if(!u || !u.username) return false;
-    // transferStock est toujours autorisé pour tous les opérateurs - incontournable
-    if(key==='transferStock' && u.role==='operator') return true;
-    // Vérifier d'abord le cache de permissions en attente
-    var pending=getPendingPerms();
-    if(pending){
-      var pu=pending.users.find(function(x){return x.username===u.username;});
-      if(pu && pu.permissions && typeof pu.permissions[key]!=='undefined') return !!pu.permissions[key];
-    }
-    const perms=(u&&u.permissions&&typeof u.permissions==='object')?u.permissions:DEFAULT_OPERATOR_PERMISSIONS;
-    return !!perms[key];
-  };
-  function ensurePermissions(){
-    const d=safeDb(); if(!d||!Array.isArray(d.users)) return;
-    // Restaurer d'abord les permissions du cache si disponibles
-    var pending=getPendingPerms();
-    if(pending && Array.isArray(pending.users)){
-      pending.users.forEach(function(pu){
-        var u=(d.users||[]).find(function(x){return x.username===pu.username;});
-        if(u&&pu.permissions) u.permissions=Object.assign({},pu.permissions);
-      });
-      if(pending.rolePerms && d.rolePermissions===undefined) d.rolePermissions=pending.rolePerms;
-    }
-    d.users.forEach(u=>{
-      if(u.role==='admin') return;
-      if(u.role==='client'){
-        if(!u.permissions||typeof u.permissions!=='object'){
-          const clientDefaults={}; ALL_KEYS.forEach(k=>clientDefaults[k]=false); clientDefaults.viewClients=true;
-          u.permissions=clientDefaults;
+// ═══════════════════════════════════════════════════════
+// SYSTÈME DE PERMISSIONS v14.4
+// ═══════════════════════════════════════════════════════
+
+const STORE='duke_stock_manager_auth_v1';
+function safeDb(){try{return (typeof db!=='undefined')?db:null}catch(e){return null}}
+function admin(){try{return typeof isAdmin==='function'&&isAdmin()}catch(e){return false}}
+
+// ── Groupes et clés de permissions ──────────────────────
+const PERM_GROUPS=[
+  {title:'🖥️ Modules visibles',items:[
+    ['viewVehicles','Véhicules / Stock'],
+    ['viewClients','Gestion clients / machines'],
+    ['viewSuppliers','Gestion fournisseurs / pièces'],
+    ['viewFaultMachines','Liste machines / pannes'],
+    ['viewHistory','Historique'],
+    ['exportExcel','Export Excel']
+  ]},
+  {title:'🚗 Véhicules & Stock',items:[
+    ['addVehicle','Ajouter véhicule'],
+    ['editVehicle','Modifier véhicule'],
+    ['deleteVehicle','Supprimer véhicule'],
+    ['vehicleExpenses','Dépenses véhicule'],
+    ['addStock','Ajouter stock'],
+    ['editStock','Modifier stock'],
+    ['deleteStock','Supprimer stock'],
+    ['transferStock','Transférer stock']
+  ]},
+  {title:'🏥 Clients / Machines',items:[
+    ['addGroup','Ajouter groupe'],
+    ['editGroup','Modifier groupe'],
+    ['deleteGroup','Supprimer groupe'],
+    ['addClientMachine','Ajouter machine'],
+    ['editClientMachine','Modifier machine'],
+    ['deleteClientMachine','Supprimer machine'],
+    ['serviceHistoryEdit','Modifier historique service']
+  ]},
+  {title:'🧰 Fournisseurs / Pièces',items:[
+    ['addSupplier','Ajouter fournisseur'],
+    ['editSupplier','Modifier fournisseur'],
+    ['deleteSupplier','Supprimer fournisseur'],
+    ['addPart','Ajouter pièce'],
+    ['editPart','Modifier pièce'],
+    ['deletePart','Supprimer pièce']
+  ]},
+  {title:'⚠️ Machines / Pannes',items:[
+    ['addFaultMachine','Ajouter machine panne'],
+    ['editFaultMachine','Modifier machine panne'],
+    ['deleteFaultMachine','Supprimer machine panne'],
+    ['editFaultList','Modifier liste pannes']
+  ]}
+];
+const ALL_KEYS=PERM_GROUPS.flatMap(g=>g.items.map(i=>i[0]));
+
+// Permissions par défaut par rôle
+const ROLE_DEFAULTS={
+  admin: Object.fromEntries(ALL_KEYS.map(k=>[k,true])),
+  operator: Object.fromEntries(ALL_KEYS.map(k=>[k,['viewVehicles','viewClients','viewSuppliers','viewFaultMachines','viewHistory','transferStock'].includes(k)])),
+  client: Object.fromEntries(ALL_KEYS.map(k=>[k,['viewClients','viewSuppliers'].includes(k)]))
+};
+
+window.PERM_GROUPS=PERM_GROUPS;
+window.ALL_KEYS=ALL_KEYS;
+window.ROLE_DEFAULTS=ROLE_DEFAULTS;
+// Compatibilité avec ancien code
+window.PERMISSION_GROUPS=PERM_GROUPS;
+window.DEFAULT_OPERATOR_PERMISSIONS=ROLE_DEFAULTS.operator;
+
+// ── Lecture/écriture permissions ─────────────────────────
+function getRolePerms(role){
+  var d=safeDb(); if(!d) return Object.assign({},ROLE_DEFAULTS[role]||{});
+  var saved=(d.rolePermissions||{})[role]||{};
+  return Object.assign({},ROLE_DEFAULTS[role]||{},saved);
+}
+function saveRolePerms(role,perms){
+  var d=safeDb(); if(!d) return;
+  d.rolePermissions=d.rolePermissions||{};
+  d.rolePermissions[role]=Object.assign({},perms);
+  try{localStorage.setItem(STORE,JSON.stringify(d));}catch(e){}
+  if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+}
+window.hasPermission=function(key){
+  if(admin()) return true;
+  try{
+    var u=(typeof currentUser!=='undefined')?currentUser:null;
+    if(!u) return false;
+    var role=u.role||'operator';
+    var d=safeDb();
+    // Permissions individuelles en priorité
+    if(u.permissions&&typeof u.permissions[key]!=='undefined') return !!u.permissions[key];
+    // Sinon permissions du rôle
+    return !!getRolePerms(role)[key];
+  }catch(e){return false;}
+};
+
+// ── Interface permissions ────────────────────────────────
+var _currentPermRole='operator';
+
+window.openPermissionsDialog=function(role){
+  if(!admin()) return;
+  _currentPermRole=role||'operator';
+  renderPermissionsPanel();
+  var dlg=document.getElementById('permissionsDialog');
+  if(dlg&&!dlg.open) dlg.showModal();
+  // Mettre à jour onglets actifs
+  ['admin','operator','client'].forEach(function(r){
+    var btn=document.getElementById('permTab'+r.charAt(0).toUpperCase()+r.slice(1));
+    if(btn) btn.classList.toggle('primary',r===_currentPermRole);
+    if(btn) btn.classList.toggle('secondary',r!==_currentPermRole);
+  });
+};
+
+function renderPermissionsPanel(){
+  var box=document.getElementById('permissionsUsersList');
+  if(!box) return;
+  var role=_currentPermRole;
+  var perms=getRolePerms(role);
+  var isAdminRole=(role==='admin');
+  var html='<div style="margin-bottom:12px"><b style="font-size:15px">'+
+    (role==='admin'?'👑 Admin':role==='operator'?'🔧 Opérateurs':'🏥 Clients')+'</b>';
+  if(!isAdminRole){
+    html+='<div style="display:flex;gap:8px;margin-top:8px">'+
+      '<button type="button" class="btn ok mini" onclick="window._permSetAll(true)">✅ Tout activer</button>'+
+      '<button type="button" class="btn danger mini" onclick="window._permSetAll(false)">❌ Tout désactiver</button>'+
+      '<button type="button" class="btn secondary mini" onclick="window._permReset()">↩️ Par défaut</button>'+
+    '</div>';
+  }
+  html+='</div>';
+  PERM_GROUPS.forEach(function(group){
+    html+='<div style="margin-bottom:16px"><div style="font-weight:700;font-size:13px;color:#1a7ad4;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e0eaf5">'+group.title+'</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">';
+    group.items.forEach(function(item){
+      var key=item[0], label=item[1];
+      var checked=isAdminRole?true:!!perms[key];
+      var disabled=isAdminRole?' disabled':'';
+      html+='<label style="display:flex;align-items:center;gap:8px;padding:8px;background:white;border:1px solid var(--line);border-radius:10px;cursor:'+(isAdminRole?'default':'pointer')+'">'+
+        '<input type="checkbox" data-perm-key="'+key+'"'+(checked?' checked':'')+disabled+' style="width:18px;height:18px;cursor:'+(isAdminRole?'default':'pointer')+'">'+
+        '<span style="font-size:13px">'+label+'</span></label>';
+    });
+    html+='</div></div>';
+  });
+  box.innerHTML=html;
+}
+
+window._permSetAll=function(val){
+  var box=document.getElementById('permissionsUsersList');
+  if(!box) return;
+  box.querySelectorAll('input[data-perm-key]').forEach(function(ch){ch.checked=val;});
+};
+window._permReset=function(){
+  var box=document.getElementById('permissionsUsersList');
+  if(!box) return;
+  var defs=ROLE_DEFAULTS[_currentPermRole]||{};
+  box.querySelectorAll('input[data-perm-key]').forEach(function(ch){
+    ch.checked=!!defs[ch.getAttribute('data-perm-key')];
+  });
+};
+
+// Enregistrer
+var saveBtn=document.getElementById('permissionsSaveBtn');
+if(saveBtn) saveBtn.onclick=function(){
+  if(_currentPermRole==='admin') return;
+  var box=document.getElementById('permissionsUsersList');
+  if(!box) return;
+  var perms=Object.assign({},ROLE_DEFAULTS[_currentPermRole]||{});
+  box.querySelectorAll('input[data-perm-key]').forEach(function(ch){
+    perms[ch.getAttribute('data-perm-key')]=!!ch.checked;
+  });
+  saveRolePerms(_currentPermRole,perms);
+  // Appliquer à tous les utilisateurs du rôle
+  var d=safeDb();
+  if(d&&d.users){
+    d.users.forEach(function(u){
+      if(u.role===_currentPermRole) u.permissions=Object.assign({},perms);
+    });
+    try{localStorage.setItem(STORE,JSON.stringify(d));}catch(e){}
+    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
+  }
+  window.applyPermissionUI();
+  alert('✅ Autorisations enregistrées pour le rôle "'+_currentPermRole+'".');
+};
+
+// Fermer
+document.querySelectorAll('#permissionsDialog .close').forEach(function(b){
+  b.addEventListener('click',function(){
+    var d=document.getElementById('permissionsDialog');if(d)d.close();
+  });
+});
+
+// ── Application des permissions à l'interface ────────────
+window.applyPermissionUI=function(){
+  // Boutons admin uniquement
+  setHidden(document.getElementById('settingsBtn'),!admin());
+  setHidden(document.getElementById('trashBtn'),!admin());
+  if(admin()) return; // Admin : tout visible, rien à cacher
+  var hp=window.hasPermission;
+  // Modules du menu
+  setHidden(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
+  setHidden(document.getElementById('openClientsModule'),!hp('viewClients'));
+  setHidden(document.getElementById('openSuppliersModule'),!hp('viewSuppliers'));
+  setHidden(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
+  setHidden(document.getElementById('historyBtn'),!hp('viewHistory'));
+  setHidden(document.getElementById('exportMainBtn'),!hp('exportExcel'));
+  // Boutons d'action
+  setHidden(document.getElementById('addBtn'),!hp('addVehicle'));
+  setHidden(document.getElementById('addSupplierBtn'),!hp('addSupplier'));
+  setHidden(document.getElementById('addPartBtn'),!hp('addPart'));
+  setHidden(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
+  setHidden(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
+  setHidden(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
+  setHidden(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
+  setHidden(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
+  // Boutons dans les listes (différé pour laisser le DOM se rendre)
+  setTimeout(function(){
+    document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(function(e){setHidden(e,!hp('editVehicle'));});
+    document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(function(e){setHidden(e,!hp('deleteVehicle'));});
+    document.querySelectorAll('#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]').forEach(function(e){setHidden(e,!hp('editStock'));});
+    document.querySelectorAll('#items [data-a="del"]').forEach(function(e){setHidden(e,!hp('deleteStock'));});
+    document.querySelectorAll('#items [data-a="transfer"]').forEach(function(e){setHidden(e,!hp('transferStock'));});
+    document.querySelectorAll('#suppliersView [data-act="edit"]').forEach(function(e){setHidden(e,!hp('editSupplier')&&!hp('editPart'));});
+    document.querySelectorAll('#suppliersView [data-act="delete"]').forEach(function(e){setHidden(e,!hp('deleteSupplier')&&!hp('deletePart'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="faults"],[data-fm="faults"]').forEach(function(e){setHidden(e,!hp('editFaultList'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="edit"],[data-fm="edit"]').forEach(function(e){setHidden(e,!hp('editFaultMachine'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="delete"],[data-fm="delete"]').forEach(function(e){setHidden(e,!hp('deleteFaultMachine'));});
+  },80);
+};
+
+// ── Listener show() — redirection si module non autorisé ──
+var _waitPerms=setInterval(function(){
+  try{
+    if(typeof show==='function'&&typeof renderAll==='function'){
+      clearInterval(_waitPerms);
+      var oldShow=show;
+      window.show=function(view){
+        if(!admin()){
+          var viewPerms={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
+          if(viewPerms[view]&&!window.hasPermission(viewPerms[view])){view='moduleView';}
         }
-        return;
-      }
-      // N'initialiser que si l'objet permissions est complètement absent
-      // NE JAMAIS écraser des permissions déjà définies par l'admin
-      if(!u.permissions||typeof u.permissions!=='object'){
-        u.permissions={...DEFAULT_OPERATOR_PERMISSIONS};
-      }
-      // Ajouter uniquement les clés manquantes (nouvelles permissions ajoutées au code)
-      ALL_KEYS.forEach(k=>{
-        if(typeof u.permissions[k]==='undefined') u.permissions[k]=!!DEFAULT_OPERATOR_PERMISSIONS[k];
-      });
-    });
-  }
-  function setHidden(el,hide){if(el) el.classList.toggle('hidden',!!hide)}
-  window.applyPermissionUI=function(){
-    // Seuls les boutons admin (corbeille, paramètres) restent cachés pour les non-admin
-    setHidden(document.getElementById('settingsBtn'),!admin());
-    setHidden(document.getElementById('trashBtn'),!admin());
-    // Tout le reste est visible pour tous les utilisateurs connectés
-  };
-  function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-  // Permissions par rôle (templates stockés dans db)
-  const ROLE_PERMISSION_DEFAULTS={
-    operator:{...DEFAULT_OPERATOR_PERMISSIONS},
-    client:(function(){var c={};ALL_KEYS.forEach(function(k){c[k]=false;});c.viewClients=true;return c;})()
-  };
-  function getRoleTemplate(role){
-    var d=safeDb(); if(!d) return ROLE_PERMISSION_DEFAULTS[role]||{};
-    if(!d.rolePermissions) d.rolePermissions={};
-    return Object.assign({},ROLE_PERMISSION_DEFAULTS[role]||{},d.rolePermissions[role]||{});
-  }
-  function saveRoleTemplate(role,perms){
-    var d=safeDb(); if(!d) return;
-    if(!d.rolePermissions) d.rolePermissions={};
-    d.rolePermissions[role]=Object.assign({},perms);
-    localStorage.setItem(STORE, JSON.stringify(d));
-    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
-    else if(typeof save==='function') save();
-  }
-  function applyRoleTemplateToAllUsers(role){
-    var d=safeDb(); if(!d) return;
-    var tpl=getRoleTemplate(role);
-    (d.users||[]).forEach(function(u){
-      if(u.role===role) u.permissions=Object.assign({},tpl);
-    });
-    localStorage.setItem(STORE, JSON.stringify(d));
-    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
-    else if(typeof save==='function') save();
-  }
-
-  // Onglets dans le dialog
-  var _permTab='roles'; // toujours 'roles'
-
-  function buildRoleTabHtml(role,roleLabel,icon){
-    var tpl=getRoleTemplate(role);
-    var groups=PERMISSION_GROUPS.map(function(g){
-      return '<div class="permissionGroupTitle">'+escapeHtml(T(g.title))+'</div><div class="permissionGrid">'+
-        g.items.map(function(item){
-          var k=item[0]; var label=item[1];
-          return '<label class="permissionCheck"><input type="checkbox" data-role-perm="'+role+'" data-permission="'+k+'" '+(tpl[k]?'checked':'')+'> <span>'+escapeHtml(T(label))+'</span></label>';
-        }).join('')+'</div>';
-    }).join('');
-    return '<div class="permissionUserCard" id="roleCard_'+role+'">' +
-      '<div class="permissionUserHeader"><h3>'+icon+' '+escapeHtml(roleLabel)+'</h3><span class="badge">Rôle</span></div>' +
-      '<div class="permissionsQuickActions">' +
-        '<button type="button" class="btn secondary" data-role-template="basic" data-role="'+role+'">'+T('defaultPerms')+'</button>' +
-        '<button type="button" class="btn secondary" data-role-template="full" data-role="'+role+'">'+T('allowAll')+'</button>' +
-        '<button type="button" class="btn danger" data-role-template="none" data-role="'+role+'">'+T('blockAll')+'</button>' +
-        '<button type="button" class="btn ok" data-role-apply="'+role+'">'+T('applyToRole')+'</button>' +
-      '</div>' +
-      groups + '</div>';
-  }
-
-  function openPermissionsDialog(){
-    if(!admin()) return;
-    ensurePermissions();
-    const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
-    // Uniquement onglet Par rôle
-    _permTab='roles';
-    renderPermTab();
-    const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.showModal();
-  }
-
-  function renderPermTab(){
-    const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
-    if(_permTab==='roles'){
-      box.innerHTML=
-        buildRoleTabHtml('operator','Opérateurs','OP')+
-        buildRoleTabHtml('client','Clients','CL');
-      // Quick actions for roles
-      box.querySelectorAll('[data-role-template]').forEach(function(btn){
-        btn.onclick=function(){
-          var role=btn.getAttribute('data-role'); var mode=btn.getAttribute('data-role-template');
-          var checks=box.querySelectorAll('input[data-role-perm="'+role+'"]');
-          checks.forEach(function(ch){
-            var k=ch.getAttribute('data-permission');
-            if(mode==='full') ch.checked=true;
-            else if(mode==='none') ch.checked=false;
-            else ch.checked=!!(ROLE_PERMISSION_DEFAULTS[role]||{})[k];
-          });
-        };
-      });
-      box.querySelectorAll('[data-role-apply]').forEach(function(btn){
-        btn.onclick=function(){
-          var role=btn.getAttribute('data-role');
-          // Read current checkboxes for this role
-          var perms=Object.assign({},ROLE_PERMISSION_DEFAULTS[role]||{});
-          box.querySelectorAll('input[data-role-perm="'+role+'"]').forEach(function(ch){
-            perms[ch.getAttribute('data-permission')]=!!ch.checked;
-          });
-          saveRoleTemplate(role,perms);
-          applyRoleTemplateToAllUsers(role);
-          if(typeof renderAll==='function') renderAll();
-          setTimeout(window.applyPermissionUI,80);
-          alert(T('permsAppliedRole')+' '+role+'.');
-        };
-      });
-    } else {
-      // Users tab
-      const operators=(d.users||[]).filter(function(u){return u.role!=='admin';});
-      if(!operators.length){box.innerHTML='<p class="muted">'+T('noOperatorToConfig')+'</p>';}
-      else box.innerHTML=operators.map(function(u){
-        const perms=Object.assign({},DEFAULT_OPERATOR_PERMISSIONS,u.permissions||{});
-        const groups=PERMISSION_GROUPS.map(function(g){
-          return '<div class="permissionGroupTitle">'+escapeHtml(T(g.title))+'</div><div class="permissionGrid">'+
-            g.items.map(function(item){
-              var k=item[0]; var label=item[1];
-              return '<label class="permissionCheck"><input type="checkbox" data-user="'+escapeHtml(u.username)+'" data-permission="'+k+'" '+(perms[k]?'checked':'')+'> <span>'+escapeHtml(T(label))+'</span></label>';
-            }).join('')+'</div>';
-        }).join('');
-        return '<div class="permissionUserCard"><div class="permissionUserHeader"><h3>👤 '+escapeHtml(u.username)+'</h3><span class="badge">'+escapeHtml(u.role==='client'?'Client':'Opérateur')+'</span></div>'+
-          '<div class="permissionsQuickActions">'+
-            '<button type="button" class="btn secondary" data-perm-template="basic" data-user="'+escapeHtml(u.username)+'">'+T('defaultRolePerms')+'</button>'+
-            '<button type="button" class="btn secondary" data-perm-template="full" data-user="'+escapeHtml(u.username)+'">Tout autoriser</button>'+
-            '<button type="button" class="btn danger" data-perm-template="none" data-user="'+escapeHtml(u.username)+'">Tout bloquer</button>'+
-          '</div>'+groups+'</div>';
-      }).join('');
-      box.querySelectorAll('[data-perm-template]').forEach(function(btn){
-        btn.onclick=function(){
-          const user=btn.getAttribute('data-user'); const mode=btn.getAttribute('data-perm-template');
-          const u=(d.users||[]).find(function(x){return x.username===user;});
-          const checks=box.querySelectorAll('input[data-user="'+CSS.escape(user)+'"]');
-          checks.forEach(function(ch){
-            var k=ch.getAttribute('data-permission');
-            if(mode==='full') ch.checked=true;
-            else if(mode==='none') ch.checked=false;
-            else ch.checked=!!(getRoleTemplate(u?u.role:'operator')[k]);
-          });
-        };
-      });
+        oldShow.call(this,view);
+        setTimeout(window.applyPermissionUI,30);
+      };
+      var oldRender=renderAll;
+      window.renderAll=function(){oldRender.apply(this,arguments);setTimeout(window.applyPermissionUI,30);};
+      var settingsBtn=document.getElementById('settingsBtn');
+      if(settingsBtn) settingsBtn.onclick=function(){window.openPermissionsDialog(_currentPermRole||'operator');};
+      window.applyPermissionUI();
     }
-  }
-  function savePermissions(){
-    const d=safeDb(); const box=document.getElementById('permissionsUsersList'); if(!d||!box) return;
+  }catch(e){}
+},200);
 
-    if(_permTab==='roles'){
-      // Onglet rôles — sauvegarder les templates de rôles
-      ['operator','client'].forEach(function(role){
-        var perms=Object.assign({},ROLE_PERMISSION_DEFAULTS[role]||{});
-        box.querySelectorAll('input[data-role-perm="'+role+'"]').forEach(function(ch){
-          perms[ch.getAttribute('data-permission')]=!!ch.checked;
-        });
-        saveRoleTemplate(role,perms);
-        applyRoleTemplateToAllUsers(role);
-      });
-      if(typeof log==='function') log('PERMISSIONS','Templates de rôles mis à jour');
-      const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.close();
-      if(typeof renderAll==='function') renderAll();
-      setTimeout(function(){ if(typeof window.applyPermissionUI==='function') window.applyPermissionUI(); },80);
-      alert(T('permsSaved'));
-      return;
-    }
-
-    // Onglet utilisateurs
-    const permMap={};
-    box.querySelectorAll('input[data-user][data-permission]').forEach(ch=>{
-      const username=ch.getAttribute('data-user');
-      const permKey=ch.getAttribute('data-permission');
-      if(!permMap[username]) permMap[username]={};
-      permMap[username][permKey]=!!ch.checked;
-    });
-
-    // Appliquer sur db.users en mémoire
-    (d.users||[]).forEach(u=>{
-      if(u.role==='admin'||!permMap[u.username]) return;
-      u.permissions=Object.assign({...DEFAULT_OPERATOR_PERMISSIONS}, permMap[u.username]);
-    });
-
-    // Sauvegarder dans le cache persistant (60s de protection)
-    var usersPerms=(d.users||[]).filter(u=>u.role!=='admin').map(u=>({username:u.username,permissions:Object.assign({},u.permissions)}));
-    savePendingPerms(usersPerms, d.rolePermissions||{});
-
-    // Écriture directe dans Firebase sur le nœud users
-    if(typeof _rtdb!=='undefined' && _rtdb && typeof _firebaseAuthReady!=='undefined' && _firebaseAuthReady){
-      try{
-        var usersToSend=(d.users||[]).map(function(u){return Object.assign({},u);});
-        _rtdb.ref('duke_main/users').set(usersToSend).then(function(){
-          clearPendingPerms();
-          console.log('Duke: permissions écrites directement dans Firebase ✓');
-        }).catch(function(e){
-          console.warn('Duke: écriture directe Firebase échouée', e);
-        });
-      }catch(e){ console.warn('Direct Firebase write failed', e); }
-    }
-
-    // Backup : sync complète
-    localStorage.setItem(STORE, JSON.stringify(d));
-    if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
-
-    if(typeof log==='function') log('PERMISSIONS','Autorisations mises à jour');
-    const dlg=document.getElementById('permissionsDialog'); if(dlg) dlg.close();
-    if(typeof renderAll==='function') renderAll();
-    setTimeout(function(){ if(typeof window.applyPermissionUI==='function') window.applyPermissionUI(); },80);
-    alert(T('permsSaved'));
-  }
-  function deny(){} // désactivé
-  // Listener de permission désactivé — tout le monde a accès à tout
-  const settingsBtn=document.getElementById('settingsBtn'); if(settingsBtn) settingsBtn.onclick=openPermissionsDialog;
-  const trashBtn=document.getElementById('trashBtn');
-  if(trashBtn) trashBtn.onclick=function(){
-    if(!isTrashAdmin()) return;
-    renderTrashDialog();
-    document.getElementById('trashDialog').showModal();
-  };
-  const emptyTrashBtn=document.getElementById('emptyTrashBtn');
-  if(emptyTrashBtn) emptyTrashBtn.onclick=emptyTrash;
-  const saveBtn=document.getElementById('permissionsSaveBtn'); if(saveBtn) saveBtn.onclick=savePermissions;
-  document.querySelectorAll('#permissionsDialog .close').forEach(b=>b.addEventListener('click',()=>{const d=document.getElementById('permissionsDialog'); if(d)d.close();}));
-  const wait=setInterval(()=>{
-    try{
-      if(typeof renderAll==='function'&&typeof show==='function'){
-        clearInterval(wait);
-        const oldRender=renderAll;
-        window.renderAll=function(){oldRender.apply(this,arguments); setTimeout(window.applyPermissionUI,30);};
-        const oldShow=show;
-        window.show=function(view){
-          // Wrapper show() simplifié — plus de blocage par permissions
-          oldShow.call(this,view);
-          setTimeout(window.applyPermissionUI,30);
-        };
-        ensurePermissions();
-        window.applyPermissionUI();
-      }
-    }catch(e){}
-  },200);
 })();
 </script>
 
