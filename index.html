@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3879,7 +3879,17 @@ function show(view){
   var excelBtn=document.getElementById('exportMainBtn');
   if(excelBtn){ excelBtn.style.display='none'; excelBtn.style.visibility='hidden'; }
 }
-function afterLogin(){$('loginView').classList.add('hidden');$('langView').classList.remove('hidden');var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');renderAttendancePanel();}
+function afterLogin(){
+  $('loginView').classList.add('hidden');
+  var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');
+  renderAttendancePanel();
+  // Si langue déjà choisie → ouvrir l'app directement sans passer par langView
+  if(localStorage.getItem('duke_stock_lang_v1')){
+    openApp();
+  } else {
+    $('langView').classList.remove('hidden');
+  }
+}
 // Bouton stock fournisseur dans clientsView
 function _setupClientSupplierBtn(){
   var row=document.getElementById('clientSupplierBtnRow');
