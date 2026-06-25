@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -201,6 +201,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 
 .moduleChoice{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;margin-top:24px}
 .moduleCard{background:white;border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow);padding:24px;text-align:center;cursor:pointer;min-height:210px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.clientHidden{display:none!important}
 .moduleIcon{font-size:54px;line-height:1}
 .moduleCard h2{margin:0;color:var(--blue)}
 .moduleCard p{margin:0;color:#71808c;line-height:1.4}
@@ -2171,7 +2172,9 @@ body.draggingMachine{
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
-  <div id="clientSupplierBtnRow" style="display:none"></div>
+  <div id="clientSupplierBtnRow" style="display:none;padding:6px 0 2px">
+    <button id="clientSupplierAccessBtn" class="btn primary" style="width:100%;font-size:15px;font-weight:800;padding:14px;border-radius:16px">📦 <span id="clientSupplierBtnLabel">Stock fournisseur</span></button>
+  </div>
   <input class="search" id="clientSearch" type="search"
     id="clientSearch" placeholder="🔍" data-i-placeholder="searchClients"
     style="margin:8px 0 4px;width:100%;box-sizing:border-box">
@@ -3938,31 +3941,27 @@ function openApp(){
   $('langView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
+  // Réinitialiser toujours toutes les cartes du menu (important pour admin après client)
+  ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.classList.remove('clientHidden');
+  });
   renderAll();
   if(currentUser&&currentUser.role==='client'){
     if(currentUser.assignedSupplierId){
-      // Client avec stock fournisseur → afficher moduleView avec ses 2 modules
-      _showClientModuleView();
+      // Client avec stock fournisseur → menu avec 2 cartes
+      ['openVehiclesModule','openFaultMachineModule'].forEach(function(id){
+        var el=document.getElementById(id); if(el) el.classList.add('clientHidden');
+      });
+      show('moduleView');
     } else {
-      // Client sans stock fournisseur → gestion machine directement
+      // Client sans stock → gestion machine directement
       clientPathIds=[];show('clientsView');renderClientMachineModule();
     }
   }else{
-    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();show('moduleView');
+    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
+    show('moduleView');
   }
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
-}
-
-// Affiche le menu principal pour un client avec stock fournisseur
-function _showClientModuleView(){
-  // Masquer cartes non autorisées
-  ['openVehiclesModule','openFaultMachineModule'].forEach(function(id){
-    var el=document.getElementById(id);if(el)el.style.display='none';
-  });
-  // Afficher les 2 cartes client
-  var cm=document.getElementById('openClientsModule');if(cm)cm.style.display='';
-  var sm=document.getElementById('openSuppliersModule');if(sm)sm.style.display='';
-  show('moduleView');
 }
 
 function renderAll(){
@@ -6722,7 +6721,7 @@ $('clientMachineForm').onsubmit=e=>{
 };
 $('clientUpBtn').onclick=()=>{
   if(clientPathIds.length>0){clientPathIds.pop();renderClientMachineModule();}
-  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){_showClientModuleView();}
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){show('moduleView');}
 };
 
 function openEditClientGroup(gid){
@@ -7506,14 +7505,13 @@ function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subg
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
   if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
   else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){ selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
-  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ _showClientModuleView(); }
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ show('moduleView'); }
   else show('moduleView');
 };
 if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
-  // Client avec stock fournisseur assigné → accès direct sans requireAdminAccess
   if(isClientUser()&&currentUser&&currentUser.assignedSupplierId){
-    // Trouver le fournisseur racine
-    function _findRoot(tId,arr){
+    // Client : ouvrir directement son fournisseur assigné
+    function _findClientRoot(tId,arr){
       for(var i=0;i<(arr||[]).length;i++){
         if(arr[i].id===tId) return {root:arr[i],sub:null};
         var subs=arr[i].subgroups||[];
@@ -7523,20 +7521,18 @@ if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
       }
       return null;
     }
-    var found=_findRoot(currentUser.assignedSupplierId,db.suppliers||[]);
-    if(!found){
-      // Données pas encore chargées → ouvrir niveau 0 et laisser le client naviguer
+    var f=_findClientRoot(currentUser.assignedSupplierId,db.suppliers||[]);
+    if(!f){
+      // Données pas encore dispo → niveau 0
       selectedSupplierId=null;selectedSupplierSubgroupId=null;
-      if($('supplierGlobalSearch'))$('supplierGlobalSearch').value='';
       _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
     } else {
-      selectedSupplierId=found.root.id;selectedSupplierSubgroupId=null;
+      selectedSupplierId=f.root.id;selectedSupplierSubgroupId=null;
       if($('partSearch'))$('partSearch').value='';
       _supplierShowLevel(1);renderSupplierParts();
-      if(found.sub){selectedSupplierSubgroupId=found.sub.id;_supplierShowLevel(2);renderSubgroupParts();}
+      if(f.sub){selectedSupplierSubgroupId=f.sub.id;_supplierShowLevel(2);renderSubgroupParts();}
       show('suppliersView');
     }
-    // Masquer boutons édition
     setTimeout(function(){
       document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
       ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
