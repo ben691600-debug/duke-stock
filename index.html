@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3085,7 +3085,11 @@ function initRTDB(){
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
         renderAll();
-        if(typeof _setupClientSupplierBtn==='function') _setupClientSupplierBtn();
+        // Si client avec stock et suppliersView déjà visible → remettre à jour
+        if(currentUser && currentUser.role==='client' && currentUser.assignedSupplierId){
+          var _sv=document.getElementById('suppliersView');
+          if(_sv && !_sv.classList.contains('hidden')) _openSupplierForClient();
+        }
       }
       queueSyncToRTDB();
     }).catch(function(e){
@@ -3941,20 +3945,17 @@ function openApp(){
   $('langView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
-  // Réinitialiser toujours toutes les cartes du menu (important pour admin après client)
+  // Réinitialiser cartes menu
   ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.classList.remove('clientHidden');
   });
   renderAll();
   if(currentUser&&currentUser.role==='client'){
     if(currentUser.assignedSupplierId){
-      // Client avec stock fournisseur → menu avec 2 cartes
-      ['openVehiclesModule','openFaultMachineModule'].forEach(function(id){
-        var el=document.getElementById(id); if(el) el.classList.add('clientHidden');
-      });
-      show('moduleView');
+      // Client avec stock fournisseur → ouvrir DIRECTEMENT suppliersView
+      // Bypass complet du wrapper show() qui bloque via permissions
+      _openSupplierForClient();
     } else {
-      // Client sans stock → gestion machine directement
       clientPathIds=[];show('clientsView');renderClientMachineModule();
     }
   }else{
@@ -3962,6 +3963,57 @@ function openApp(){
     show('moduleView');
   }
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
+}
+
+function _openSupplierForClient(){
+  if(!currentUser||!currentUser.assignedSupplierId) return;
+  // Chercher le fournisseur (racine ou sous-groupe)
+  var aid=currentUser.assignedSupplierId;
+  var rootS=null, subS=null;
+  (db.suppliers||[]).forEach(function(s){
+    if(s.id===aid){ rootS=s; return; }
+    (s.subgroups||[]).forEach(function(sg){
+      if(sg.id===aid){ rootS=s; subS=sg; }
+    });
+  });
+  // Bypass show() wrapper — appeler directement la mécanique de show
+  // Cacher toutes les sections et montrer suppliersView
+  ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.classList.add('hidden');
+  });
+  var sv=document.getElementById('suppliersView'); if(sv) sv.classList.remove('hidden');
+  if(!rootS){
+    // Firebase pas encore chargé → afficher liste complète
+    selectedSupplierId=null; selectedSupplierSubgroupId=null;
+    _supplierShowLevel(0); renderSuppliersModule();
+    // Réessayer quand Firebase charge
+    var _t=0;
+    var _iv=setInterval(function(){
+      _t++;
+      (db.suppliers||[]).forEach(function(s){
+        if(s.id===aid){ rootS=s; } (s.subgroups||[]).forEach(function(sg){ if(sg.id===aid){rootS=s;subS=sg;} });
+      });
+      if(rootS||_t>10){
+        clearInterval(_iv);
+        if(rootS){ selectedSupplierId=rootS.id; _supplierShowLevel(1); renderSupplierParts(); if(subS){selectedSupplierSubgroupId=subS.id;_supplierShowLevel(2);renderSubgroupParts();} }
+        _hideSupplierEditBtns();
+      }
+    },600);
+    _hideSupplierEditBtns();
+    return;
+  }
+  selectedSupplierId=rootS.id; selectedSupplierSubgroupId=null;
+  _supplierShowLevel(1); renderSupplierParts();
+  if(subS){ selectedSupplierSubgroupId=subS.id; _supplierShowLevel(2); renderSubgroupParts(); }
+  _hideSupplierEditBtns();
+}
+
+function _hideSupplierEditBtns(){
+  setTimeout(function(){
+    document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+    ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+    var ub=document.getElementById('supplierUpBtn'); if(ub) ub.classList.remove('hidden');
+  },200);
 }
 
 function renderAll(){
@@ -9130,18 +9182,13 @@ translate();
   function deny(){alert(T('actionDenied'));}
   document.addEventListener('click',function(e){
     if(admin()) return;
-    // Client avec stock fournisseur assigné → toujours autoriser l'accès aux fournisseurs
-    var _cu=typeof currentUser!=='undefined'?currentUser:null;
-    var _clientHasSupplier=_cu&&_cu.role==='client'&&_cu.assignedSupplierId;
     const hp=window.hasPermission||(()=>true);
     const rules=[
-      ['#openVehiclesModule','viewVehicles'],['#openClientsModule','viewClients'],
-      _clientHasSupplier?null:['#openSuppliersModule','viewSuppliers'],
-      ['#openFaultMachineModule','viewFaultMachines'],['#historyBtn','viewHistory'],['#exportMainBtn','exportExcel'],
+      ['#openVehiclesModule','viewVehicles'],['#openClientsModule','viewClients'],['#openSuppliersModule','viewSuppliers'],['#openFaultMachineModule','viewFaultMachines'],['#historyBtn','viewHistory'],['#exportMainBtn','exportExcel'],
       ['#addBtn','addVehicle'],['#openItemForm','addStock'],['#addClientGroupBtn','addGroup'],['#addMachineBtn','addClientMachine'],['#addSupplierBtn','addSupplier'],['#addPartBtn','addPart'],['#faultMachineCreateButton','addFaultMachine'],
       ['.vehicleParkingBtn','vehicleExpenses'],['#items [data-a="transfer"]','transferStock'],['#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]','editStock'],['#items [data-a="del"]','deleteStock'],
       ['#faultMachineGrid [data-a="faults"],#faultMachineGrid [data-fm="faults"]','editFaultList'],['#faultMachineGrid [data-a="edit"],#faultMachineGrid [data-fm="edit"]','editFaultMachine'],['#faultMachineGrid [data-a="delete"],#faultMachineGrid [data-fm="delete"]','deleteFaultMachine']
-    ].filter(Boolean);
+    ];
     for(const [sel,key] of rules){if(e.target.closest(sel)&&!hp(key)){e.preventDefault();e.stopImmediatePropagation();deny();return;}}
   },true);
   const settingsBtn=document.getElementById('settingsBtn'); if(settingsBtn) settingsBtn.onclick=openPermissionsDialog;
@@ -9164,11 +9211,7 @@ translate();
         const oldShow=show;
         window.show=function(view){
           if(!admin()){
-            // Client avec stock fournisseur assigné → autoriser suppliersView
-            var _cu2=typeof currentUser!=='undefined'?currentUser:null;
-            var _clientHasSupplier2=_cu2&&_cu2.role==='client'&&_cu2.assignedSupplierId;
-            const map={carsView:'viewVehicles',clientsView:'viewClients',faultMachineView:'viewFaultMachines',historyView:'viewHistory',stockView:'viewStock'};
-            if(!_clientHasSupplier2) map.suppliersView='viewSuppliers';
+            const map={carsView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory',stockView:'viewStock'};
             if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
           }
           oldShow.call(this,view);
