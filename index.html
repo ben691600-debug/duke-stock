@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v13.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v13.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2171,9 +2171,7 @@ body.draggingMachine{
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
-  <div id="clientSupplierBtnRow" style="display:none;padding:6px 0 2px">
-    <button id="clientSupplierAccessBtn" class="btn primary" style="width:100%;font-size:15px;font-weight:800;padding:14px;border-radius:16px">📦 <span id="clientSupplierBtnLabel">Stock fournisseur</span></button>
-  </div>
+  <div id="clientSupplierBtnRow" style="display:none"></div>
   <input class="search" id="clientSearch" type="search"
     id="clientSearch" placeholder="🔍" data-i-placeholder="searchClients"
     style="margin:8px 0 4px;width:100%;box-sizing:border-box">
@@ -3942,12 +3940,29 @@ function openApp(){
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
   renderAll();
   if(currentUser&&currentUser.role==='client'){
-    clientPathIds=[];show('clientsView');renderClientMachineModule();
-    _setupClientSupplierBtn();
+    if(currentUser.assignedSupplierId){
+      // Client avec stock fournisseur → afficher moduleView avec ses 2 modules
+      _showClientModuleView();
+    } else {
+      // Client sans stock fournisseur → gestion machine directement
+      clientPathIds=[];show('clientsView');renderClientMachineModule();
+    }
   }else{
     var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();show('moduleView');
   }
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
+}
+
+// Affiche le menu principal pour un client avec stock fournisseur
+function _showClientModuleView(){
+  // Masquer cartes non autorisées
+  ['openVehiclesModule','openFaultMachineModule'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  // Afficher les 2 cartes client
+  var cm=document.getElementById('openClientsModule');if(cm)cm.style.display='';
+  var sm=document.getElementById('openSuppliersModule');if(sm)sm.style.display='';
+  show('moduleView');
 }
 
 function renderAll(){
@@ -6707,6 +6722,7 @@ $('clientMachineForm').onsubmit=e=>{
 };
 $('clientUpBtn').onclick=()=>{
   if(clientPathIds.length>0){clientPathIds.pop();renderClientMachineModule();}
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){_showClientModuleView();}
 };
 
 function openEditClientGroup(gid){
@@ -7490,10 +7506,49 @@ function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subg
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
   if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
   else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){ selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
-  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ clientPathIds=[]; show('clientsView'); renderClientMachineModule(); }
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ _showClientModuleView(); }
   else show('moduleView');
 };
-if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{ if(!requireAdminAccess())return; selectedSupplierId=null; selectedSupplierSubgroupId=null; if($('supplierGlobalSearch'))$('supplierGlobalSearch').value=''; _supplierShowLevel(0); show('suppliersView'); renderSuppliersModule(); };
+if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
+  // Client avec stock fournisseur assigné → accès direct sans requireAdminAccess
+  if(isClientUser()&&currentUser&&currentUser.assignedSupplierId){
+    // Trouver le fournisseur racine
+    function _findRoot(tId,arr){
+      for(var i=0;i<(arr||[]).length;i++){
+        if(arr[i].id===tId) return {root:arr[i],sub:null};
+        var subs=arr[i].subgroups||[];
+        for(var j=0;j<subs.length;j++){
+          if(subs[j].id===tId) return {root:arr[i],sub:subs[j]};
+        }
+      }
+      return null;
+    }
+    var found=_findRoot(currentUser.assignedSupplierId,db.suppliers||[]);
+    if(!found){
+      // Données pas encore chargées → ouvrir niveau 0 et laisser le client naviguer
+      selectedSupplierId=null;selectedSupplierSubgroupId=null;
+      if($('supplierGlobalSearch'))$('supplierGlobalSearch').value='';
+      _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
+    } else {
+      selectedSupplierId=found.root.id;selectedSupplierSubgroupId=null;
+      if($('partSearch'))$('partSearch').value='';
+      _supplierShowLevel(1);renderSupplierParts();
+      if(found.sub){selectedSupplierSubgroupId=found.sub.id;_supplierShowLevel(2);renderSubgroupParts();}
+      show('suppliersView');
+    }
+    // Masquer boutons édition
+    setTimeout(function(){
+      document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
+      ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+      var ub=document.getElementById('supplierUpBtn');if(ub)ub.classList.remove('hidden');
+    },150);
+    return;
+  }
+  if(!requireAdminAccess())return;
+  selectedSupplierId=null;selectedSupplierSubgroupId=null;
+  if($('supplierGlobalSearch'))$('supplierGlobalSearch').value='';
+  _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
+};
 
 // ── CRUD Fournisseur ────────────────────────────────────────
 function readSupplierImage(input,callback,previewId){ const file=input.files[0]; if(!file){callback('');return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});}; r.readAsDataURL(file); }
