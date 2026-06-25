@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -30,7 +30,7 @@ if(sessionStorage.getItem('duke_just_updated')==='1'){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js?v=13.1', {updateViaCache:'none'}).then(function(reg){
+    navigator.serviceWorker.register('sw.js?v=14.3', {updateViaCache:'none'}).then(function(reg){
       _swRegistration = reg;
       reg.update().catch(function(){});
       reg.addEventListener('updatefound', function(){
@@ -3085,11 +3085,7 @@ function initRTDB(){
       if(window._restoreLoginBtn){ window._restoreLoginBtn(); window._restoreLoginBtn=null; }
       if(typeof renderAll==='function' && typeof currentUser!=='undefined' && currentUser){
         renderAll();
-        // Si client avec stock et suppliersView déjà visible → remettre à jour
-        if(currentUser && currentUser.role==='client' && currentUser.assignedSupplierId){
-          var _sv=document.getElementById('suppliersView');
-          if(_sv && !_sv.classList.contains('hidden')) _openSupplierForClient();
-        }
+        if(typeof _setupClientSupplierBtn==='function') _setupClientSupplierBtn();
       }
       queueSyncToRTDB();
     }).catch(function(e){
@@ -3945,94 +3941,9 @@ function openApp(){
   $('langView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
-  // Réinitialiser cartes menu
-  ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.classList.remove('clientHidden');
-  });
   renderAll();
-  if(currentUser&&currentUser.role==='client'){
-    if(currentUser.assignedSupplierId){
-      // Client avec stock fournisseur → ouvrir DIRECTEMENT suppliersView
-      _openSupplierForClient();
-    } else {
-      clientPathIds=[];show('clientsView');renderClientMachineModule();
-    }
-  }else{
-    var _csb=document.getElementById('clientStockBtn');if(_csb)_csb.remove();
-    show('moduleView');
-  }
+  show('moduleView');
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
-}
-
-function _openSupplierForClient(){
-  if(!currentUser||!currentUser.assignedSupplierId) return;
-  var aid=currentUser.assignedSupplierId;
-  var rootS=null, subS=null;
-  (db.suppliers||[]).forEach(function(s){
-    if(s.id===aid){ rootS=s; return; }
-    (s.subgroups||[]).forEach(function(sg){
-      if(sg.id===aid){ rootS=s; subS=sg; }
-    });
-  });
-  // Bypass show() wrapper — manipuler directement les sections
-  ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.classList.add('hidden');
-  });
-  var sv=document.getElementById('suppliersView'); if(sv) sv.classList.remove('hidden');
-  if(!rootS){
-    // Firebase pas encore chargé → montrer niveau 0 (liste fournisseurs)
-    selectedSupplierId=null; selectedSupplierSubgroupId=null;
-    _supplierShowLevel(0); renderSuppliersModule();
-    // Réessayer quand Firebase charge
-    var _t=0;
-    var _iv=setInterval(function(){
-      _t++;
-      (db.suppliers||[]).forEach(function(s){
-        if(s.id===aid){ rootS=s; }
-        (s.subgroups||[]).forEach(function(sg){ if(sg.id===aid){rootS=s;subS=sg;} });
-      });
-      if(rootS||_t>10){
-        clearInterval(_iv);
-        if(rootS){
-          selectedSupplierId=rootS.id; _supplierShowLevel(1); renderSupplierParts();
-          if(subS){selectedSupplierSubgroupId=subS.id;_supplierShowLevel(2);renderSubgroupParts();}
-        }
-        _hideSupplierEditBtns();
-      }
-    },600);
-    _hideSupplierEditBtns();
-    return;
-  }
-  // Ouvrir directement au bon niveau
-  selectedSupplierId=rootS.id; selectedSupplierSubgroupId=null;
-  _supplierShowLevel(1); renderSupplierParts();
-  if(subS){ selectedSupplierSubgroupId=subS.id; _supplierShowLevel(2); renderSubgroupParts(); }
-  _hideSupplierEditBtns();
-}
-
-function _hideSupplierEditBtns(){
-  setTimeout(function(){
-    document.querySelectorAll('#suppliersView [data-act="edit"],[data-act="delete"]').forEach(function(el){el.style.display='none';});
-    ['addSubgroupBtn','addPartBtn','addSupplierBtn','addPartInSubgroupBtn'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
-    var ub=document.getElementById('supplierUpBtn'); if(ub) ub.classList.remove('hidden');
-  },200);
-}
-
-// Menu principal client — bypass du wrapper show()
-function _showClientMenu(){
-  // Réinitialiser toutes les cartes
-  ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.classList.remove('clientHidden');
-  });
-  // Cacher les cartes non autorisées
-  ['openVehiclesModule','openFaultMachineModule'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.classList.add('clientHidden');
-  });
-  // Bypass show() — manipuler directement les sections
-  ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.classList.add('hidden');
-  });
-  var mv=document.getElementById('moduleView'); if(mv) mv.classList.remove('hidden');
 }
 
 function renderAll(){
@@ -6792,7 +6703,7 @@ $('clientMachineForm').onsubmit=e=>{
 };
 $('clientUpBtn').onclick=()=>{
   if(clientPathIds.length>0){clientPathIds.pop();renderClientMachineModule();}
-  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){_showClientMenu();}
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){show('moduleView');}
 };
 
 function openEditClientGroup(gid){
@@ -7574,29 +7485,15 @@ function renderSubgroupParts(){
 function openSupplier(id){ selectedSupplierId=id; selectedSupplierSubgroupId=null; if($('partSearch'))$('partSearch').value=''; _supplierShowLevel(1); renderSupplierParts(); }
 function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subgroupPartSearch'))$('subgroupPartSearch').value=''; _supplierShowLevel(2); renderSubgroupParts(); }
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
-  var isClient=currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId;
-  if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){
-    // Niveau 2 → retour niveau 1 (détail fournisseur)
-    selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts();
-  } else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){
-    // Niveau 1 → si client : menu, si admin : liste fournisseurs
-    if(isClient){ _showClientMenu(); }
-    else { selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
-  } else {
-    // Niveau 0 → menu
-    if(isClient){ _showClientMenu(); }
-    else { show('moduleView'); }
-  }
+  if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
+  else if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')){ selectedSupplierId=null; _supplierShowLevel(0); renderSuppliersModule(); }
+  else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){ show('moduleView'); }
+  else show('moduleView');
 };
 if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
-  if(isClientUser()&&currentUser&&currentUser.assignedSupplierId){
-    _openSupplierForClient();
-    return;
-  }
-  if(!requireAdminAccess())return;
-  selectedSupplierId=null;selectedSupplierSubgroupId=null;
+  selectedSupplierId=null; selectedSupplierSubgroupId=null;
   if($('supplierGlobalSearch'))$('supplierGlobalSearch').value='';
-  _supplierShowLevel(0);show('suppliersView');renderSuppliersModule();
+  _supplierShowLevel(0); show('suppliersView'); renderSuppliersModule();
 };
 
 // ── CRUD Fournisseur ────────────────────────────────────────
@@ -8929,62 +8826,10 @@ translate();
   }
   function setHidden(el,hide){if(el) el.classList.toggle('hidden',!!hide)}
   window.applyPermissionUI=function(){
-    ensurePermissions();
-    // Restaurer les permissions du cache si elles existent (plus récentes que ce qu'ensurePermissions a pu écraser)
-    var pending=getPendingPerms();
-    if(pending && Array.isArray(pending.users)){
-      var d=safeDb();
-      if(d && Array.isArray(d.users)){
-        pending.users.forEach(function(pu){
-          var u=d.users.find(function(x){return x.username===pu.username;});
-          if(u&&pu.permissions) u.permissions=Object.assign({},pu.permissions);
-        });
-        if(pending.rolePerms) d.rolePermissions=Object.assign({},d.rolePermissions||{},pending.rolePerms);
-      }
-    }
-    const hp=window.hasPermission||(()=>true);
+    // Seuls les boutons admin (corbeille, paramètres) restent cachés pour les non-admin
     setHidden(document.getElementById('settingsBtn'),!admin());
     setHidden(document.getElementById('trashBtn'),!admin());
-    setHidden(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
-    setHidden(document.getElementById('openClientsModule'),!hp('viewClients'));
-    setHidden(document.getElementById('openSuppliersModule'),!hp('viewSuppliers'));
-    setHidden(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
-    setHidden(document.getElementById('historyBtn'),!admin() && !hp('viewHistory'));
-    setHidden(document.getElementById('exportMainBtn'),!hp('exportExcel'));
-    const isClient=(typeof currentUser!=='undefined'&&currentUser&&currentUser.role==='client');
-    const clientHasSupplier=isClient&&currentUser.assignedSupplierId;
-    if(isClient){
-      setHidden(document.getElementById('openVehiclesModule'),true);
-      if(!clientHasSupplier) setHidden(document.getElementById('openSuppliersModule'),true);
-      setHidden(document.getElementById('openFaultMachineModule'),true);
-      setHidden(document.getElementById('historyBtn'),true);
-      setHidden(document.getElementById('exportMainBtn'),true);
-      setHidden(document.getElementById('settingsBtn'),true);
-      setHidden(document.getElementById('trashBtn'),true);
-      setHidden(document.getElementById('addClientGroupBtn'),true);
-      setHidden(document.getElementById('addMachineBtn'),true);
-    }
-    setHidden(document.getElementById('attendancePanel'),admin() || (typeof currentUser!=='undefined'&&currentUser&&currentUser.role==='client') || !hp('attendanceSelf'));
-    setHidden(document.getElementById('addBtn'),!hp('addVehicle'));
-    setHidden(document.getElementById('openItemForm'),!hp('addStock'));
-    setHidden(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
-    setHidden(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
-    setHidden(document.getElementById('addSupplierBtn'),!hp('addSupplier'));
-    setHidden(document.getElementById('addPartBtn'),!hp('addPart'));
-    setHidden(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
-    document.querySelectorAll('.vehicleParkingBtn,.vehicleExpenseTotal').forEach(e=>setHidden(e,!hp('vehicleExpenses')));
-    document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(e=>setHidden(e,!hp('editVehicle')));
-    document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(e=>setHidden(e,!hp('deleteVehicle')));
-    document.querySelectorAll('#items [data-a="transfer"]').forEach(e=>setHidden(e,!hp('transferStock')));
-    document.querySelectorAll('#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]').forEach(e=>setHidden(e,!hp('editStock')));
-    document.querySelectorAll('#items [data-a="del"]').forEach(e=>setHidden(e,!hp('deleteStock')));
-    document.querySelectorAll('#clientsView .groupCard [data-a="edit"],#clientsView .groupCard [data-cm="edit"]').forEach(e=>setHidden(e,!hp('editGroup')&&!hp('editClientMachine')));
-    document.querySelectorAll('#clientsView .groupCard [data-a="delete"],#clientsView .groupCard [data-cm="delete"]').forEach(e=>setHidden(e,!hp('deleteGroup')&&!hp('deleteClientMachine')));
-    document.querySelectorAll('#suppliersView .groupCard [data-a="edit"],#suppliersView .partCard [data-a="edit"]').forEach(e=>setHidden(e,!hp('editSupplier')&&!hp('editPart')));
-    document.querySelectorAll('#suppliersView .groupCard [data-a="delete"],#suppliersView .partCard [data-a="delete"]').forEach(e=>setHidden(e,!hp('deleteSupplier')&&!hp('deletePart')));
-    document.querySelectorAll('#faultMachineGrid [data-a="faults"],#faultMachineGrid [data-fm="faults"]').forEach(e=>setHidden(e,!hp('editFaultList')));
-    document.querySelectorAll('#faultMachineGrid [data-a="edit"],#faultMachineGrid [data-fm="edit"]').forEach(e=>setHidden(e,!hp('editFaultMachine')));
-    document.querySelectorAll('#faultMachineGrid [data-a="delete"],#faultMachineGrid [data-fm="delete"]').forEach(e=>setHidden(e,!hp('deleteFaultMachine')));
+    // Tout le reste est visible pour tous les utilisateurs connectés
   };
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
   // Permissions par rôle (templates stockés dans db)
@@ -9181,18 +9026,8 @@ translate();
     setTimeout(function(){ if(typeof window.applyPermissionUI==='function') window.applyPermissionUI(); },80);
     alert(T('permsSaved'));
   }
-  function deny(){alert(T('actionDenied'));}
-  document.addEventListener('click',function(e){
-    if(admin()) return;
-    const hp=window.hasPermission||(()=>true);
-    const rules=[
-      ['#openVehiclesModule','viewVehicles'],['#openClientsModule','viewClients'],['#openSuppliersModule','viewSuppliers'],['#openFaultMachineModule','viewFaultMachines'],['#historyBtn','viewHistory'],['#exportMainBtn','exportExcel'],
-      ['#addBtn','addVehicle'],['#openItemForm','addStock'],['#addClientGroupBtn','addGroup'],['#addMachineBtn','addClientMachine'],['#addSupplierBtn','addSupplier'],['#addPartBtn','addPart'],['#faultMachineCreateButton','addFaultMachine'],
-      ['.vehicleParkingBtn','vehicleExpenses'],['#items [data-a="transfer"]','transferStock'],['#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]','editStock'],['#items [data-a="del"]','deleteStock'],
-      ['#faultMachineGrid [data-a="faults"],#faultMachineGrid [data-fm="faults"]','editFaultList'],['#faultMachineGrid [data-a="edit"],#faultMachineGrid [data-fm="edit"]','editFaultMachine'],['#faultMachineGrid [data-a="delete"],#faultMachineGrid [data-fm="delete"]','deleteFaultMachine']
-    ];
-    for(const [sel,key] of rules){if(e.target.closest(sel)&&!hp(key)){e.preventDefault();e.stopImmediatePropagation();deny();return;}}
-  },true);
+  function deny(){} // désactivé
+  // Listener de permission désactivé — tout le monde a accès à tout
   const settingsBtn=document.getElementById('settingsBtn'); if(settingsBtn) settingsBtn.onclick=openPermissionsDialog;
   const trashBtn=document.getElementById('trashBtn');
   if(trashBtn) trashBtn.onclick=function(){
@@ -9212,10 +9047,7 @@ translate();
         window.renderAll=function(){oldRender.apply(this,arguments); setTimeout(window.applyPermissionUI,30);};
         const oldShow=show;
         window.show=function(view){
-          if(!admin()){
-            const map={carsView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory',stockView:'viewStock'};
-            if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
-          }
+          // Wrapper show() simplifié — plus de blocage par permissions
           oldShow.call(this,view);
           setTimeout(window.applyPermissionUI,30);
         };
