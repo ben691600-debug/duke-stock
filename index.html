@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3946,6 +3946,15 @@ function openApp(){
   $('langView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('userLine').innerHTML=esc(currentUser.username)+' <span class="roleBadge">'+T(currentUser.role)+'</span>';
+  // Remettre tous les éléments à visible avant de re-appliquer les permissions
+  // (évite les résidus de la session précédente)
+  ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule',
+   'historyBtn','exportMainBtn','addBtn','addSupplierBtn','addPartBtn','addSubgroupBtn',
+   'addPartInSubgroupBtn','faultMachineCreateButton','addClientGroupBtn','addMachineBtn',
+   'settingsBtn','trashBtn'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.classList.remove('hidden');
+  });
   renderAll();
   show('moduleView');
   setTimeout(function(){if(typeof window._checkPendingTransfers==='function')window._checkPendingTransfers();},1500);
