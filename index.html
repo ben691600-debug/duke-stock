@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -44,13 +44,8 @@ if('serviceWorker' in navigator){
       });
     }).catch(function(e){console.warn('SW error',e);});
     var _reloaded = false;
-    // Rechargement automatique quand le nouveau SW prend le contrôle (après clic "Mettre à jour")
-    navigator.serviceWorker.addEventListener('controllerchange', function(){
-      if(_reloaded) return;
-      _reloaded = true;
-      sessionStorage.setItem('duke_just_updated','1');
-      window.location.reload();
-    });
+    // Rechargement manuel uniquement - le bouton "Mettre à jour" appelle applyAppUpdate()
+    // controllerchange supprimé pour éviter rechargement automatique non souhaité
   });
 }
 
@@ -3887,12 +3882,8 @@ function afterLogin(){
   $('loginView').classList.add('hidden');
   var _ub=document.getElementById('universalBackBtn');if(_ub) _ub.classList.remove('visible');
   renderAttendancePanel();
-  // Si langue déjà choisie → ouvrir l'app directement sans passer par langView
-  if(localStorage.getItem('duke_stock_lang_v1')){
-    openApp();
-  } else {
-    $('langView').classList.remove('hidden');
-  }
+  // Toujours afficher le choix de langue à chaque connexion
+  $('langView').classList.remove('hidden');
 }
 
 function openApp(){
@@ -7314,7 +7305,7 @@ function renderSuppliersModule(){
         ${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}
       </div>`;
     card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();openSupplier(s.id);};
-    card.querySelector('[data-act=edit]').onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
+    var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     var cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
     var mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
     var dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
@@ -8947,13 +8938,16 @@ window.applyPermissionUI=function(){
   var cu=(typeof currentUser!=='undefined')?currentUser:null;
   if(!cu) return;
   var isAdm=admin();
+  // Client avec stock fournisseur assigné → toujours voir la carte fournisseur
+  var clientHasSupplier=!isAdm&&cu&&cu.role==='client'&&cu.assignedSupplierId;
   sh(document.getElementById('settingsBtn'),!isAdm);
   sh(document.getElementById('trashBtn'),!isAdm);
   if(isAdm) return; // Admin : tout visible, fin
   var hp=window.hasPermission;
   sh(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
   sh(document.getElementById('openClientsModule'),!hp('viewClients'));
-  sh(document.getElementById('openSuppliersModule'),!hp('viewSuppliers'));
+  // Client avec fournisseur assigné → toujours visible même sans permission viewSuppliers
+  sh(document.getElementById('openSuppliersModule'),!clientHasSupplier&&!hp('viewSuppliers'));
   sh(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
   sh(document.getElementById('historyBtn'),!hp('viewHistory'));
   sh(document.getElementById('exportMainBtn'),!hp('exportExcel'));
@@ -8989,7 +8983,9 @@ var _waitReady=setInterval(function(){
         var cu=(typeof currentUser!=='undefined')?currentUser:null;
         // Bloquer uniquement si utilisateur connecté ET non-admin ET permission manquante
         if(cu&&cu.role&&cu.role!=='admin'){
-          var map={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
+          var _clientHasSupplier=cu.role==='client'&&cu.assignedSupplierId;
+          var map={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
+          if(!_clientHasSupplier) map.suppliersView='viewSuppliers';
           if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
         }
         _oldShow.call(this,view);
