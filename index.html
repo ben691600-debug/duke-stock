@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v14.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v14.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -44,11 +44,8 @@ if('serviceWorker' in navigator){
       });
     }).catch(function(e){console.warn('SW error',e);});
     var _reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', function(){
-      if(_reloaded) return; _reloaded = true;
-      sessionStorage.setItem('duke_just_updated','1');
-      window.location.reload();
-    });
+    // Rechargement manuel uniquement via le bouton "Mettre à jour"
+    // navigator.serviceWorker.addEventListener('controllerchange') supprimé — pas de reload auto
   });
 }
 
@@ -2356,18 +2353,18 @@ body.draggingMachine{
   </div>
 </dialog>
 
-<dialog class="modal" id="permissionsDialog" style="padding:0;display:flex;flex-direction:column;max-height:88vh">
+<dialog class="modal" id="permissionsDialog" style="padding:0;max-height:88vh;display:grid;grid-template-rows:auto 1fr auto">
   <div style="padding:20px 20px 12px;border-bottom:1px solid var(--line)">
     <h2 style="margin:0 0 4px">⚙️ Paramètres autorisations</h2>
     <p class="muted" style="margin:0 0 12px">Configure les droits d'accès par rôle.</p>
     <div style="display:flex;gap:8px">
-      <button type="button" class="btn secondary" id="permTabOperator" onclick="openPermissionsDialog('operator')">🔧 Opérateur</button>
-      <button type="button" class="btn secondary" id="permTabClient" onclick="openPermissionsDialog('client')">🏥 Client</button>
+      <button type="button" id="permTabOperator" onclick="openPermissionsDialog('operator')">🔧 Opérateur</button>
+      <button type="button" id="permTabClient" onclick="openPermissionsDialog('client')">🏥 Client</button>
     </div>
   </div>
-  <div id="permissionsUsersList" class="permissionsUsersList" style="flex:1;overflow-y:auto;padding:16px"></div>
-  <div class="formActions permissionsMainActions" style="padding:12px 20px;border-top:1px solid var(--line);background:var(--bg,#eef8fd);position:sticky;bottom:0;margin:0">
-    <button type="button" class="btn secondary close">Fermer</button>
+  <div id="permissionsUsersList" class="permissionsUsersList" style="overflow-y:auto;padding:16px;min-height:0"></div>
+  <div style="padding:12px 20px;border-top:1px solid var(--line);background:var(--bg,#eef8fd);display:flex;gap:10px;justify-content:flex-end">
+    <button type="button" class="btn secondary" id="permCloseBtn">Fermer</button>
     <button type="button" class="btn primary" id="permissionsSaveBtn">Enregistrer</button>
   </div>
 </dialog>
@@ -8749,14 +8746,14 @@ translate();
 <script id="adminPermissionsPatch">
 (function(){
 // ═══════════════════════════════════════════════════════
-// SYSTÈME DE PERMISSIONS v14.4
+// SYSTÈME DE PERMISSIONS v14.6
+// Accès = uniquement via permissions configurées
 // ═══════════════════════════════════════════════════════
 
 const STORE='duke_stock_manager_auth_v1';
 function safeDb(){try{return (typeof db!=='undefined')?db:null}catch(e){return null}}
 function admin(){try{return typeof isAdmin==='function'&&isAdmin()}catch(e){return false}}
 
-// ── Groupes et clés de permissions ──────────────────────
 const PERM_GROUPS=[
   {title:'🖥️ Modules visibles',items:[
     ['viewVehicles','Véhicules / Stock'],
@@ -8800,23 +8797,21 @@ const PERM_GROUPS=[
     ['editFaultList','Modifier liste pannes']
   ]}
 ];
-const ALL_KEYS=PERM_GROUPS.flatMap(g=>g.items.map(i=>i[0]));
+const ALL_KEYS=PERM_GROUPS.flatMap(function(g){return g.items.map(function(i){return i[0];});});
 
-// Permissions par défaut par rôle
+// Par défaut : TOUT désactivé pour opérateurs et clients
 const ROLE_DEFAULTS={
-  admin: Object.fromEntries(ALL_KEYS.map(k=>[k,true])),
-  operator: Object.fromEntries(ALL_KEYS.map(k=>[k,false])),
-  client: Object.fromEntries(ALL_KEYS.map(k=>[k,false]))
+  admin: Object.fromEntries(ALL_KEYS.map(function(k){return [k,true];})),
+  operator: Object.fromEntries(ALL_KEYS.map(function(k){return [k,false];})),
+  client: Object.fromEntries(ALL_KEYS.map(function(k){return [k,false];}))
 };
 
 window.PERM_GROUPS=PERM_GROUPS;
 window.ALL_KEYS=ALL_KEYS;
 window.ROLE_DEFAULTS=ROLE_DEFAULTS;
-// Compatibilité avec ancien code
 window.PERMISSION_GROUPS=PERM_GROUPS;
 window.DEFAULT_OPERATOR_PERMISSIONS=ROLE_DEFAULTS.operator;
 
-// ── Lecture/écriture permissions ─────────────────────────
 function getRolePerms(role){
   var d=safeDb(); if(!d) return Object.assign({},ROLE_DEFAULTS[role]||{});
   var saved=(d.rolePermissions||{})[role]||{};
@@ -8829,6 +8824,7 @@ function saveRolePerms(role,perms){
   try{localStorage.setItem(STORE,JSON.stringify(d));}catch(e){}
   if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
 }
+
 window.hasPermission=function(key){
   if(admin()) return true;
   try{
@@ -8836,26 +8832,26 @@ window.hasPermission=function(key){
     if(!u) return false;
     var role=u.role||'operator';
     var d=safeDb();
-    // Permissions individuelles en priorité
+    // Permissions individuelles en priorité sur permissions du rôle
     if(u.permissions&&typeof u.permissions[key]!=='undefined') return !!u.permissions[key];
-    // Sinon permissions du rôle
     return !!getRolePerms(role)[key];
   }catch(e){return false;}
 };
 
-// ── Interface permissions ────────────────────────────────
+// ── Interface dialog ─────────────────────────────────────
 var _currentPermRole='operator';
 
 window.openPermissionsDialog=function(role){
   if(!admin()) return;
-  _currentPermRole=(role==='admin'?'operator':role)||'operator';
+  _currentPermRole=role||'operator';
   renderPermissionsPanel();
   var dlg=document.getElementById('permissionsDialog');
   if(dlg&&!dlg.open) dlg.showModal();
-  // Onglets actifs
+  // Onglets
   ['operator','client'].forEach(function(r){
     var btn=document.getElementById('permTab'+r.charAt(0).toUpperCase()+r.slice(1));
-    if(btn){btn.classList.toggle('primary',r===_currentPermRole);btn.classList.toggle('secondary',r!==_currentPermRole);}
+    if(!btn) return;
+    btn.className=r===_currentPermRole?'btn primary':'btn secondary';
   });
 };
 
@@ -8864,27 +8860,22 @@ function renderPermissionsPanel(){
   if(!box) return;
   var role=_currentPermRole;
   var perms=getRolePerms(role);
-  var isAdminRole=(role==='admin');
-  var html='<div style="margin-bottom:12px"><b style="font-size:15px">'+
-    (role==='admin'?'👑 Admin':role==='operator'?'🔧 Opérateurs':'🏥 Clients')+'</b>';
-  if(!isAdminRole){
-    html+='<div style="display:flex;gap:8px;margin-top:8px">'+
+  var label=role==='operator'?'🔧 Opérateurs':'🏥 Clients';
+  var html='<div style="margin-bottom:12px"><b style="font-size:15px">'+label+'</b>'+
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
       '<button type="button" class="btn ok mini" onclick="window._permSetAll(true)">✅ Tout activer</button>'+
       '<button type="button" class="btn danger mini" onclick="window._permSetAll(false)">❌ Tout désactiver</button>'+
-      '<button type="button" class="btn secondary mini" onclick="window._permReset()">↩️ Par défaut</button>'+
-    '</div>';
-  }
-  html+='</div>';
+    '</div></div>';
   PERM_GROUPS.forEach(function(group){
-    html+='<div style="margin-bottom:16px"><div style="font-weight:700;font-size:13px;color:#1a7ad4;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e0eaf5">'+group.title+'</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">';
+    html+='<div style="margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:13px;color:#1a7ad4;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e0eaf5">'+group.title+'</div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px">';
     group.items.forEach(function(item){
       var key=item[0], label=item[1];
-      var checked=isAdminRole?true:!!perms[key];
-      var disabled=isAdminRole?' disabled':'';
-      html+='<label style="display:flex;align-items:center;gap:8px;padding:8px;background:white;border:1px solid var(--line);border-radius:10px;cursor:'+(isAdminRole?'default':'pointer')+'">'+
-        '<input type="checkbox" data-perm-key="'+key+'"'+(checked?' checked':'')+disabled+' style="width:18px;height:18px;cursor:'+(isAdminRole?'default':'pointer')+'">'+
-        '<span style="font-size:13px">'+label+'</span></label>';
+      var checked=!!perms[key];
+      html+='<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:white;border:1px solid var(--line);border-radius:10px;cursor:pointer">'+
+        '<input type="checkbox" data-perm-key="'+key+'"'+(checked?' checked':'')+' style="width:20px;height:20px;cursor:pointer;flex-shrink:0">'+
+        '<span style="font-size:14px">'+label+'</span></label>';
     });
     html+='</div></div>';
   });
@@ -8896,27 +8887,24 @@ window._permSetAll=function(val){
   if(!box) return;
   box.querySelectorAll('input[data-perm-key]').forEach(function(ch){ch.checked=val;});
 };
-window._permReset=function(){
-  var box=document.getElementById('permissionsUsersList');
-  if(!box) return;
-  var defs=ROLE_DEFAULTS[_currentPermRole]||{};
-  box.querySelectorAll('input[data-perm-key]').forEach(function(ch){
-    ch.checked=!!defs[ch.getAttribute('data-perm-key')];
-  });
+
+// Fermer
+var closeBtn=document.getElementById('permCloseBtn');
+if(closeBtn) closeBtn.onclick=function(){
+  var dlg=document.getElementById('permissionsDialog');if(dlg)dlg.close();
 };
 
-// Enregistrer
+// Enregistrer → ferme dialog
 var saveBtn=document.getElementById('permissionsSaveBtn');
 if(saveBtn) saveBtn.onclick=function(){
-  if(_currentPermRole==='admin') return;
   var box=document.getElementById('permissionsUsersList');
   if(!box) return;
-  var perms=Object.assign({},ROLE_DEFAULTS[_currentPermRole]||{});
+  var perms={};
+  ALL_KEYS.forEach(function(k){perms[k]=false;});
   box.querySelectorAll('input[data-perm-key]').forEach(function(ch){
     perms[ch.getAttribute('data-perm-key')]=!!ch.checked;
   });
   saveRolePerms(_currentPermRole,perms);
-  // Appliquer à tous les utilisateurs du rôle
   var d=safeDb();
   if(d&&d.users){
     d.users.forEach(function(u){
@@ -8925,75 +8913,65 @@ if(saveBtn) saveBtn.onclick=function(){
     try{localStorage.setItem(STORE,JSON.stringify(d));}catch(e){}
     if(typeof queueSyncToRTDB==='function') queueSyncToRTDB();
   }
-  window.applyPermissionUI();
-  // Fermer le dialog
   var dlg=document.getElementById('permissionsDialog');
   if(dlg) dlg.close();
+  if(typeof window.applyPermissionUI==='function') window.applyPermissionUI();
 };
 
-// Fermer
-document.querySelectorAll('#permissionsDialog .close').forEach(function(b){
-  b.addEventListener('click',function(){
-    var d=document.getElementById('permissionsDialog');if(d)d.close();
-  });
-});
-
-// ── Application des permissions à l'interface ────────────
+// ── Appliquer les permissions à l'interface ───────────────
 window.applyPermissionUI=function(){
-  // Boutons admin uniquement
-  setHidden(document.getElementById('settingsBtn'),!admin());
-  setHidden(document.getElementById('trashBtn'),!admin());
-  if(admin()) return; // Admin : tout visible, rien à cacher
+  function sh(el,hide){if(el){el.classList.toggle('hidden',!!hide);}}
+  sh(document.getElementById('settingsBtn'),!admin());
+  sh(document.getElementById('trashBtn'),!admin());
+  if(admin()) return;
   var hp=window.hasPermission;
-  // Modules du menu
-  setHidden(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
-  setHidden(document.getElementById('openClientsModule'),!hp('viewClients'));
-  setHidden(document.getElementById('openSuppliersModule'),!hp('viewSuppliers'));
-  setHidden(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
-  setHidden(document.getElementById('historyBtn'),!hp('viewHistory'));
-  setHidden(document.getElementById('exportMainBtn'),!hp('exportExcel'));
-  // Boutons d'action
-  setHidden(document.getElementById('addBtn'),!hp('addVehicle'));
-  setHidden(document.getElementById('addSupplierBtn'),!hp('addSupplier'));
-  setHidden(document.getElementById('addPartBtn'),!hp('addPart'));
-  setHidden(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
-  setHidden(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
-  setHidden(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
-  setHidden(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
-  setHidden(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
-  // Boutons dans les listes (différé pour laisser le DOM se rendre)
+  sh(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
+  sh(document.getElementById('openClientsModule'),!hp('viewClients'));
+  sh(document.getElementById('openSuppliersModule'),!hp('viewSuppliers'));
+  sh(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
+  sh(document.getElementById('historyBtn'),!hp('viewHistory'));
+  sh(document.getElementById('exportMainBtn'),!hp('exportExcel'));
+  sh(document.getElementById('addBtn'),!hp('addVehicle'));
+  sh(document.getElementById('addSupplierBtn'),!hp('addSupplier'));
+  sh(document.getElementById('addPartBtn'),!hp('addPart'));
+  sh(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
+  sh(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
+  sh(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
+  sh(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
+  sh(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
   setTimeout(function(){
-    document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(function(e){setHidden(e,!hp('editVehicle'));});
-    document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(function(e){setHidden(e,!hp('deleteVehicle'));});
-    document.querySelectorAll('#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]').forEach(function(e){setHidden(e,!hp('editStock'));});
-    document.querySelectorAll('#items [data-a="del"]').forEach(function(e){setHidden(e,!hp('deleteStock'));});
-    document.querySelectorAll('#items [data-a="transfer"]').forEach(function(e){setHidden(e,!hp('transferStock'));});
-    document.querySelectorAll('#suppliersView [data-act="edit"]').forEach(function(e){setHidden(e,!hp('editSupplier')&&!hp('editPart'));});
-    document.querySelectorAll('#suppliersView [data-act="delete"]').forEach(function(e){setHidden(e,!hp('deleteSupplier')&&!hp('deletePart'));});
-    document.querySelectorAll('#faultMachineGrid [data-a="faults"],[data-fm="faults"]').forEach(function(e){setHidden(e,!hp('editFaultList'));});
-    document.querySelectorAll('#faultMachineGrid [data-a="edit"],[data-fm="edit"]').forEach(function(e){setHidden(e,!hp('editFaultMachine'));});
-    document.querySelectorAll('#faultMachineGrid [data-a="delete"],[data-fm="delete"]').forEach(function(e){setHidden(e,!hp('deleteFaultMachine'));});
+    document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(function(e){sh(e,!hp('editVehicle'));});
+    document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(function(e){sh(e,!hp('deleteVehicle'));});
+    document.querySelectorAll('#items [data-a="minus"],#items [data-a="plus"],#items [data-a="saveQty"]').forEach(function(e){sh(e,!hp('editStock'));});
+    document.querySelectorAll('#items [data-a="del"]').forEach(function(e){sh(e,!hp('deleteStock'));});
+    document.querySelectorAll('#items [data-a="transfer"]').forEach(function(e){sh(e,!hp('transferStock'));});
+    document.querySelectorAll('#suppliersView [data-act="edit"]').forEach(function(e){sh(e,!hp('editSupplier')&&!hp('editPart'));});
+    document.querySelectorAll('#suppliersView [data-act="delete"]').forEach(function(e){sh(e,!hp('deleteSupplier')&&!hp('deletePart'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="faults"],[data-fm="faults"]').forEach(function(e){sh(e,!hp('editFaultList'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="edit"],[data-fm="edit"]').forEach(function(e){sh(e,!hp('editFaultMachine'));});
+    document.querySelectorAll('#faultMachineGrid [data-a="delete"],[data-fm="delete"]').forEach(function(e){sh(e,!hp('deleteFaultMachine'));});
   },80);
 };
 
-// ── Listener show() — redirection si module non autorisé ──
-var _waitPerms=setInterval(function(){
+// ── Intercepter show() et renderAll() ────────────────────
+var _waitReady=setInterval(function(){
   try{
     if(typeof show==='function'&&typeof renderAll==='function'){
-      clearInterval(_waitPerms);
-      var oldShow=show;
+      clearInterval(_waitReady);
+      var _oldShow=show;
       window.show=function(view){
         if(!admin()){
-          var viewPerms={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
-          if(viewPerms[view]&&!window.hasPermission(viewPerms[view])){view='moduleView';}
+          var map={carsView:'viewVehicles',stockView:'viewVehicles',clientsView:'viewClients',suppliersView:'viewSuppliers',faultMachineView:'viewFaultMachines',historyView:'viewHistory'};
+          if(map[view]&&!window.hasPermission(map[view])) view='moduleView';
         }
-        oldShow.call(this,view);
+        _oldShow.call(this,view);
         setTimeout(window.applyPermissionUI,30);
       };
-      var oldRender=renderAll;
-      window.renderAll=function(){oldRender.apply(this,arguments);setTimeout(window.applyPermissionUI,30);};
-      var settingsBtn=document.getElementById('settingsBtn');
-      if(settingsBtn) settingsBtn.onclick=function(){window.openPermissionsDialog(_currentPermRole||'operator');};
+      var _oldRender=renderAll;
+      window.renderAll=function(){_oldRender.apply(this,arguments);setTimeout(window.applyPermissionUI,30);};
+      // Bouton paramètres
+      var sb=document.getElementById('settingsBtn');
+      if(sb) sb.onclick=function(){window.openPermissionsDialog(_currentPermRole||'operator');};
       window.applyPermissionUI();
     }
   }catch(e){}
