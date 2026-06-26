@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7218,8 +7218,9 @@ function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
   $('supplierDetail').classList.toggle('hidden',level!==1);
   if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden',level!==2);
-  // + Fournisseur visible seulement au niveau 0 ET si admin
-  if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden',level!==0||!isAdmin());
+  // supplierTopActions (+ Fournisseur) : visible seulement niveau 0 ET admin
+  var topActions=document.querySelector('#suppliersView > .supplierTopActions');
+  if(topActions) topActions.classList.toggle('hidden', level!==0 || !isAdmin());
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
@@ -8250,12 +8251,19 @@ function addMaintenanceRow(data){
   }catch(e){}
   var po='<option value="">— Pièce liée (optionnel) —</option>';
   try{
-    var _d=(typeof db!=='undefined'&&db)?db:(JSON.parse(localStorage.getItem('duke_stock_manager_auth_v1')||'{}'));
+    // Toujours utiliser db en direct (jamais localStorage) pour avoir les pièces à jour
+    var _suppliers=(typeof db!=='undefined'&&db&&db.suppliers)?db.suppliers:[];
     function _cp(n,pfx){
-      (n.parts||[]).forEach(function(p){var sel=(data.linkedPartId===p.id)?' selected':'';po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+esc(p.name||p.partNumber||'')+(p.price?' ('+esc(p.price)+')':'')+' </option>';});
-      (n.subgroups||n.groups||[]).forEach(function(g){_cp(g,pfx+' › '+g.name);});
+      (n.parts||[]).forEach(function(p){
+        // Vérifier que la pièce existe encore (non supprimée)
+        if(!p||!p.id) return;
+        var sel=(data.linkedPartId===p.id)?' selected':'';
+        var label=esc(p.name||p.partNumber||'')+(p.price?' ('+esc(String(p.price))+')':'');
+        po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+label+'</option>';
+      });
+      (n.subgroups||n.groups||[]).forEach(function(g){_cp(g,pfx+' › '+(g.name||''));});
     }
-    (_d.suppliers||[]).forEach(function(s){_cp(s,s.name);});
+    _suppliers.forEach(function(s){_cp(s,s.name||'');});
   }catch(e){}
   row.innerHTML=
     '<div style="display:flex;gap:8px;align-items:center">'
