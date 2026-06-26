@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8251,21 +8251,29 @@ function addMaintenanceRow(data){
   }catch(e){}
   var po='<option value="">— Pièce liée (optionnel) —</option>';
   try{
-    var _suppliers=(typeof db!=='undefined'&&db&&db.suppliers)?db.suppliers:[];
-    // Construire un Set des IDs en corbeille pour exclure les pièces supprimées
+    // Collecter toutes les pièces depuis db.suppliers (exactement ce qui est affiché)
     var _trashedIds={};
-    ((typeof db!=='undefined'&&db&&db.trash)||[]).forEach(function(t){if(t&&t.id) _trashedIds[t.id]=true;});
-    ((typeof db!=='undefined'&&db&&db.trashRemovedIds)||[]).forEach(function(id){if(id) _trashedIds[id]=true;});
-    function _cp(n,pfx){
-      (n.parts||[]).forEach(function(p){
-        if(!p||!p.id||_trashedIds[p.id]) return; // Ignorer pièces supprimées/en corbeille
-        var sel=(data.linkedPartId===p.id)?' selected':'';
-        var label=esc(p.name||p.partNumber||'')+(p.price?' ('+esc(String(p.price))+')':'');
-        po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+label+'</option>';
+    ((typeof db!=='undefined'&&db&&db.trash)||[]).forEach(function(t){if(t&&t.id)_trashedIds[t.id]=true;});
+    ((typeof db!=='undefined'&&db&&db.trashRemovedIds)||[]).forEach(function(id){if(id)_trashedIds[id]=true;});
+    var _allParts=[];
+    function _collectParts(node,path){
+      (node.parts||[]).forEach(function(p){
+        if(p&&p.id&&!_trashedIds[p.id]) _allParts.push({p:p,path:path});
       });
-      (n.subgroups||n.groups||[]).forEach(function(g){_cp(g,pfx+' › '+(g.name||''));});
+      (node.subgroups||[]).forEach(function(sg){
+        if(!_trashedIds[sg.id]) _collectParts(sg,path+' › '+(sg.name||''));
+      });
     }
-    _suppliers.forEach(function(s){if(!_trashedIds[s.id]) _cp(s,s.name||'');});
+    ((typeof db!=='undefined'&&db&&db.suppliers)||[]).forEach(function(s){
+      if(!s||_trashedIds[s.id]) return;
+      _collectParts(s,s.name||'');
+    });
+    _allParts.forEach(function(item){
+      var p=item.p;
+      var sel=(data.linkedPartId===p.id)?' selected':'';
+      var label=esc(p.name||p.partNumber||'')+(p.price?' ('+esc(String(p.price))+')':'');
+      po+='<option value="'+p.id+'"'+sel+'>['+esc(item.path)+'] '+label+'</option>';
+    });
   }catch(e){}
   row.innerHTML=
     '<div style="display:flex;gap:8px;align-items:center">'
