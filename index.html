@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2165,8 +2165,8 @@ body.draggingMachine{
 <section id="clientsView" class="hidden">
   <div class="toolbar moduleActionToolbar">
     <div class="actions moduleActionButtons twoButtons">
-      <button class="btn primary" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
-      <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
+      <button class="btn primary adminOnly" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
+      <button class="btn ok adminOnly" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
 
@@ -7221,6 +7221,10 @@ function _supplierShowLevel(level){
   // supplierTopActions (+ Fournisseur) : visible seulement niveau 0 ET admin
   var topActions=document.querySelector('#suppliersView > .supplierTopActions');
   if(topActions) topActions.classList.toggle('hidden', level!==0 || !isAdmin());
+  // Boutons + Sous-groupe et + Pièce : seulement pour admin
+  if($('addSubgroupBtn')) $('addSubgroupBtn').classList.toggle('hidden',!isAdmin());
+  if($('addPartBtn')) $('addPartBtn').classList.toggle('hidden',!isAdmin());
+  if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').classList.toggle('hidden',!isAdmin());
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
@@ -8969,13 +8973,9 @@ window.applyPermissionUI=function(){
   sh(document.getElementById('historyBtn'),!hp('viewHistory'));
   sh(document.getElementById('exportMainBtn'),!hp('exportExcel'));
   sh(document.getElementById('addBtn'),!hp('addVehicle'));
-  // addSupplierBtn géré par _supplierShowLevel (visible seulement niveau 0 + admin)
-  sh(document.getElementById('addPartBtn'),!hp('addPart'));
-  sh(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
-  sh(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
+  // addSupplierBtn, addSubgroupBtn, addPartBtn, addPartInSubgroupBtn gérés par _supplierShowLevel
   sh(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
-  sh(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
-  sh(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
+  // addClientGroupBtn et addMachineBtn gérés par adminOnly dans renderAll()
   setTimeout(function(){
     document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(function(e){sh(e,!hp('editVehicle'));});
     document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(function(e){sh(e,!hp('deleteVehicle'));});
