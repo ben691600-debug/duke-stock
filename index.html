@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7340,6 +7340,19 @@ function _cleanupSgTouchDrag(resetClick){
 }
 
 // ── Déplacer sous-groupe dans sous-groupe ────────────────────────────────────
+function moveSupplierSubgroupToRoot(sgId){
+  var supplier=(db.suppliers||[]).find(function(s){return s.id===selectedSupplierId;});
+  if(!supplier) return;
+  var sgs=supplier.subgroups||[];
+  var sg=sgs.find(function(x){return x.id===sgId;});
+  if(!sg) return;
+  // Retirer du fournisseur courant et ajouter comme fournisseur racine
+  supplier.subgroups=sgs.filter(function(x){return x.id!==sgId;});
+  db.suppliers=db.suppliers||[];
+  db.suppliers.push({id:sg.id,name:sg.name,image:sg.image||'',parts:sg.parts||[],subgroups:sg.subgroups||[],firstName:'',lastName:'',phone:'',email:''});
+  log('MOVE_SUPPLIER_SUBGROUP_TO_ROOT',sg.name);
+  save(); renderSuppliersModule(); _supplierShowLevel(0);
+}
 function moveSupplierSubgroupInto(targetSgId,sourceSgId){
   var sourceId=sourceSgId||movingSupplierSubgroupId;
   if(!sourceId||sourceId===targetSgId){clearMovingSupplierSubgroup();renderSupplierParts();return;}
@@ -7380,13 +7393,14 @@ function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
   $('supplierDetail').classList.toggle('hidden',level!==1);
   if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden',level!==2);
-  // supplierTopActions (+ Fournisseur) : visible seulement niveau 0 ET admin
+  // Niveau 0 : + Fournisseur visible (admin) — Niveaux 1/2 : caché
   var topActions=document.querySelector('#suppliersView > .supplierTopActions');
   if(topActions) topActions.classList.toggle('hidden', level!==0 || !isAdmin());
-  // Boutons + Sous-groupe et + Pièce : seulement pour admin
-  if($('addSubgroupBtn')) $('addSubgroupBtn').classList.toggle('hidden',!isAdmin());
-  if($('addPartBtn')) $('addPartBtn').classList.toggle('hidden',!isAdmin());
-  if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').classList.toggle('hidden',!isAdmin());
+  // Niveau 1 : + Sous-groupe et + Pièce visibles (admin)
+  if($('addSubgroupBtn')) $('addSubgroupBtn').classList.toggle('hidden', level!==1 || !isAdmin());
+  if($('addPartBtn')) $('addPartBtn').classList.toggle('hidden', level!==1 || !isAdmin());
+  // Niveau 2 : + Pièce dans sous-groupe visible (admin)
+  if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').classList.toggle('hidden', level!==2 || !isAdmin());
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
@@ -7552,12 +7566,14 @@ function renderSupplierParts(){
         <div class="groupImage">${sg.image?`<div class="groupImageInner" style="background-image:url('${sg.image}')"></div>`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
-        ${isAdmin()?`<div class="groupActions">
-          <button class="btn secondary mini" data-act="edit">✏️</button>
-          <button class="btn danger mini" data-act="delete">🗑️</button>
+        ${isAdmin()?`<div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
+          <button class="btn secondary mini" data-act="moveup" style="flex:1" title="Remonter">⬆️</button>
+          <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
         </div>`:''}`;
       const mb=card.querySelector('[data-act=move]'); if(mb) mb.onclick=ev=>{ev.stopPropagation();if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}else setMovingSupplierSubgroup(sg.id);};
       const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
+      const mub=card.querySelector('[data-act=moveup]'); if(mub) mub.onclick=ev=>{ev.stopPropagation();moveSupplierSubgroupToRoot(sg.id);};
       const db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
       card.onclick=(ev)=>{
         if(ev.target.closest('button')) return;
