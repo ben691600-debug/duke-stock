@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7287,8 +7287,7 @@ function _moveSupplierIntoSupplier(sourceId,targetId){
   dst.subgroups=dst.subgroups||[];
   dst.subgroups.push({id:src.id,name:src.name,image:src.image||'',parts:src.parts||[],subgroups:src.subgroups||[]});
   log('MOVE_SUPPLIER_INTO',src.name+' → '+dst.name);
-  save(); alert(T('moveGroupDone')+' '+src.name+' → '+dst.name);
-  renderSuppliersModule();
+  save(); renderSuppliersModule();
 }
 
 // ── Drag touch niveau 1 : déplacer sous-groupe dans sous-groupe ───────────────
@@ -7354,8 +7353,7 @@ function moveSupplierSubgroupInto(targetSgId,sourceSgId){
   dst.subgroups=dst.subgroups||[];
   dst.subgroups.push(src);
   log('MOVE_SUPPLIER_SUBGROUP',src.name+' → '+dst.name);
-  save(); clearMovingSupplierSubgroup();
-  renderSupplierParts();
+  save(); clearMovingSupplierSubgroup(); renderSupplierParts();
 }
 
 // ── Déplacement sous-groupes fournisseur (sélection par bouton) ──────────────
@@ -7480,7 +7478,7 @@ function renderSuppliersModule(){
       ${isAdmin()?`<div class="groupActions">
         ${s.phone?`<button class="btn ok mini" data-act="call">📞</button>`:''}
         ${s.email?`<button class="btn secondary mini" data-act="mail">✉️</button>`:''}
-        <button class="btn secondary mini" data-act="edit" style="margin-left:auto">✏️</button>
+        <button class="btn secondary mini" data-act="edit">✏️</button>
         <button class="btn danger mini" data-act="delete">🗑️</button>
       </div>`:''}`;
     const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
@@ -7555,7 +7553,7 @@ function renderSupplierParts(){
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
         ${isAdmin()?`<div class="groupActions">
-          <button class="btn secondary mini" data-act="edit" style="margin-left:auto">✏️</button>
+          <button class="btn secondary mini" data-act="edit">✏️</button>
           <button class="btn danger mini" data-act="delete">🗑️</button>
         </div>`:''}`;
       const mb=card.querySelector('[data-act=move]'); if(mb) mb.onclick=ev=>{ev.stopPropagation();if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}else setMovingSupplierSubgroup(sg.id);};
