@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v15.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7218,7 +7218,8 @@ function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
   $('supplierDetail').classList.toggle('hidden',level!==1);
   if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden',level!==2);
-  if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden',level!==0);
+  // + Fournisseur visible seulement au niveau 0 ET si admin
+  if($('addSupplierBtn')) $('addSupplierBtn').classList.toggle('hidden',level!==0||!isAdmin());
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
 }
 
@@ -8934,25 +8935,23 @@ if(saveBtn) saveBtn.onclick=function(){
 // ── Appliquer les permissions à l'interface ───────────────
 window.applyPermissionUI=function(){
   function sh(el,hide){if(el){el.classList.toggle('hidden',!!hide);}}
-  // Si personne n'est connecté → rien à faire
   var cu=(typeof currentUser!=='undefined')?currentUser:null;
   if(!cu) return;
-  var isAdm=admin();
-  // Client avec stock fournisseur assigné → toujours voir la carte fournisseur
-  var clientHasSupplier=!isAdm&&cu&&cu.role==='client'&&cu.assignedSupplierId;
+  var isAdm=(cu.role==='admin'); // Vérification directe sur l'objet, pas via admin()
+  var clientHasSupplier=!isAdm&&cu.role==='client'&&!!cu.assignedSupplierId;
+  // Corbeille et paramètres : visibles seulement pour admin
   sh(document.getElementById('settingsBtn'),!isAdm);
   sh(document.getElementById('trashBtn'),!isAdm);
-  if(isAdm) return; // Admin : tout visible, fin
+  if(isAdm) return; // Admin → fin, tout visible
   var hp=window.hasPermission;
   sh(document.getElementById('openVehiclesModule'),!hp('viewVehicles'));
   sh(document.getElementById('openClientsModule'),!hp('viewClients'));
-  // Client avec fournisseur assigné → toujours visible même sans permission viewSuppliers
   sh(document.getElementById('openSuppliersModule'),!clientHasSupplier&&!hp('viewSuppliers'));
   sh(document.getElementById('openFaultMachineModule'),!hp('viewFaultMachines'));
   sh(document.getElementById('historyBtn'),!hp('viewHistory'));
   sh(document.getElementById('exportMainBtn'),!hp('exportExcel'));
   sh(document.getElementById('addBtn'),!hp('addVehicle'));
-  sh(document.getElementById('addSupplierBtn'),!hp('addSupplier'));
+  // addSupplierBtn géré par _supplierShowLevel (visible seulement niveau 0 + admin)
   sh(document.getElementById('addPartBtn'),!hp('addPart'));
   sh(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
   sh(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
