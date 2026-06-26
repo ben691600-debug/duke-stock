@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7477,15 +7477,11 @@ function renderSuppliersModule(){
           <p>${esc(s.phone||'-')}</p>
         </div>
       </div>
-      ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-        <div style="display:flex;gap:6px">
-          ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1">📞</button>`:`<div style="flex:1"></div>`}
-          ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1">✉️</button>`:`<div style="flex:1"></div>`}
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
-          <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
-        </div>
+      ${isAdmin()?`<div class="groupActions">
+        ${s.phone?`<button class="btn ok mini" data-act="call">📞</button>`:''}
+        ${s.email?`<button class="btn secondary mini" data-act="mail">✉️</button>`:''}
+        <button class="btn secondary mini" data-act="edit" style="margin-left:auto">✏️</button>
+        <button class="btn danger mini" data-act="delete">🗑️</button>
       </div>`:''}`;
     const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
@@ -7558,11 +7554,9 @@ function renderSupplierParts(){
         <div class="groupImage">${sg.image?`<div class="groupImageInner" style="background-image:url('${sg.image}')"></div>`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
-        ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-          <div style="display:flex;gap:6px">
-            <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
-            <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
-          </div>
+        ${isAdmin()?`<div class="groupActions">
+          <button class="btn secondary mini" data-act="edit" style="margin-left:auto">✏️</button>
+          <button class="btn danger mini" data-act="delete">🗑️</button>
         </div>`:''}`;
       const mb=card.querySelector('[data-act=move]'); if(mb) mb.onclick=ev=>{ev.stopPropagation();if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}else setMovingSupplierSubgroup(sg.id);};
       const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
