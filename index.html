@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7227,13 +7227,142 @@ $('machineServiceForm').onsubmit=e=>{
 // MODULE FOURNISSEURS — v12 drag copie exacte client machine
 // ══════════════════════════════════════════════════════════
 let selectedSupplierId=null, selectedSupplierSubgroupId=null, movingSupplierSubgroupId=null;
+// Variables drag&drop fournisseurs (copie exacte de clientsView)
+let supplierTouchDragActive=false, supplierTouchDragGhost=null, supplierTouchDragSourceId=null;
+let supplierLongPressTimer=null, supplierLastX=0, supplierLastY=0, supplierSuppressNextClick=false;
+let sgTouchDragActiveL=false, sgTouchDragGhostL=null, sgTouchDragSourceIdL=null;
+let sgLongPressTimer=null, sgLastX=0, sgLastY=0, sgSuppressNextClickL=false;
 
-// ── Déplacement sous-groupes fournisseur (même logique que groupes clients) ──
+// ── Drag touch niveau 0 : déplacer fournisseur dans fournisseur ──────────────
+function _startSupplierTouchDrag(sId,x,y){
+  var found=(db.suppliers||[]).find(function(s){return s.id===sId;});
+  if(!found) return;
+  supplierTouchDragActive=true; supplierSuppressNextClick=true;
+  supplierTouchDragSourceId=sId; supplierLastX=x; supplierLastY=y;
+  document.body.classList.add('draggingGroup');
+  supplierTouchDragGhost=document.createElement('div');
+  supplierTouchDragGhost.className='dragGhost';
+  supplierTouchDragGhost.textContent=found.name;
+  document.body.appendChild(supplierTouchDragGhost);
+  supplierTouchDragGhost.style.left=x+'px'; supplierTouchDragGhost.style.top=y+'px';
+}
+function _moveSupplierTouchGhost(x,y){
+  supplierLastX=x; supplierLastY=y;
+  if(supplierTouchDragGhost){supplierTouchDragGhost.style.left=x+'px';supplierTouchDragGhost.style.top=y+'px';}
+  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  var g=supplierTouchDragGhost; if(g) g.style.display='none';
+  var el=document.elementFromPoint(x,y); if(g) g.style.display='';
+  var target=el?el.closest('.supplierCard[data-supplier-id]'):null;
+  if(target&&target.dataset.supplierId&&target.dataset.supplierId!==supplierTouchDragSourceId) target.classList.add('groupDropTarget');
+}
+function _finishSupplierTouchDrag(x,y){
+  if(!supplierTouchDragActive) return;
+  var sourceId=supplierTouchDragSourceId;
+  var g=supplierTouchDragGhost; if(g) g.style.display='none';
+  var el=document.elementFromPoint(x,y); if(g) g.style.display='';
+  var target=el?el.closest('.supplierCard[data-supplier-id]'):null;
+  var targetId=target&&target.dataset.supplierId?target.dataset.supplierId:null;
+  _cleanupSupplierTouchDrag(false);
+  if(targetId&&targetId!==sourceId) _moveSupplierIntoSupplier(sourceId,targetId);
+  else renderSuppliersModule();
+  setTimeout(function(){supplierSuppressNextClick=false;},400);
+  setTimeout(function(){supplierSuppressNextClick=false;},1000);
+}
+function _cleanupSupplierTouchDrag(resetClick){
+  supplierTouchDragActive=false; supplierTouchDragSourceId=null;
+  document.body.classList.remove('draggingGroup');
+  if(supplierTouchDragGhost){supplierTouchDragGhost.remove();supplierTouchDragGhost=null;}
+  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.supplierCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
+  if(resetClick!==false) setTimeout(function(){supplierSuppressNextClick=false;},300);
+}
+function _moveSupplierIntoSupplier(sourceId,targetId){
+  // Déplacer fournisseur source comme sous-groupe du fournisseur cible
+  var src=(db.suppliers||[]).find(function(s){return s.id===sourceId;});
+  var dst=(db.suppliers||[]).find(function(s){return s.id===targetId;});
+  if(!src||!dst){alert(T('moveGroupImpossible'));renderSuppliersModule();return;}
+  // Retirer src de la liste racine
+  db.suppliers=db.suppliers.filter(function(s){return s.id!==sourceId;});
+  // L'ajouter comme sous-groupe de dst
+  dst.subgroups=dst.subgroups||[];
+  dst.subgroups.push({id:src.id,name:src.name,image:src.image||'',parts:src.parts||[],subgroups:src.subgroups||[]});
+  log('MOVE_SUPPLIER_INTO',src.name+' → '+dst.name);
+  save(); alert(T('moveGroupDone')+' '+src.name+' → '+dst.name);
+  renderSuppliersModule();
+}
+
+// ── Drag touch niveau 1 : déplacer sous-groupe dans sous-groupe ───────────────
+function _startSgTouchDrag(sgId,x,y){
+  var supplier=(db.suppliers||[]).find(function(s){return s.id===selectedSupplierId;});
+  if(!supplier) return;
+  var found=(supplier.subgroups||[]).find(function(sg){return sg.id===sgId;});
+  if(!found) return;
+  sgTouchDragActiveL=true; sgSuppressNextClickL=true;
+  sgTouchDragSourceIdL=sgId; sgLastX=x; sgLastY=y;
+  document.body.classList.add('draggingGroup');
+  sgTouchDragGhostL=document.createElement('div');
+  sgTouchDragGhostL.className='dragGhost';
+  sgTouchDragGhostL.textContent=found.name;
+  document.body.appendChild(sgTouchDragGhostL);
+  sgTouchDragGhostL.style.left=x+'px'; sgTouchDragGhostL.style.top=y+'px';
+  var help=$('sgMoveHelp');
+  if(help){help.textContent=T('moveGroupHelp')+' ('+found.name+')';help.classList.remove('hidden');}
+}
+function _moveSgTouchGhost(x,y){
+  sgLastX=x; sgLastY=y;
+  if(sgTouchDragGhostL){sgTouchDragGhostL.style.left=x+'px';sgTouchDragGhostL.style.top=y+'px';}
+  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  var g=sgTouchDragGhostL; if(g) g.style.display='none';
+  var el=document.elementFromPoint(x,y); if(g) g.style.display='';
+  var target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  if(target&&target.dataset.sgId&&target.dataset.sgId!==sgTouchDragSourceIdL) target.classList.add('groupDropTarget');
+}
+function _finishSgTouchDrag(x,y){
+  if(!sgTouchDragActiveL) return;
+  var sourceId=sgTouchDragSourceIdL;
+  var g=sgTouchDragGhostL; if(g) g.style.display='none';
+  var el=document.elementFromPoint(x,y); if(g) g.style.display='';
+  var target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  var targetId=target&&target.dataset.sgId?target.dataset.sgId:null;
+  _cleanupSgTouchDrag(false);
+  if(targetId&&targetId!==sourceId) moveSupplierSubgroupInto(targetId,sourceId);
+  else renderSupplierParts();
+  setTimeout(function(){sgSuppressNextClickL=false;},400);
+  setTimeout(function(){sgSuppressNextClickL=false;},1000);
+}
+function _cleanupSgTouchDrag(resetClick){
+  sgTouchDragActiveL=false; sgTouchDragSourceIdL=null;
+  document.body.classList.remove('draggingGroup');
+  if(sgTouchDragGhostL){sgTouchDragGhostL.remove();sgTouchDragGhostL=null;}
+  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.supplierCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
+  var help=$('sgMoveHelp'); if(help) help.classList.add('hidden');
+  if(resetClick!==false) setTimeout(function(){sgSuppressNextClickL=false;},300);
+}
+
+// ── Déplacer sous-groupe dans sous-groupe ────────────────────────────────────
+function moveSupplierSubgroupInto(targetSgId,sourceSgId){
+  var sourceId=sourceSgId||movingSupplierSubgroupId;
+  if(!sourceId||sourceId===targetSgId){clearMovingSupplierSubgroup();renderSupplierParts();return;}
+  var supplier=(db.suppliers||[]).find(function(s){return s.id===selectedSupplierId;});
+  if(!supplier){clearMovingSupplierSubgroup();return;}
+  var sgs=supplier.subgroups||[];
+  var src=sgs.find(function(sg){return sg.id===sourceId;});
+  var dst=sgs.find(function(sg){return sg.id===targetSgId;});
+  if(!src||!dst){alert(T('moveGroupImpossible'));clearMovingSupplierSubgroup();renderSupplierParts();return;}
+  supplier.subgroups=sgs.filter(function(sg){return sg.id!==sourceId;});
+  dst.subgroups=dst.subgroups||[];
+  dst.subgroups.push(src);
+  log('MOVE_SUPPLIER_SUBGROUP',src.name+' → '+dst.name);
+  save(); clearMovingSupplierSubgroup();
+  renderSupplierParts();
+}
+
+// ── Déplacement sous-groupes fournisseur (sélection par bouton) ──────────────
 function setMovingSupplierSubgroup(sgId){
   movingSupplierSubgroupId=sgId;
-  const help=$('sgMoveHelp');
+  var help=$('sgMoveHelp');
   if(help){
-    // Trouver le nom du sous-groupe
     var sgName='';
     (db.suppliers||[]).forEach(function(s){(s.subgroups||[]).forEach(function(sg){if(sg.id===sgId)sgName=sg.name;});});
     help.textContent=T('moveGroupHelp')+(sgName?' ('+sgName+')':'');
@@ -7245,30 +7374,9 @@ function clearMovingSupplierSubgroup(){
   movingSupplierSubgroupId=null;
   var help=$('sgMoveHelp'); if(help) help.classList.add('hidden');
 }
-function moveSupplierSubgroupInto(targetSgId){
-  var sourceId=movingSupplierSubgroupId;
-  if(!sourceId||sourceId===targetSgId){clearMovingSupplierSubgroup();renderSupplierParts();return;}
-  var supplier=(db.suppliers||[]).find(function(s){return s.id===selectedSupplierId;});
-  if(!supplier){clearMovingSupplierSubgroup();return;}
-  var sgs=supplier.subgroups||[];
-  var src=sgs.find(function(sg){return sg.id===sourceId;});
-  var dst=sgs.find(function(sg){return sg.id===targetSgId;});
-  if(!src||!dst){alert(T('moveGroupImpossible'));clearMovingSupplierSubgroup();renderSupplierParts();return;}
-  // Déplacer src dans dst.subgroups
-  supplier.subgroups=sgs.filter(function(sg){return sg.id!==sourceId;});
-  dst.subgroups=dst.subgroups||[];
-  dst.subgroups.push(src);
-  log('MOVE_SUPPLIER_SUBGROUP',src.name+' → '+dst.name);
-  save(); clearMovingSupplierSubgroup();
-  alert(T('moveGroupDone')+' '+src.name+' → '+dst.name);
-  renderSupplierParts();
-}
 let supplierImageData='', partImageData='', subgroupImageData='';
 let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
-// Variables drag sous-groupes — même nommage que client machine
-let sgLongPressTimer=null, sgTouchDragActive=false, sgTouchDragGhost=null;
-let sgTouchDragSourceId=null, sgSuppressNextClick=false;
-let sgLastPointerX=0, sgLastPointerY=0;
+// Variables drag sous-groupes — gérées par _startSgTouchDrag etc.
 
 function _supplierShowLevel(level){
   $('suppliersRoot').classList.toggle('hidden',level!==0);
@@ -7372,9 +7480,40 @@ function renderSuppliersModule(){
     var mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
     var dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
     card.onclick=()=>{
-      if(movingSupplierSubgroupId) return; // géré par le déplacement
+      if(supplierSuppressNextClick) return;
+      if(movingSupplierSubgroupId) return;
       openSupplier(s.id);
     };
+    // ── Long press pour déplacer (copie exacte groupCard) ──
+    card.addEventListener('contextmenu',function(ev){ev.preventDefault();});
+    card.addEventListener('pointerdown',function(ev){
+      if(!isAdmin()) return;
+      if(ev.target.closest('button')) return;
+      ev.preventDefault();
+      clearTimeout(supplierLongPressTimer);
+      try{card.setPointerCapture(ev.pointerId);}catch(e){}
+      card.classList.add('dragArmed');
+      supplierLastX=ev.clientX; supplierLastY=ev.clientY;
+      supplierLongPressTimer=setTimeout(function(){
+        _startSupplierTouchDrag(s.id, ev.clientX, ev.clientY);
+      },520);
+    },{passive:false});
+    card.addEventListener('pointermove',function(ev){
+      if(ev.target.closest('button')) return;
+      var dx=Math.abs(ev.clientX-supplierLastX), dy=Math.abs(ev.clientY-supplierLastY);
+      if(!supplierTouchDragActive&&(dx>12||dy>12)){clearTimeout(supplierLongPressTimer);card.classList.remove('dragArmed');}
+      if(supplierTouchDragActive){ev.preventDefault();_moveSupplierTouchGhost(ev.clientX,ev.clientY);}
+    },{passive:false});
+    card.addEventListener('pointerup',function(ev){
+      clearTimeout(supplierLongPressTimer); card.classList.remove('dragArmed');
+      try{card.releasePointerCapture(ev.pointerId);}catch(e){}
+      if(supplierTouchDragActive){ev.preventDefault();_finishSupplierTouchDrag(ev.clientX,ev.clientY);}
+    },{passive:false});
+    card.addEventListener('pointercancel',function(ev){
+      clearTimeout(supplierLongPressTimer); card.classList.remove('dragArmed');
+      try{card.releasePointerCapture(ev.pointerId);}catch(e){}
+      if(supplierTouchDragActive) _cleanupSupplierTouchDrag();
+    },{passive:false});
     $('supplierGrid').appendChild(card);
   });
 }
@@ -7418,12 +7557,42 @@ function renderSupplierParts(){
       var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
       var db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
       card.onclick=()=>{
-        if(sgSuppressNextClick) return;
+        if(sgSuppressNextClickL||sgSuppressNextClick) return;
         if(movingSupplierSubgroupId&&movingSupplierSubgroupId!==sg.id){
           moveSupplierSubgroupInto(sg.id); return;
         }
         openSupplierSubgroup(sg.id);
       };
+      // ── Long press pour déplacer (copie exacte groupCard) ──
+      card.addEventListener('contextmenu',function(ev){ev.preventDefault();});
+      card.addEventListener('pointerdown',function(ev){
+        if(!isAdmin()) return;
+        if(ev.target.closest('button')) return;
+        ev.preventDefault();
+        clearTimeout(sgLongPressTimer);
+        try{card.setPointerCapture(ev.pointerId);}catch(e){}
+        card.classList.add('dragArmed');
+        sgLastX=ev.clientX; sgLastY=ev.clientY;
+        sgLongPressTimer=setTimeout(function(){
+          _startSgTouchDrag(sg.id, ev.clientX, ev.clientY);
+        },520);
+      },{passive:false});
+      card.addEventListener('pointermove',function(ev){
+        if(ev.target.closest('button')) return;
+        var dx=Math.abs(ev.clientX-sgLastX), dy=Math.abs(ev.clientY-sgLastY);
+        if(!sgTouchDragActiveL&&(dx>12||dy>12)){clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');}
+        if(sgTouchDragActiveL){ev.preventDefault();_moveSgTouchGhost(ev.clientX,ev.clientY);}
+      },{passive:false});
+      card.addEventListener('pointerup',function(ev){
+        clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+        try{card.releasePointerCapture(ev.pointerId);}catch(e){}
+        if(sgTouchDragActiveL){ev.preventDefault();_finishSgTouchDrag(ev.clientX,ev.clientY);}
+      },{passive:false});
+      card.addEventListener('pointercancel',function(ev){
+        clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+        try{card.releasePointerCapture(ev.pointerId);}catch(e){}
+        if(sgTouchDragActiveL) _cleanupSgTouchDrag();
+      },{passive:false});
 
       // ── HTML5 drag (souris/desktop) ───────────────────────
       let sgDragId=null;
