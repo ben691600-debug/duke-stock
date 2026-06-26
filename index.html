@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3907,7 +3907,20 @@ function openApp(){
 
 function renderAll(){
   if(!currentUser)return;
-  document.querySelectorAll('.adminOnly').forEach(e=>e.classList.toggle('hidden',!isAdmin()));renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();renderSuppliersModule();}
+  renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();renderSuppliersModule();
+  _applyNonAdminHide();
+}
+
+function _applyNonAdminHide(){
+  // Toujours appliquer adminOnly en dernier
+  document.querySelectorAll('.adminOnly').forEach(function(e){e.classList.toggle('hidden',!isAdmin());});
+  if(!isAdmin()&&typeof _supplierShowLevel==='function'){
+    var level=0;
+    if($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden')) level=1;
+    if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')) level=2;
+    _supplierShowLevel(level);
+  }
+}
 
 function openCar(carId){
   const car=db.cars.find(c=>c.id===carId);
@@ -6052,6 +6065,8 @@ function renderClientMachineModule(){
     if(!_isEndo) $('clientMachinesList').appendChild(card);
     // Si endoscope, wrapper est déjà ajouté plus haut
   });
+
+  if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
 function clientServiceEnsure(){
