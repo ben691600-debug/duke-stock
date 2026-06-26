@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4592,7 +4592,7 @@ function renderUsers(){
       '</div>'+
     '</div>'+
     '<div class="userCardActions">'+
-      (!u.main?'<button class="btn secondary" data-a="edit">✏️ '+T('edit')+'</button>':'')+
+      (!u.main?'<button class="btn secondary iconBtn" data-a="edit">✏️</button>':'')+
       (u.phone?'<button class="btn ok iconBtn" data-a="call" title="Appeler">📞</button>':'')+
       (u.email?'<button class="btn secondary iconBtn" data-a="mail" title="Mail">✉️</button>':'')+
       (u.role==='operator'?'<button class="btn secondary iconBtn" data-a="attendance" title="Pointage">⏱️</button>':'')+
@@ -7226,7 +7226,43 @@ $('machineServiceForm').onsubmit=e=>{
 // ══════════════════════════════════════════════════════════
 // MODULE FOURNISSEURS — v12 drag copie exacte client machine
 // ══════════════════════════════════════════════════════════
-let selectedSupplierId=null, selectedSupplierSubgroupId=null;
+let selectedSupplierId=null, selectedSupplierSubgroupId=null, movingSupplierSubgroupId=null;
+
+// ── Déplacement sous-groupes fournisseur (même logique que groupes clients) ──
+function setMovingSupplierSubgroup(sgId){
+  movingSupplierSubgroupId=sgId;
+  const help=$('sgMoveHelp');
+  if(help){
+    // Trouver le nom du sous-groupe
+    var sgName='';
+    (db.suppliers||[]).forEach(function(s){(s.subgroups||[]).forEach(function(sg){if(sg.id===sgId)sgName=sg.name;});});
+    help.textContent=T('moveGroupHelp')+(sgName?' ('+sgName+')':'');
+    help.classList.remove('hidden');
+  }
+  renderSupplierParts();
+}
+function clearMovingSupplierSubgroup(){
+  movingSupplierSubgroupId=null;
+  var help=$('sgMoveHelp'); if(help) help.classList.add('hidden');
+}
+function moveSupplierSubgroupInto(targetSgId){
+  var sourceId=movingSupplierSubgroupId;
+  if(!sourceId||sourceId===targetSgId){clearMovingSupplierSubgroup();renderSupplierParts();return;}
+  var supplier=(db.suppliers||[]).find(function(s){return s.id===selectedSupplierId;});
+  if(!supplier){clearMovingSupplierSubgroup();return;}
+  var sgs=supplier.subgroups||[];
+  var src=sgs.find(function(sg){return sg.id===sourceId;});
+  var dst=sgs.find(function(sg){return sg.id===targetSgId;});
+  if(!src||!dst){alert(T('moveGroupImpossible'));clearMovingSupplierSubgroup();renderSupplierParts();return;}
+  // Déplacer src dans dst.subgroups
+  supplier.subgroups=sgs.filter(function(sg){return sg.id!==sourceId;});
+  dst.subgroups=dst.subgroups||[];
+  dst.subgroups.push(src);
+  log('MOVE_SUPPLIER_SUBGROUP',src.name+' → '+dst.name);
+  save(); clearMovingSupplierSubgroup();
+  alert(T('moveGroupDone')+' '+src.name+' → '+dst.name);
+  renderSupplierParts();
+}
 let supplierImageData='', partImageData='', subgroupImageData='';
 let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
 // Variables drag sous-groupes — même nommage que client machine
@@ -7310,32 +7346,35 @@ function renderSuppliersModule(){
   if(!$('supplierGrid')) return;
   $('supplierGrid').innerHTML=''; db.suppliers=db.suppliers||[];
   const q=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
-  // Filtrer par assignedSupplierId pour les clients
   const visibleSuppliers=supplierAllowedList(db.suppliers);
   visibleSuppliers.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).filter(s=>{
     const sgT=(s.subgroups||[]).map(sg=>(sg.name||'')+(sg.parts||[]).map(p=>[p.name,p.partNumber].join(' ')).join(' ')).join(' ');
     const pT=(s.parts||[]).map(p=>[p.name,p.partNumber,p.price].join(' ')).join(' ');
     return !q||[s.name,s.email,s.firstName,s.lastName,s.phone,pT,sgT].join(' ').toLowerCase().includes(q);
   }).forEach(s=>{
-    const card=document.createElement('div'); card.className='supplierCard'; card.dataset.supplierId=s.id;
+    const card=document.createElement('div');
+    const isMoving=movingSupplierSubgroupId&&s.id===movingSupplierSubgroupId;
+    card.className='supplierCard'+(isMoving?' groupMoveSelected':'');
+    card.dataset.supplierId=s.id;
     const sgC=(s.subgroups||[]).length;
     card.innerHTML=`<div class="supplierImage">${s.image?`<img src="${s.image}">`:'🧰'}</div>
       <h3 title="${esc(s.name)}">${esc(s.name)}</h3><p>${esc(s.email||'-')}</p>
       ${sgC>0?`<p style="font-size:11px;color:#1a7ad4;font-weight:700">📁 ${sgC} sous-groupe${sgC>1?'s':''}</p>`:''}
       <div class="supplierContact"><div class="supplierContactIcon">👤</div><div><p><b>${esc(((s.firstName||'')+' '+(s.lastName||'')).trim()||'-')}</b></p><p>${esc(s.phone||'-')}</p></div></div>
       <div class="supplierActions">
-        <button class="btn primary mini" data-act="open">${T('open')}</button>
         ${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}
         ${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}
         ${!isClientUser()?`<button class="btn secondary mini" data-act="edit">✏️</button>`:''}
         ${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}
       </div>`;
-    card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();openSupplier(s.id);};
     var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     var cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
     var mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
     var dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
-    card.onclick=()=>openSupplier(s.id);
+    card.onclick=()=>{
+      if(movingSupplierSubgroupId) return; // géré par le déplacement
+      openSupplier(s.id);
+    };
     $('supplierGrid').appendChild(card);
   });
 }
@@ -7360,21 +7399,31 @@ function renderSupplierParts(){
     const isAssignedCtx=!isClientUser()||(u2&&(u2.assignedSupplierId===s.id||(s.subgroups||[]).some(function(sg){return sg.id===u2.assignedSupplierId;})));
     visibleSubgroups.forEach(sg=>{
       const isLinked=cln&&(sg.name||'').toLowerCase().trim()===cln;
-      const card=document.createElement('div');
-      card.className='supplierCard'; card.dataset.sgId=sg.id; card.draggable=isAdmin();
+      const isMovingSg=movingSupplierSubgroupId===sg.id;
+      card.className='supplierCard'+(isMovingSg?' groupMoveSelected':''); card.dataset.sgId=sg.id; card.draggable=isAdmin();
       if(isLinked) card.style.cssText='border:2px solid #1a7ad4;background:#f0f7ff';
       const pC=(sg.parts||[]).length;
       card.innerHTML=`<div class="supplierImage" style="font-size:32px">${sg.image?`<img src="${sg.image}">`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
         <div class="supplierActions">
-          <button class="btn primary mini" data-act="open">${T('open')}</button>
-          ${isAdmin()?`<button class="btn secondary mini" data-act="edit">✏️</button><button class="btn danger mini" data-act="delete">🗑️</button>`:''}
+          ${isAdmin()?`<button class="btn secondary mini" data-act="move" title="Déplacer">↗️</button><button class="btn secondary mini" data-act="edit">✏️</button><button class="btn danger mini" data-act="delete">🗑️</button>`:''}
         </div>`;
-      card.querySelector('[data-act=open]').onclick=ev=>{ev.stopPropagation();if(!sgSuppressNextClick)openSupplierSubgroup(sg.id);};
+      var mb=card.querySelector('[data-act=move]');
+      if(mb) mb.onclick=ev=>{
+        ev.stopPropagation();
+        if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}
+        else setMovingSupplierSubgroup(sg.id);
+      };
       var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
       var db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
-      card.onclick=()=>{ if(!sgSuppressNextClick) openSupplierSubgroup(sg.id); };
+      card.onclick=()=>{
+        if(sgSuppressNextClick) return;
+        if(movingSupplierSubgroupId&&movingSupplierSubgroupId!==sg.id){
+          moveSupplierSubgroupInto(sg.id); return;
+        }
+        openSupplierSubgroup(sg.id);
+      };
 
       // ── HTML5 drag (souris/desktop) ───────────────────────
       let sgDragId=null;
