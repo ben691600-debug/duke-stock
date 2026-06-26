@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7249,10 +7249,10 @@ function _startSupplierTouchDrag(sId,x,y){
 function _moveSupplierTouchGhost(x,y){
   supplierLastX=x; supplierLastY=y;
   if(supplierTouchDragGhost){supplierTouchDragGhost.style.left=x+'px';supplierTouchDragGhost.style.top=y+'px';}
-  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.groupCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
   var g=supplierTouchDragGhost; if(g) g.style.display='none';
   var el=document.elementFromPoint(x,y); if(g) g.style.display='';
-  var target=el?el.closest('.supplierCard[data-supplier-id]'):null;
+  var target=el?el.closest('.groupCard[data-supplier-id]'):null;
   if(target&&target.dataset.supplierId&&target.dataset.supplierId!==supplierTouchDragSourceId) target.classList.add('groupDropTarget');
 }
 function _finishSupplierTouchDrag(x,y){
@@ -7260,7 +7260,7 @@ function _finishSupplierTouchDrag(x,y){
   var sourceId=supplierTouchDragSourceId;
   var g=supplierTouchDragGhost; if(g) g.style.display='none';
   var el=document.elementFromPoint(x,y); if(g) g.style.display='';
-  var target=el?el.closest('.supplierCard[data-supplier-id]'):null;
+  var target=el?el.closest('.groupCard[data-supplier-id]'):null;
   var targetId=target&&target.dataset.supplierId?target.dataset.supplierId:null;
   _cleanupSupplierTouchDrag(false);
   if(targetId&&targetId!==sourceId) _moveSupplierIntoSupplier(sourceId,targetId);
@@ -7314,7 +7314,7 @@ function _moveSgTouchGhost(x,y){
   document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
   var g=sgTouchDragGhostL; if(g) g.style.display='none';
   var el=document.elementFromPoint(x,y); if(g) g.style.display='';
-  var target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  var target=el?el.closest('.groupCard[data-sg-id]'):null;
   if(target&&target.dataset.sgId&&target.dataset.sgId!==sgTouchDragSourceIdL) target.classList.add('groupDropTarget');
 }
 function _finishSgTouchDrag(x,y){
@@ -7322,7 +7322,7 @@ function _finishSgTouchDrag(x,y){
   var sourceId=sgTouchDragSourceIdL;
   var g=sgTouchDragGhostL; if(g) g.style.display='none';
   var el=document.elementFromPoint(x,y); if(g) g.style.display='';
-  var target=el?el.closest('.supplierCard[data-sg-id]'):null;
+  var target=el?el.closest('.groupCard[data-sg-id]'):null;
   var targetId=target&&target.dataset.sgId?target.dataset.sgId:null;
   _cleanupSgTouchDrag(false);
   if(targetId&&targetId!==sourceId) moveSupplierSubgroupInto(targetId,sourceId);
@@ -7414,7 +7414,7 @@ function moveSgTouchGhost(x, y){
   if(sgTouchDragGhost) sgTouchDragGhost.style.display='none';
   const el=document.elementFromPoint(x, y);
   if(sgTouchDragGhost) sgTouchDragGhost.style.display='';
-  const target=el ? el.closest('.supplierCard[data-sg-id]') : null;
+  const target=el ? el.closest('.groupCard[data-sg-id]') : null;
   if(target && target.dataset.sgId && target.dataset.sgId!==sgTouchDragSourceId)
     target.classList.add('sgDropTarget');
 }
@@ -7424,7 +7424,7 @@ function finishSgTouchDrag(x, y){
   if(sgTouchDragGhost) sgTouchDragGhost.style.display='none';
   const el=document.elementFromPoint(x, y);
   if(sgTouchDragGhost) sgTouchDragGhost.style.display='';
-  const target=el ? el.closest('.supplierCard[data-sg-id]') : null;
+  const target=el ? el.closest('.groupCard[data-sg-id]') : null;
   const targetId=target ? target.dataset.sgId : null;
   cleanupSgTouchDrag(false);
   if(targetId && targetId!==sourceId){
@@ -7461,58 +7461,69 @@ function renderSuppliersModule(){
     return !q||[s.name,s.email,s.firstName,s.lastName,s.phone,pT,sgT].join(' ').toLowerCase().includes(q);
   }).forEach(s=>{
     const card=document.createElement('div');
-    const isMoving=movingSupplierSubgroupId&&s.id===movingSupplierSubgroupId;
-    card.className='supplierCard'+(isMoving?' groupMoveSelected':'');
+    const isMoving=supplierTouchDragActive&&supplierTouchDragSourceId===s.id;
+    card.className='groupCard'+(isMoving?' groupMoveSelected':'');
     card.dataset.supplierId=s.id;
+    card.draggable=isAdmin();
     const sgC=(s.subgroups||[]).length;
-    card.innerHTML=`<div class="supplierImage">${s.image?`<img src="${s.image}">`:'🧰'}</div>
-      <h3 title="${esc(s.name)}">${esc(s.name)}</h3><p>${esc(s.email||'-')}</p>
-      ${sgC>0?`<p style="font-size:11px;color:#1a7ad4;font-weight:700">📁 ${sgC} sous-groupe${sgC>1?'s':''}</p>`:''}
-      <div class="supplierContact"><div class="supplierContactIcon">👤</div><div><p><b>${esc(((s.firstName||'')+' '+(s.lastName||'')).trim()||'-')}</b></p><p>${esc(s.phone||'-')}</p></div></div>
-      <div class="supplierActions">
-        ${s.phone?'<button class="btn ok mini" data-act="call">📞</button>':''}
-        ${s.email?'<button class="btn secondary mini" data-act="mail">✉️</button>':''}
-        ${!isClientUser()?`<button class="btn secondary mini" data-act="edit">✏️</button>`:''}
-        ${isAdmin()?'<button class="btn danger mini" data-act="delete">🗑️</button>':''}
-      </div>`;
-    var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
-    var cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();if(s.phone)window.location.href='tel:'+s.phone;};
-    var mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();if(s.email)window.location.href='mailto:'+s.email;};
-    var dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
-    card.onclick=()=>{
-      if(supplierSuppressNextClick) return;
-      if(movingSupplierSubgroupId) return;
+    card.innerHTML=`
+      <div class="groupImage">${s.image?`<div class="groupImageInner" style="background-image:url('${s.image}')"></div>`:'🧰'}</div>
+      <h3 title="${esc(s.name)}">${esc(s.name)}</h3>
+      <p>${sgC} sous-groupe${sgC!==1?'s':''}</p>
+      <div class="contactBox">
+        <div class="contactPhoto">👤</div>
+        <div>
+          <p><b>${esc(((s.firstName||'')+' '+(s.lastName||'')).trim()||'-')}</b></p>
+          <p>${esc(s.phone||'-')}</p>
+        </div>
+      </div>
+      ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px">
+          ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1">📞</button>`:`<div style="flex:1"></div>`}
+          ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1">✉️</button>`:`<div style="flex:1"></div>`}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
+          <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
+        </div>
+      </div>`:''}`;
+    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
+    const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
+    const mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();window.location.href='mailto:'+s.email;};
+    const dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
+    card.onclick=(ev)=>{
+      if(ev.target.closest('button')) return;
+      if(supplierTouchDragActive||supplierSuppressNextClick){ev.preventDefault();ev.stopPropagation();return;}
       openSupplier(s.id);
     };
-    // ── Long press pour déplacer (copie exacte groupCard) ──
-    card.addEventListener('contextmenu',function(ev){ev.preventDefault();});
-    card.addEventListener('pointerdown',function(ev){
-      if(!isAdmin()) return;
-      if(ev.target.closest('button')) return;
-      ev.preventDefault();
-      clearTimeout(supplierLongPressTimer);
+    card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',s.id);card.classList.add('groupDragSource');});
+    card.addEventListener('dragend',()=>card.classList.remove('groupDragSource'));
+    card.addEventListener('dragover',ev=>{ev.preventDefault();card.classList.add('groupDropTarget');});
+    card.addEventListener('dragleave',()=>card.classList.remove('groupDropTarget'));
+    card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const srcId=ev.dataTransfer.getData('text/plain');if(srcId&&srcId!==s.id)_moveSupplierIntoSupplier(srcId,s.id);});
+    card.addEventListener('contextmenu',ev=>ev.preventDefault());
+    card.addEventListener('pointerdown',ev=>{
+      if(!isAdmin()||ev.target.closest('button')) return;
+      ev.preventDefault(); clearTimeout(supplierLongPressTimer);
       try{card.setPointerCapture(ev.pointerId);}catch(e){}
-      card.classList.add('dragArmed');
-      supplierLastX=ev.clientX; supplierLastY=ev.clientY;
-      supplierLongPressTimer=setTimeout(function(){
-        _startSupplierTouchDrag(s.id, ev.clientX, ev.clientY);
-      },520);
+      card.classList.add('dragArmed'); supplierLastX=ev.clientX; supplierLastY=ev.clientY;
+      supplierLongPressTimer=setTimeout(()=>_startSupplierTouchDrag(s.id,ev.clientX,ev.clientY),520);
     },{passive:false});
-    card.addEventListener('pointermove',function(ev){
+    card.addEventListener('pointermove',ev=>{
       if(ev.target.closest('button')) return;
-      var dx=Math.abs(ev.clientX-supplierLastX), dy=Math.abs(ev.clientY-supplierLastY);
+      const dx=Math.abs(ev.clientX-supplierLastX),dy=Math.abs(ev.clientY-supplierLastY);
       if(!supplierTouchDragActive&&(dx>12||dy>12)){clearTimeout(supplierLongPressTimer);card.classList.remove('dragArmed');}
       if(supplierTouchDragActive){ev.preventDefault();_moveSupplierTouchGhost(ev.clientX,ev.clientY);}
     },{passive:false});
-    card.addEventListener('pointerup',function(ev){
-      clearTimeout(supplierLongPressTimer); card.classList.remove('dragArmed');
+    card.addEventListener('pointerup',ev=>{
+      clearTimeout(supplierLongPressTimer);card.classList.remove('dragArmed');
       try{card.releasePointerCapture(ev.pointerId);}catch(e){}
       if(supplierTouchDragActive){ev.preventDefault();_finishSupplierTouchDrag(ev.clientX,ev.clientY);}
     },{passive:false});
-    card.addEventListener('pointercancel',function(ev){
-      clearTimeout(supplierLongPressTimer); card.classList.remove('dragArmed');
+    card.addEventListener('pointercancel',ev=>{
+      clearTimeout(supplierLongPressTimer);card.classList.remove('dragArmed');
       try{card.releasePointerCapture(ev.pointerId);}catch(e){}
-      if(supplierTouchDragActive) _cleanupSupplierTouchDrag();
+      if(supplierTouchDragActive)_cleanupSupplierTouchDrag();
     },{passive:false});
     $('supplierGrid').appendChild(card);
   });
@@ -7538,60 +7549,58 @@ function renderSupplierParts(){
     const isAssignedCtx=!isClientUser()||(u2&&(u2.assignedSupplierId===s.id||(s.subgroups||[]).some(function(sg){return sg.id===u2.assignedSupplierId;})));
     visibleSubgroups.forEach(sg=>{
       const isLinked=cln&&(sg.name||'').toLowerCase().trim()===cln;
-      const isMovingSg=movingSupplierSubgroupId===sg.id;
-      card.className='supplierCard'+(isMovingSg?' groupMoveSelected':''); card.dataset.sgId=sg.id; card.draggable=isAdmin();
-      if(isLinked) card.style.cssText='border:2px solid #1a7ad4;background:#f0f7ff';
+      const isMovingSg=movingSupplierSubgroupId===sg.id||sgTouchDragActiveL&&sgTouchDragSourceIdL===sg.id;
+      const card=document.createElement('div');
+      card.className='groupCard'+(isMovingSg?' groupMoveSelected':'')+(isLinked?' groupMoveSelected':'');
+      card.dataset.sgId=sg.id; card.draggable=isAdmin();
       const pC=(sg.parts||[]).length;
-      card.innerHTML=`<div class="supplierImage" style="font-size:32px">${sg.image?`<img src="${sg.image}">`:'📁'}</div>
+      card.innerHTML=`
+        <div class="groupImage">${sg.image?`<div class="groupImageInner" style="background-image:url('${sg.image}')"></div>`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
-        <div class="supplierActions">
-          ${isAdmin()?`<button class="btn secondary mini" data-act="move" title="Déplacer">↗️</button><button class="btn secondary mini" data-act="edit">✏️</button><button class="btn danger mini" data-act="delete">🗑️</button>`:''}
-        </div>`;
-      var mb=card.querySelector('[data-act=move]');
-      if(mb) mb.onclick=ev=>{
-        ev.stopPropagation();
-        if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}
-        else setMovingSupplierSubgroup(sg.id);
-      };
-      var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
-      var db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
-      card.onclick=()=>{
-        if(sgSuppressNextClickL||sgSuppressNextClick) return;
-        if(movingSupplierSubgroupId&&movingSupplierSubgroupId!==sg.id){
-          moveSupplierSubgroupInto(sg.id); return;
-        }
+        ${isAdmin()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <div style="display:flex;gap:6px">
+            <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
+            <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
+          </div>
+        </div>`:''}`;
+      const mb=card.querySelector('[data-act=move]'); if(mb) mb.onclick=ev=>{ev.stopPropagation();if(movingSupplierSubgroupId===sg.id){clearMovingSupplierSubgroup();renderSupplierParts();}else setMovingSupplierSubgroup(sg.id);};
+      const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(sg.id);};
+      const db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
+      card.onclick=(ev)=>{
+        if(ev.target.closest('button')) return;
+        if(sgTouchDragActiveL||sgSuppressNextClickL||sgSuppressNextClick) return;
+        if(movingSupplierSubgroupId&&movingSupplierSubgroupId!==sg.id){moveSupplierSubgroupInto(sg.id);return;}
         openSupplierSubgroup(sg.id);
       };
-      // ── Long press pour déplacer (copie exacte groupCard) ──
-      card.addEventListener('contextmenu',function(ev){ev.preventDefault();});
-      card.addEventListener('pointerdown',function(ev){
-        if(!isAdmin()) return;
-        if(ev.target.closest('button')) return;
-        ev.preventDefault();
-        clearTimeout(sgLongPressTimer);
+      card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',sg.id);card.classList.add('groupDragSource');});
+      card.addEventListener('dragend',()=>card.classList.remove('groupDragSource'));
+      card.addEventListener('dragover',ev=>{ev.preventDefault();card.classList.add('groupDropTarget');});
+      card.addEventListener('dragleave',()=>card.classList.remove('groupDropTarget'));
+      card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const srcId=ev.dataTransfer.getData('text/plain');if(srcId&&srcId!==sg.id)moveSupplierSubgroupInto(sg.id,srcId);});
+      card.addEventListener('contextmenu',ev=>ev.preventDefault());
+      card.addEventListener('pointerdown',ev=>{
+        if(!isAdmin()||ev.target.closest('button')) return;
+        ev.preventDefault(); clearTimeout(sgLongPressTimer);
         try{card.setPointerCapture(ev.pointerId);}catch(e){}
-        card.classList.add('dragArmed');
-        sgLastX=ev.clientX; sgLastY=ev.clientY;
-        sgLongPressTimer=setTimeout(function(){
-          _startSgTouchDrag(sg.id, ev.clientX, ev.clientY);
-        },520);
+        card.classList.add('dragArmed'); sgLastX=ev.clientX; sgLastY=ev.clientY;
+        sgLongPressTimer=setTimeout(()=>_startSgTouchDrag(sg.id,ev.clientX,ev.clientY),520);
       },{passive:false});
-      card.addEventListener('pointermove',function(ev){
+      card.addEventListener('pointermove',ev=>{
         if(ev.target.closest('button')) return;
-        var dx=Math.abs(ev.clientX-sgLastX), dy=Math.abs(ev.clientY-sgLastY);
+        const dx=Math.abs(ev.clientX-sgLastX),dy=Math.abs(ev.clientY-sgLastY);
         if(!sgTouchDragActiveL&&(dx>12||dy>12)){clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');}
         if(sgTouchDragActiveL){ev.preventDefault();_moveSgTouchGhost(ev.clientX,ev.clientY);}
       },{passive:false});
-      card.addEventListener('pointerup',function(ev){
-        clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+      card.addEventListener('pointerup',ev=>{
+        clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');
         try{card.releasePointerCapture(ev.pointerId);}catch(e){}
         if(sgTouchDragActiveL){ev.preventDefault();_finishSgTouchDrag(ev.clientX,ev.clientY);}
       },{passive:false});
-      card.addEventListener('pointercancel',function(ev){
-        clearTimeout(sgLongPressTimer); card.classList.remove('dragArmed');
+      card.addEventListener('pointercancel',ev=>{
+        clearTimeout(sgLongPressTimer);card.classList.remove('dragArmed');
         try{card.releasePointerCapture(ev.pointerId);}catch(e){}
-        if(sgTouchDragActiveL) _cleanupSgTouchDrag();
+        if(sgTouchDragActiveL)_cleanupSgTouchDrag();
       },{passive:false});
 
       // ── HTML5 drag (souris/desktop) ───────────────────────
