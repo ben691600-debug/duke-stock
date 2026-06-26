@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v16.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2165,8 +2165,8 @@ body.draggingMachine{
 <section id="clientsView" class="hidden">
   <div class="toolbar moduleActionToolbar">
     <div class="actions moduleActionButtons twoButtons">
-      <button class="btn primary adminOnly" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
-      <button class="btn ok adminOnly" id="addMachineBtn" data-i="addMachine">+ Machine</button>
+      <button class="btn primary" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
+      <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
     </div>
   </div>
 
@@ -2197,8 +2197,8 @@ body.draggingMachine{
   </div>
   <div id="supplierDetail" class="hidden">
     <div class="toolbar moduleActionToolbar" style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn primary adminOnly" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
-      <button class="btn secondary adminOnly" id="addPartBtn" data-i="addPart" style="flex:1">+ Pièce</button>
+      <button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
+      <button class="btn secondary" id="addPartBtn" data-i="addPart" style="flex:1">+ Pièce</button>
     </div>
     <div class="supplierDetailHeader"><h2 id="supplierDetailTitle"></h2><p id="supplierDetailSub"></p></div>
     <div id="sgMoveHelp" class="groupMoveHelp hidden"></div>
@@ -2209,7 +2209,7 @@ body.draggingMachine{
   <div id="supplierSubgroupDetail" class="hidden">
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons oneButton">
-        <button class="btn primary adminOnly" id="addPartInSubgroupBtn">+ Pièce</button>
+        <button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>
       </div>
     </div>
     <div class="supplierDetailHeader"><h2 id="supplierSubgroupDetailTitle"></h2><p id="supplierSubgroupDetailSub"></p></div>
@@ -3907,8 +3907,11 @@ function openApp(){
 
 function renderAll(){
   if(!currentUser)return;
+  // adminOnly = seulement settingsBtn et trashBtn (jamais délégables)
+  document.querySelectorAll('.adminOnly').forEach(function(e){e.classList.toggle('hidden',!isAdmin());});
   renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();renderSuppliersModule();
-  _applyNonAdminHide();
+  // Appliquer les permissions APRÈS tous les renders
+  if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
 function _applyNonAdminHide(){
@@ -6420,6 +6423,7 @@ if($('addParentContactBtn')) $('addParentContactBtn').onclick=function(){
 };
 
 $('addClientGroupBtn').onclick=()=>{
+  if(typeof window.hasPermission==='function'&&!window.hasPermission('addGroup')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;}
   editingGroupId=null; groupImage='';
   $('clientGroupForm').reset();
   setClientGroupContactsRows([{}]);
@@ -6636,6 +6640,7 @@ function updateClientMachineImageFromModel(){
 }
 
 $('addMachineBtn').onclick=()=>{
+  if(typeof window.hasPermission==='function'&&!window.hasPermission('addClientMachine')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;}
   editingMachineId=null; clientMachineImage='';
   $('clientMachineForm').reset();
   populateMachineTypeSelect('');
@@ -7535,14 +7540,14 @@ if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
 
 // ── CRUD Fournisseur ────────────────────────────────────────
 function readSupplierImage(input,callback,previewId){ const file=input.files[0]; if(!file){callback('');return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});}; r.readAsDataURL(file); }
-if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{ editingSupplierId=null; supplierImageData=''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent=T('addSupplier'); $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); };
+if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{ if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;} editingSupplierId=null; supplierImageData=''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent=T('addSupplier'); $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); };
 if($('supplierImageInput')) $('supplierImageInput').onchange=e=>readSupplierImage(e.target,v=>supplierImageData=v,'supplierPreview');
 if($('supplierForm')) $('supplierForm').onsubmit=e=>{ e.preventDefault(); db.suppliers=db.suppliers||[]; if(editingSupplierId){const s=db.suppliers.find(x=>x.id===editingSupplierId);if(s){s.name=$('supplierNameInput').value.trim();s.image=supplierImageData;s.email=$('supplierEmailInput').value.trim();s.firstName=$('supplierFirstNameInput').value.trim();s.lastName=$('supplierLastNameInput').value.trim();s.phone=$('supplierPhoneInput').value.trim();log('EDIT_SUPPLIER',s.name);}}else{const s={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),parts:[],subgroups:[]};db.suppliers.push(s);log('ADD_SUPPLIER',s.name);}editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule(); };
 function openEditSupplier(id){ const s=(db.suppliers||[]).find(x=>x.id===id); if(!s)return; editingSupplierId=id; supplierImageData=s.image||''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent='✏️ '+T('supplier'); $('supplierNameInput').value=s.name||''; $('supplierEmailInput').value=s.email||''; $('supplierFirstNameInput').value=s.firstName||''; $('supplierLastNameInput').value=s.lastName||''; $('supplierPhoneInput').value=s.phone||''; if(supplierImageData){$('supplierPreview').style.backgroundImage=`url(${supplierImageData})`;$('supplierPreview').classList.remove('hidden');}else $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); }
 function deleteSupplier(id){ if(!isAdmin())return; if(!confirm(T('deleteSupplierConfirm')))return; const s=(db.suppliers||[]).find(x=>x.id===id); db.suppliers=(db.suppliers||[]).filter(x=>x.id!==id); if(s)moveToTrash('supplier',s,{}); log('DELETE_SUPPLIER',s?s.name:id); save(); renderSuppliersModule(); }
 
 // ── CRUD Sous-groupe ────────────────────────────────────────
-if($('addSubgroupBtn')) $('addSubgroupBtn').onclick=()=>{ editingSubgroupId=null; subgroupImageData=''; $('supplierSubgroupForm').reset(); $('supplierSubgroupDialogTitle').textContent='+ Sous-groupe'; $('subgroupPreview').classList.add('hidden'); $('supplierSubgroupDialog').showModal(); };
+if($('addSubgroupBtn')) $('addSubgroupBtn').onclick=()=>{ if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;} editingSubgroupId=null; subgroupImageData=''; $('supplierSubgroupForm').reset(); $('supplierSubgroupDialogTitle').textContent='+ Sous-groupe'; $('subgroupPreview').classList.add('hidden'); $('supplierSubgroupDialog').showModal(); };
 if($('subgroupImageInput')) $('subgroupImageInput').onchange=e=>readSupplierImage(e.target,v=>subgroupImageData=v,'subgroupPreview');
 if($('supplierSubgroupForm')) $('supplierSubgroupForm').onsubmit=e=>{ e.preventDefault(); const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s)return; s.subgroups=s.subgroups||[]; if(editingSubgroupId){const sg=s.subgroups.find(x=>x.id===editingSubgroupId);if(sg){sg.name=$('subgroupNameInput').value.trim();if(subgroupImageData)sg.image=subgroupImageData;log('EDIT_SUBGROUP',sg.name);}}else{const sg={id:uid(),name:$('subgroupNameInput').value.trim(),image:subgroupImageData,parts:[]};s.subgroups.push(sg);log('ADD_SUBGROUP',sg.name);}editingSubgroupId=null;save();$('supplierSubgroupDialog').close();renderSupplierParts(); };
 function openEditSubgroup(sgId){ const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s)return; const sg=(s.subgroups||[]).find(x=>x.id===sgId); if(!sg)return; editingSubgroupId=sgId; subgroupImageData=sg.image||''; $('supplierSubgroupForm').reset(); $('supplierSubgroupDialogTitle').textContent='✏️ Sous-groupe'; $('subgroupNameInput').value=sg.name||''; if(sg.image){$('subgroupPreview').style.backgroundImage=`url(${sg.image})`;$('subgroupPreview').classList.remove('hidden');}else $('subgroupPreview').classList.add('hidden'); $('supplierSubgroupDialog').showModal(); }
@@ -7550,7 +7555,7 @@ function deleteSubgroup(sgId){ if(!isAdmin())return; if(!confirm('Supprimer ce s
 
 // ── CRUD Pièces ─────────────────────────────────────────────
 function _getPartTarget(inSubgroup){ const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s)return null; if(inSubgroup){const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);return sg?{container:sg,supplier:s,subgroup:sg}:null;} return{container:s,supplier:s,subgroup:null}; }
-if($('addPartBtn')) $('addPartBtn').onclick=()=>{ editingPartId=null; partImageData=''; $('partForm').reset(); populatePartModelsSelect([]); $('partDialog').querySelector('h2').textContent=T('addPart'); $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup='false'; $('partDialog').showModal(); };
+if($('addPartBtn')) $('addPartBtn').onclick=()=>{ if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;} editingPartId=null; partImageData=''; $('partForm').reset(); populatePartModelsSelect([]); $('partDialog').querySelector('h2').textContent=T('addPart'); $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup='false'; $('partDialog').showModal(); };
 if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').onclick=()=>{ editingPartId=null; partImageData=''; $('partForm').reset(); populatePartModelsSelect([]); $('partDialog').querySelector('h2').textContent=T('addPart'); $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup='true'; $('partDialog').showModal(); };
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
 if($('partForm')) $('partForm').onsubmit=e=>{ e.preventDefault(); const inSubgroup=$('partDialog').dataset.inSubgroup==='true'; const target=_getPartTarget(inSubgroup); if(!target)return; target.container.parts=target.container.parts||[]; const models=readPartModelsSelect(); if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} };
@@ -8988,9 +8993,13 @@ window.applyPermissionUI=function(){
   sh(document.getElementById('historyBtn'),!hp('viewHistory'));
   sh(document.getElementById('exportMainBtn'),!hp('exportExcel'));
   sh(document.getElementById('addBtn'),!hp('addVehicle'));
-  // addSupplierBtn, addSubgroupBtn, addPartBtn, addPartInSubgroupBtn gérés par _supplierShowLevel
   sh(document.getElementById('faultMachineCreateButton'),!hp('addFaultMachine'));
-  // addClientGroupBtn et addMachineBtn gérés par adminOnly dans renderAll()
+  sh(document.getElementById('addClientGroupBtn'),!hp('addGroup'));
+  sh(document.getElementById('addMachineBtn'),!hp('addClientMachine'));
+  sh(document.getElementById('addSubgroupBtn'),!hp('addSupplier'));
+  sh(document.getElementById('addPartBtn'),!hp('addPart'));
+  sh(document.getElementById('addPartInSubgroupBtn'),!hp('addPart'));
+  // addSupplierBtn géré par _supplierShowLevel (visible seulement niveau 0)
   setTimeout(function(){
     document.querySelectorAll('.vehicleCompactCard [data-a="edit"]').forEach(function(e){sh(e,!hp('editVehicle'));});
     document.querySelectorAll('.vehicleCompactCard [data-a="delete"]').forEach(function(e){sh(e,!hp('deleteVehicle'));});
