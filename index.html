@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v15.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v16.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8251,19 +8251,21 @@ function addMaintenanceRow(data){
   }catch(e){}
   var po='<option value="">— Pièce liée (optionnel) —</option>';
   try{
-    // Toujours utiliser db en direct (jamais localStorage) pour avoir les pièces à jour
     var _suppliers=(typeof db!=='undefined'&&db&&db.suppliers)?db.suppliers:[];
+    // Construire un Set des IDs en corbeille pour exclure les pièces supprimées
+    var _trashedIds={};
+    ((typeof db!=='undefined'&&db&&db.trash)||[]).forEach(function(t){if(t&&t.id) _trashedIds[t.id]=true;});
+    ((typeof db!=='undefined'&&db&&db.trashRemovedIds)||[]).forEach(function(id){if(id) _trashedIds[id]=true;});
     function _cp(n,pfx){
       (n.parts||[]).forEach(function(p){
-        // Vérifier que la pièce existe encore (non supprimée)
-        if(!p||!p.id) return;
+        if(!p||!p.id||_trashedIds[p.id]) return; // Ignorer pièces supprimées/en corbeille
         var sel=(data.linkedPartId===p.id)?' selected':'';
         var label=esc(p.name||p.partNumber||'')+(p.price?' ('+esc(String(p.price))+')':'');
         po+='<option value="'+p.id+'"'+sel+'>['+esc(pfx)+'] '+label+'</option>';
       });
       (n.subgroups||n.groups||[]).forEach(function(g){_cp(g,pfx+' › '+(g.name||''));});
     }
-    _suppliers.forEach(function(s){_cp(s,s.name||'');});
+    _suppliers.forEach(function(s){if(!_trashedIds[s.id]) _cp(s,s.name||'');});
   }catch(e){}
   row.innerHTML=
     '<div style="display:flex;gap:8px;align-items:center">'
