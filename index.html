@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7308,7 +7308,7 @@ function _startSgTouchDrag(sgId,x,y){
 function _moveSgTouchGhost(x,y){
   sgLastX=x; sgLastY=y;
   if(sgTouchDragGhostL){sgTouchDragGhostL.style.left=x+'px';sgTouchDragGhostL.style.top=y+'px';}
-  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.groupCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
   var g=sgTouchDragGhostL; if(g) g.style.display='none';
   var el=document.elementFromPoint(x,y); if(g) g.style.display='';
   var target=el?el.closest('.groupCard[data-sg-id]'):null;
@@ -7331,8 +7331,8 @@ function _cleanupSgTouchDrag(resetClick){
   sgTouchDragActiveL=false; sgTouchDragSourceIdL=null;
   document.body.classList.remove('draggingGroup');
   if(sgTouchDragGhostL){sgTouchDragGhostL.remove();sgTouchDragGhostL=null;}
-  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
-  document.querySelectorAll('.supplierCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
+  document.querySelectorAll('.groupCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.groupCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
   var help=$('sgMoveHelp'); if(help) help.classList.add('hidden');
   if(resetClick!==false) setTimeout(function(){sgSuppressNextClickL=false;},300);
 }
@@ -7544,6 +7544,7 @@ function renderSuppliersModule(){
 
 // ── Niveau 1 — drag COPIE EXACTE du client machine ─────────
 function renderSupplierParts(){
+  _supplierShowLevel(1); // Toujours niveau 1 quand on affiche les parties d'un fournisseur
   if(!$('partGrid')) return;
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
   if($('supplierDetailTitle')) $('supplierDetailTitle').textContent=s.name;
