@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7467,6 +7467,7 @@ function cleanupSgTouchDrag(resetClick=true){
 
 // ── Niveau 0 ───────────────────────────────────────────────
 function renderSuppliersModule(){
+  _supplierShowLevel(0); // Réinitialiser les boutons au niveau 0
   if(!$('supplierGrid')) return;
   $('supplierGrid').innerHTML=''; db.suppliers=db.suppliers||[];
   const q=($('supplierGlobalSearch')?$('supplierGlobalSearch').value.toLowerCase().trim():'');
@@ -7493,7 +7494,7 @@ function renderSuppliersModule(){
           <p>${esc(s.phone||'-')}</p>
         </div>
       </div>
-      ${isAdmin()?`<div style="display:flex;gap:6px;margin-top:6px">
+      ${isAdmin()?`<div class="groupActions">
         <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
         ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1">📞</button>`:''}
         ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1">✉️</button>`:''}
@@ -7570,7 +7571,7 @@ function renderSupplierParts(){
         <div class="groupImage">${sg.image?`<div class="groupImageInner" style="background-image:url('${sg.image}')"></div>`:'📁'}</div>
         <h3 title="${esc(sg.name)}">${esc(sg.name)}${isLinked?' 🔗':''}</h3>
         <p>${pC} pièce${pC!==1?'s':''}</p>
-        ${isAdmin()?`<div style="display:flex;gap:6px;margin-top:6px">
+        ${isAdmin()?`<div class="groupActions">
           <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
           <button class="btn secondary mini" data-act="moveup" style="flex:1" title="Remonter">⬆️</button>
           <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
