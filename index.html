@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7705,13 +7705,40 @@ function supplierAllowedParts(parts, isInAssignedContext){
 }
 
 // ── Niveau 2 ───────────────────────────────────────────────
+function _findSgById(id, subs){
+  for(var i=0;i<(subs||[]).length;i++){
+    if(subs[i].id===id) return subs[i];
+    var f=_findSgById(id,subs[i].subgroups||[]);
+    if(f) return f;
+  }
+  return null;
+}
 function renderSubgroupParts(){
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
-  const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId); if(!sg) return;
+  const sg=_findSgById(selectedSupplierSubgroupId, s.subgroups||[]); if(!sg) return;
   if($('supplierSubgroupDetailTitle')) $('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
   if($('supplierSubgroupDetailSub')) $('supplierSubgroupDetailSub').textContent=(sg.parts||[]).length+' pièce(s)';
   const grid=$('subgroupPartGrid'); if(!grid) return; grid.innerHTML='';
   const q=($('subgroupPartSearch')?$('subgroupPartSearch').value.toLowerCase().trim():'');
+  // Afficher les sous-sous-groupes si existants
+  (sg.subgroups||[]).forEach(function(child){
+    const pC=(child.parts||[]).length;
+    const childCard=document.createElement('div');
+    childCard.className='groupCard'; childCard.dataset.sgId=child.id; childCard.draggable=isAdmin();
+    childCard.innerHTML=`
+      <div class="groupImage">${child.image?`<div class="groupImageInner" style="background-image:url('${child.image}')"></div>`:'📁'}</div>
+      <h3 title="${esc(child.name)}">${esc(child.name)}</h3>
+      <p>${pC} pièce${pC!==1?'s':''}</p>
+      ${isAdmin()?`<div class="groupActions">
+        <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
+        <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
+      </div>`:''}`;
+    childCard.onclick=(ev)=>{if(ev.target.closest('button'))return; selectedSupplierSubgroupId=child.id; renderSubgroupParts();};
+    var eb=childCard.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSubgroup(child.id);};
+    var db2=childCard.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(child.id);};
+    grid.appendChild(childCard);
+  });
+  // Pièces du sous-groupe
   (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q)).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
