@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7582,6 +7582,9 @@ function renderSupplierParts(){
   if($('supplierDetailTitle')) $('supplierDetailTitle').textContent=s.name;
   if($('supplierDetailSub')) $('supplierDetailSub').textContent=`${T('email')}: ${s.email||'-'} | ${T('contactPhone')}: ${s.phone||'-'}`;
   const sgGrid=$('supplierSubgroupGrid');
+  // isAssignedCtx doit être déclaré ICI (avant if(sgGrid)) pour être accessible au rendu des pièces
+  const u2=(typeof currentUser!=='undefined')?currentUser:null;
+  const isAssignedCtx=!isClientUser()||(u2&&(u2.assignedSupplierId===s.id||(s.subgroups||[]).some(function(sg){return sg.id===u2.assignedSupplierId;})));
   if(sgGrid){
     sgGrid.innerHTML='';
     var cln='';
@@ -7590,9 +7593,6 @@ function renderSupplierParts(){
       if(_cg) cln=(_cg.name||'').toLowerCase().trim();
     }
     const visibleSubgroups=supplierAllowedSubgroups(s.subgroups||[]);
-    // Déterminer si le contexte est autorisé pour les pièces
-    const u2=(typeof currentUser!=='undefined')?currentUser:null;
-    const isAssignedCtx=!isClientUser()||(u2&&(u2.assignedSupplierId===s.id||(s.subgroups||[]).some(function(sg){return sg.id===u2.assignedSupplierId;})));
     visibleSubgroups.forEach(sg=>{
       const isLinked=cln&&(sg.name||'').toLowerCase().trim()===cln;
       const isMovingSg=movingSupplierSubgroupId===sg.id||sgTouchDragActiveL&&sgTouchDragSourceIdL===sg.id;
@@ -7673,23 +7673,16 @@ function renderSupplierParts(){
       sgGrid.appendChild(card);
     });
   }
-  // Pièces directes — seulement si contexte autorisé
+  // Pièces directes
   $('partGrid').innerHTML='';
   const pq=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
-  // Exclure les pièces qui sont dans la corbeille
-  var _trashedPartIds={};
-  ((typeof db!=='undefined'&&db&&db.trash)||[]).forEach(function(t){if(t&&t.id&&t.type==='part')_trashedPartIds[t.id]=true;});
-  const rawParts=(s.parts||[]).filter(function(p){return p&&p.id&&!_trashedPartIds[p.id];});
+  // IDs supprimés = trashRemovedIds (contient les IDs des éléments, pas des tombstones)
+  var _removedIds={};
+  ((db&&db.trashRemovedIds)||[]).forEach(function(id){if(id)_removedIds[id]=true;});
+  const rawParts=(s.parts||[]).filter(function(p){return p&&p.id&&!_removedIds[p.id];});
   const visibleParts=supplierAllowedParts(rawParts, isAssignedCtx);
   const titleEl=$('supplierDirectPartsTitle');
   if(titleEl) titleEl.style.display=visibleParts.length>0?'':'none';
-  // Diagnostic temporaire
-  if(s.parts&&s.parts.length>0&&visibleParts.length===0){
-    var dbg=document.createElement('p');
-    dbg.style.cssText='color:red;padding:8px;font-weight:bold';
-    dbg.textContent='DEBUG: '+s.parts.length+' pièces dans s.parts, isClientUser='+isClientUser()+', isAssignedCtx='+isAssignedCtx+', trash='+Object.keys(_trashedPartIds).length;
-    $('partGrid').appendChild(dbg);
-  }
   visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
@@ -7786,7 +7779,9 @@ function renderSubgroupParts(){
     grid.appendChild(childCard);
   });
   // Pièces du sous-groupe
-  (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q)).forEach(p=>{
+  var _removedIds2={};
+  ((db&&db.trashRemovedIds)||[]).forEach(function(id){if(id)_removedIds2[id]=true;});
+  (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>p&&p.id&&!_removedIds2[p.id]&&(!q||[p.name,p.partNumber,p.price].join(' ').toLowerCase().includes(q))).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,true);
