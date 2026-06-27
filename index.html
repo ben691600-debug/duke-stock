@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2186,13 +2186,16 @@ body.draggingMachine{
 
 <section id="suppliersView" class="hidden">
   <div class="toolbar moduleActionToolbar supplierTopActions">
+    <!-- Niveau 0 : liste des fournisseurs -->
     <div class="actions moduleActionButtons oneButton" id="supplierActLevel0">
-      <button class="btn primary adminOnly" id="addSupplierBtn" data-i="addSupplier">+ Fournisseur</button>
+      <button class="btn primary" id="addSupplierBtn">+ Fournisseur</button>
     </div>
+    <!-- Niveau 1 : dans un fournisseur -->
     <div class="actions moduleActionButtons twoButtons hidden" id="supplierActLevel1">
       <button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
-      <button class="btn secondary" id="addPartBtn" data-i="addPart" style="flex:1">+ Pièce</button>
+      <button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button>
     </div>
+    <!-- Niveau 2 : dans un sous-groupe -->
     <div class="actions moduleActionButtons oneButton hidden" id="supplierActLevel2">
       <button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>
     </div>
@@ -7388,24 +7391,24 @@ let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
 // Variables drag sous-groupes — gérées par _startSgTouchDrag etc.
 
 function _supplierShowLevel(level){
-  $('suppliersRoot').classList.toggle('hidden',level!==0);
-  $('supplierDetail').classList.toggle('hidden',level!==1);
-  if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden',level!==2);
-  // Barre d'actions sticky : afficher le bon bloc selon le niveau
-  var topActions=document.querySelector('#suppliersView > .supplierTopActions');
-  if(topActions) topActions.classList.remove('hidden');
-  // Niveau 0 : + Fournisseur (admin seulement)
-  var a0=$('supplierActLevel0');
-  if(a0) a0.classList.toggle('hidden', level!==0 || !isAdmin());
-  // Niveau 1 : + Sous-groupe + Pièce (admin seulement)
-  var a1=$('supplierActLevel1');
-  if(a1) a1.classList.toggle('hidden', level!==1 || !isAdmin());
-  // Niveau 2 : + Pièce (admin seulement)
-  var a2=$('supplierActLevel2');
-  if(a2) a2.classList.toggle('hidden', level!==2 || !isAdmin());
-  // Si non-admin : cacher toute la barre
-  if(!isAdmin()&&topActions) topActions.classList.add('hidden');
-  if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden',level===0);
+  // Contenu
+  $('suppliersRoot').classList.toggle('hidden', level!==0);
+  $('supplierDetail').classList.toggle('hidden', level!==1);
+  if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden', level!==2);
+  // Bouton retour
+  if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden', level===0);
+  // Barre d'actions : toujours visible pour admin, un seul bloc actif
+  var topBar=document.querySelector('#suppliersView > .supplierTopActions');
+  if(topBar){
+    if(isAdmin()){
+      topBar.classList.remove('hidden');
+      ['supplierActLevel0','supplierActLevel1','supplierActLevel2'].forEach(function(id,i){
+        var el=$(id); if(el) el.classList.toggle('hidden', i!==level);
+      });
+    } else {
+      topBar.classList.add('hidden');
+    }
+  }
 }
 
 // ── Drag touch sous-groupes — copie exacte de startRealTouchGroupDrag ──
@@ -7714,6 +7717,7 @@ function _findSgById(id, subs){
   return null;
 }
 function renderSubgroupParts(){
+  _supplierShowLevel(2);
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
   const sg=_findSgById(selectedSupplierSubgroupId, s.subgroups||[]); if(!sg) return;
   if($('supplierSubgroupDetailTitle')) $('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
