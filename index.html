@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3004,6 +3004,24 @@ function initRTDB(){
       if(!Array.isArray(db.history)) db.history=[];
       if(!Array.isArray(db.trash)) db.trash=[];
       if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+      // Normaliser suppliers : Firebase stocke parfois comme objet indexé {0:{...},1:{...}}
+      if(db.suppliers&&!Array.isArray(db.suppliers)){
+        db.suppliers=Object.values(db.suppliers);
+      }
+      if(!Array.isArray(db.suppliers)) db.suppliers=[];
+      // Normaliser chaque fournisseur : groups→subgroups (ancienne structure)
+      db.suppliers.forEach(function(s){
+        if(!s) return;
+        if(s.groups&&!s.subgroups){s.subgroups=s.groups;delete s.groups;}
+        if(!Array.isArray(s.subgroups)) s.subgroups=s.subgroups?Object.values(s.subgroups):[];
+        if(!Array.isArray(s.parts)) s.parts=s.parts?Object.values(s.parts):[];
+        (s.subgroups||[]).forEach(function(sg){
+          if(!sg) return;
+          if(sg.groups&&!sg.subgroups){sg.subgroups=sg.groups;delete sg.groups;}
+          if(!Array.isArray(sg.subgroups)) sg.subgroups=sg.subgroups?Object.values(sg.subgroups):[];
+          if(!Array.isArray(sg.parts)) sg.parts=sg.parts?Object.values(sg.parts):[];
+        });
+      });
       // Restaurer les faultMachines locales si une sync est en attente
       if(localFaultMachines && localFaultMachines.length > 0){
         var localById = {};
@@ -7652,6 +7670,13 @@ function renderSupplierParts(){
   const visibleParts=supplierAllowedParts(rawParts, isAssignedCtx);
   const titleEl=$('supplierDirectPartsTitle');
   if(titleEl) titleEl.style.display=visibleParts.length>0?'':'none';
+  // Diagnostic temporaire
+  if(s.parts&&s.parts.length>0&&visibleParts.length===0){
+    var dbg=document.createElement('p');
+    dbg.style.cssText='color:red;padding:8px;font-weight:bold';
+    dbg.textContent='DEBUG: '+s.parts.length+' pièces dans s.parts, isClientUser='+isClientUser()+', isAssignedCtx='+isAssignedCtx+', trash='+Object.keys(_trashedPartIds).length;
+    $('partGrid').appendChild(dbg);
+  }
   visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
