@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7270,8 +7270,8 @@ function _cleanupSupplierTouchDrag(resetClick){
   supplierTouchDragActive=false; supplierTouchDragSourceId=null;
   document.body.classList.remove('draggingGroup');
   if(supplierTouchDragGhost){supplierTouchDragGhost.remove();supplierTouchDragGhost=null;}
-  document.querySelectorAll('.supplierCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
-  document.querySelectorAll('.supplierCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
+  document.querySelectorAll('.groupCard.groupDropTarget').forEach(function(el){el.classList.remove('groupDropTarget');});
+  document.querySelectorAll('.groupCard.dragArmed').forEach(function(el){el.classList.remove('dragArmed');});
   if(resetClick!==false) setTimeout(function(){supplierSuppressNextClick=false;},300);
 }
 function _moveSupplierIntoSupplier(sourceId,targetId){
@@ -7458,7 +7458,7 @@ function finishSgTouchDrag(x, y){
 function cleanupSgTouchDrag(resetClick=true){
   sgTouchDragActive=false; sgTouchDragSourceId=null;
   document.body.classList.remove('draggingSupplierGroup');
-  document.querySelectorAll('.supplierCard.dragArmed').forEach(el=>el.classList.remove('dragArmed'));
+  document.querySelectorAll('.groupCard.dragArmed').forEach(el=>el.classList.remove('dragArmed'));
   if(sgTouchDragGhost){ sgTouchDragGhost.remove(); sgTouchDragGhost=null; }
   document.querySelectorAll('.supplierCard.sgDropTarget').forEach(el=>el.classList.remove('sgDropTarget'));
   const help=$('sgMoveHelp'); if(help) help.classList.add('hidden');
@@ -7637,49 +7637,6 @@ function renderSupplierParts(){
         if(si!==-1&&di!==-1){ const [mv]=sgs.splice(si,1); sgs.splice(di,0,mv); log('REORDER_SUBGROUP',mv.name); save(); }
         sgDragId=null; renderSupplierParts();
       });
-
-      // ── Touch drag (mobile) — COPIE EXACTE du client machine ─
-      card.addEventListener('contextmenu', ev=>ev.preventDefault());
-      card.addEventListener('pointerdown', ev=>{
-        if(!isAdmin()) return;
-        if(ev.target.closest('button')) return;
-        ev.preventDefault();
-        clearTimeout(sgLongPressTimer);
-        try{ card.setPointerCapture(ev.pointerId); }catch(e){}
-        card.classList.add('dragArmed');
-        sgLastPointerX=ev.clientX; sgLastPointerY=ev.clientY;
-        sgLongPressTimer=setTimeout(()=>{
-          startSgTouchDrag(sg.id, ev.clientX, ev.clientY);
-        }, 520);
-      }, {passive:false});
-      card.addEventListener('pointermove', ev=>{
-        if(ev.target.closest('button')) return;
-        const dx=Math.abs(ev.clientX-sgLastPointerX);
-        const dy=Math.abs(ev.clientY-sgLastPointerY);
-        if(!sgTouchDragActive && (dx>12||dy>12)){
-          clearTimeout(sgLongPressTimer);
-          card.classList.remove('dragArmed');
-        }
-        if(sgTouchDragActive){
-          ev.preventDefault();
-          moveSgTouchGhost(ev.clientX, ev.clientY);
-        }
-      }, {passive:false});
-      card.addEventListener('pointerup', ev=>{
-        clearTimeout(sgLongPressTimer);
-        card.classList.remove('dragArmed');
-        try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
-        if(sgTouchDragActive){
-          ev.preventDefault();
-          finishSgTouchDrag(ev.clientX, ev.clientY);
-        }
-      }, {passive:false});
-      card.addEventListener('pointercancel', ev=>{
-        clearTimeout(sgLongPressTimer);
-        card.classList.remove('dragArmed');
-        try{ card.releasePointerCapture(ev.pointerId); }catch(e){}
-        if(sgTouchDragActive) cleanupSgTouchDrag();
-      }, {passive:false});
 
       sgGrid.appendChild(card);
     });
