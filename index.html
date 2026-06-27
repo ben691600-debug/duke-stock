@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7482,7 +7482,8 @@ function renderSuppliersModule(){
     card.dataset.supplierId=s.id;
     card.draggable=isAdmin();
     const sgC=(s.subgroups||[]).length;
-    const pC0=(s.parts||[]).length;
+    var _trIds2={};((db&&db.trash)||[]).forEach(function(t){if(t&&t.id&&t.type==='part')_trIds2[t.id]=true;});
+    const pC0=(s.parts||[]).filter(function(p){return p&&p.id&&!_trIds2[p.id];}).length;
     card.innerHTML=`
       <div class="groupImage">${s.image?`<div class="groupImageInner" style="background-image:url('${s.image}')"></div>`:'🧰'}</div>
       <h3 title="${esc(s.name)}">${esc(s.name)}</h3>
@@ -7644,7 +7645,11 @@ function renderSupplierParts(){
   // Pièces directes — seulement si contexte autorisé
   $('partGrid').innerHTML='';
   const pq=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
-  const visibleParts=supplierAllowedParts(s.parts||[], isAssignedCtx);
+  // Exclure les pièces qui sont dans la corbeille
+  var _trashedPartIds={};
+  ((typeof db!=='undefined'&&db&&db.trash)||[]).forEach(function(t){if(t&&t.id&&t.type==='part')_trashedPartIds[t.id]=true;});
+  const rawParts=(s.parts||[]).filter(function(p){return p&&p.id&&!_trashedPartIds[p.id];});
+  const visibleParts=supplierAllowedParts(rawParts, isAssignedCtx);
   const titleEl=$('supplierDirectPartsTitle');
   if(titleEl) titleEl.style.display=visibleParts.length>0?'':'none';
   visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
