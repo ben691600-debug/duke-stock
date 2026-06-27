@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7676,14 +7676,57 @@ function renderSupplierParts(){
   // Pièces directes
   $('partGrid').innerHTML='';
   const pq=($('partSearch')?$('partSearch').value.toLowerCase().trim():'');
-  // IDs supprimés = trashRemovedIds (contient les IDs des éléments, pas des tombstones)
   var _removedIds={};
   ((db&&db.trashRemovedIds)||[]).forEach(function(id){if(id)_removedIds[id]=true;});
   const rawParts=(s.parts||[]).filter(function(p){return p&&p.id&&!_removedIds[p.id];});
   const visibleParts=supplierAllowedParts(rawParts, isAssignedCtx);
   const titleEl=$('supplierDirectPartsTitle');
   if(titleEl) titleEl.style.display=visibleParts.length>0?'':'none';
-  visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>!pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq)).forEach(p=>{
+  // ── Filtre par modèle ──
+  var partFilterWrap=document.getElementById('supplierPartModelFilter');
+  if(!partFilterWrap){
+    partFilterWrap=document.createElement('div');
+    partFilterWrap.id='supplierPartModelFilter';
+    partFilterWrap.style.cssText='margin:8px 0 4px;position:relative';
+    var pg=$('partGrid');
+    if(pg&&pg.parentNode) pg.parentNode.insertBefore(partFilterWrap, pg);
+  }
+  partFilterWrap.innerHTML='';
+  var modelSet=[];
+  visibleParts.forEach(function(p){(p.models||[]).forEach(function(m){if(m&&modelSet.indexOf(m)===-1)modelSet.push(m);});});
+  modelSet.sort();
+  if(modelSet.length>=1){
+    var activeModelFilter=window._supplierPartModelFilter||'';
+    var filterBtn2=document.createElement('button');
+    filterBtn2.type='button';
+    filterBtn2.style.cssText='display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:14px;border:2px solid var(--line);background:white;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px';
+    filterBtn2.innerHTML=activeModelFilter?'🏭 '+esc(activeModelFilter)+' <span style="color:#ef5350">✕</span>':'▼ Filtrage';
+    var dropdown2=document.createElement('div');
+    dropdown2.style.cssText='display:none;position:absolute;top:46px;left:0;right:0;background:white;border:2px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:999;overflow:hidden;max-height:220px;overflow-y:auto';
+    var allOpt2=document.createElement('div');
+    allOpt2.style.cssText='padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;color:var(--blue)';
+    allOpt2.textContent='🔄 Tout afficher ('+visibleParts.length+')';
+    allOpt2.onclick=function(){window._supplierPartModelFilter='';dropdown2.style.display='none';renderSupplierParts();};
+    dropdown2.appendChild(allOpt2);
+    modelSet.forEach(function(model){
+      var count=visibleParts.filter(function(p){return(p.models||[]).indexOf(model)!==-1;}).length;
+      var opt2=document.createElement('div');
+      opt2.style.cssText='padding:11px 16px;font-size:14px;cursor:pointer;border-top:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between'+(activeModelFilter===model?';background:#e8f4fd;font-weight:800':'');
+      opt2.innerHTML='<span style="display:flex;align-items:center;gap:8px"><span style="background:#e8f4fd;color:#1a7ad4;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px">🏭</span>'+esc(model)+'</span>'+'<span style="background:#f0f0f0;color:#444;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">'+count+'</span>';
+      opt2.onclick=function(){window._supplierPartModelFilter=model;dropdown2.style.display='none';renderSupplierParts();};
+      dropdown2.appendChild(opt2);
+    });
+    filterBtn2.onclick=function(e){e.stopPropagation();dropdown2.style.display=dropdown2.style.display==='none'?'block':'none';};
+    partFilterWrap.appendChild(filterBtn2);
+    partFilterWrap.appendChild(dropdown2);
+  } else {
+    window._supplierPartModelFilter='';
+  }
+  var activeModelFilter=window._supplierPartModelFilter||'';
+  visibleParts.slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(function(p){
+    if(activeModelFilter&&(p.models||[]).indexOf(activeModelFilter)===-1) return false;
+    return !pq||[p.name,p.partNumber,p.price,(p.models||[]).join(' ')].join(' ').toLowerCase().includes(pq);
+  }).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,false);
