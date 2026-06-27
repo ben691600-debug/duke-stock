@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v17.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v17.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2185,21 +2185,7 @@ body.draggingMachine{
 </section>
 
 <section id="suppliersView" class="hidden">
-  <div class="toolbar moduleActionToolbar supplierTopActions">
-    <!-- Niveau 0 : liste des fournisseurs -->
-    <div class="actions moduleActionButtons oneButton" id="supplierActLevel0">
-      <button class="btn primary" id="addSupplierBtn">+ Fournisseur</button>
-    </div>
-    <!-- Niveau 1 : dans un fournisseur -->
-    <div class="actions moduleActionButtons twoButtons hidden" id="supplierActLevel1">
-      <button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button>
-      <button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button>
-    </div>
-    <!-- Niveau 2 : dans un sous-groupe -->
-    <div class="actions moduleActionButtons oneButton hidden" id="supplierActLevel2">
-      <button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>
-    </div>
-  </div>
+  <div class="toolbar moduleActionToolbar supplierTopActions" id="supplierActionBar"></div>
   <button class="btn secondary backSymbolBtn floatingBackBtn hidden" id="supplierUpBtn" title="Retour">←</button>
   <div id="suppliersRoot">
     <input class="search" id="supplierGlobalSearch" data-i-placeholder="searchSuppliers" placeholder="Rechercher fournisseur, téléphone, mail, pièce, modèle...">
@@ -7397,17 +7383,26 @@ function _supplierShowLevel(level){
   if($('supplierSubgroupDetail')) $('supplierSubgroupDetail').classList.toggle('hidden', level!==2);
   // Bouton retour
   if($('supplierUpBtn')) $('supplierUpBtn').classList.toggle('hidden', level===0);
-  // Barre d'actions : toujours visible pour admin, un seul bloc actif
-  var topBar=document.querySelector('#suppliersView > .supplierTopActions');
-  if(topBar){
-    if(isAdmin()){
-      topBar.classList.remove('hidden');
-      ['supplierActLevel0','supplierActLevel1','supplierActLevel2'].forEach(function(id,i){
-        var el=$(id); if(el) el.classList.toggle('hidden', i!==level);
-      });
-    } else {
-      topBar.classList.add('hidden');
-    }
+  // Barre d'actions : un seul div, contenu mis à jour selon niveau ET admin
+  var bar=$('supplierActionBar');
+  if(!bar) return;
+  if(!isAdmin()){bar.innerHTML='';return;}
+  if(level===0){
+    bar.innerHTML='<div class="actions moduleActionButtons oneButton"><button class="btn primary" id="addSupplierBtn">+ Fournisseur</button></div>';
+    var b0=$('addSupplierBtn');
+    if(b0) b0.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
+  } else if(level===1){
+    bar.innerHTML='<div class="actions moduleActionButtons twoButtons"><button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button><button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button></div>';
+    var b1=$('addSubgroupBtn');
+    if(b1) b1.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSubgroupId=null;$('subgroupForm').reset();$('subgroupDialog').querySelector('h2').textContent=T('addSubgroup');$('subgroupPreview').classList.add('hidden');$('subgroupDialog').showModal();};
+    var b2=$('addPartBtn');
+    if(b2) b2.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='false';$('partDialog').showModal();};
+  } else if(level===2){
+    bar.innerHTML='<div class="actions moduleActionButtons oneButton"><button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button></div>';
+    var b3=$('addPartInSubgroupBtn');
+    if(b3) b3.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='true';$('partDialog').showModal();};
+  } else {
+    bar.innerHTML='';
   }
 }
 
@@ -7785,7 +7780,6 @@ function deleteSubgroup(sgId){ if(!isAdmin())return; if(!confirm('Supprimer ce s
 // ── CRUD Pièces ─────────────────────────────────────────────
 function _getPartTarget(inSubgroup){ const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s)return null; if(inSubgroup){const sg=(s.subgroups||[]).find(x=>x.id===selectedSupplierSubgroupId);return sg?{container:sg,supplier:s,subgroup:sg}:null;} return{container:s,supplier:s,subgroup:null}; }
 if($('addPartBtn')) $('addPartBtn').onclick=()=>{ if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;} editingPartId=null; partImageData=''; $('partForm').reset(); populatePartModelsSelect([]); $('partDialog').querySelector('h2').textContent=T('addPart'); $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup='false'; $('partDialog').showModal(); };
-if($('addPartInSubgroupBtn')) $('addPartInSubgroupBtn').onclick=()=>{ editingPartId=null; partImageData=''; $('partForm').reset(); populatePartModelsSelect([]); $('partDialog').querySelector('h2').textContent=T('addPart'); $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup='true'; $('partDialog').showModal(); };
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
 if($('partForm')) $('partForm').onsubmit=e=>{ e.preventDefault(); const inSubgroup=$('partDialog').dataset.inSubgroup==='true'; const target=_getPartTarget(inSubgroup); if(!target)return; target.container.parts=target.container.parts||[]; const models=readPartModelsSelect(); if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} };
 function openEditPart(id,inSubgroup){ const target=_getPartTarget(inSubgroup); if(!target)return; const p=(target.container.parts||[]).find(x=>x.id===id); if(!p)return; editingPartId=id; partImageData=p.image||''; $('partForm').reset(); $('partDialog').querySelector('h2').textContent='✏️ '+T('addPart'); $('partNameInput').value=p.name||''; $('sparePartNumberInput').value=p.partNumber||''; $('partPriceInput').value=p.price||''; populatePartModelsSelect(p.models||[]); if(partImageData){$('partPreview').style.backgroundImage=`url(${partImageData})`;$('partPreview').classList.remove('hidden');}else $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup=inSubgroup?'true':'false'; $('partDialog').showModal(); }
