@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3540,9 +3540,7 @@ function _normalizeSuppliersInPlace(){
   });
 }
 function save(){
-  // CORRECTIF CRITIQUE : re-garantir les tableaux essentiels juste avant la sauvegarde,
-  // car une fusion Firebase (mergeDbWithRemote) peut survenir entre le chargement
-  // initial et un save() ultérieur.
+  // CORRECTIF CRITIQUE : re-garantir les tableaux essentiels juste avant la sauvegarde
   if(!Array.isArray(db.cars)) db.cars=[];
   if(!Array.isArray(db.users)) db.users=[];
   if(!db.clientRoot || typeof db.clientRoot!=='object') db.clientRoot={groups:[],machines:[]};
@@ -3551,6 +3549,8 @@ function save(){
   if(!Array.isArray(db.history)) db.history=[];
   if(!Array.isArray(db.trash)) db.trash=[];
   if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+  // Normaliser suppliers (Firebase peut retourner des objets indexés)
+  _normalizeSuppliersInPlace();
   db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();
 }
 let db=load();
@@ -7837,7 +7837,7 @@ function _getPartTarget(inSubgroup){
   return {container:s,supplier:s,subgroup:null};
 }
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
-if($('partForm')) $('partForm').onsubmit=e=>{ e.preventDefault(); const inSubgroup=$('partDialog').dataset.inSubgroup==='true'; const target=_getPartTarget(inSubgroup); if(!target)return; target.container.parts=target.container.parts||[]; const models=readPartModelsSelect(); if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} };
+if($('partForm')) $('partForm').onsubmit=e=>{ e.preventDefault(); const inSubgroup=$('partDialog').dataset.inSubgroup==='true'; _normalizeSuppliersInPlace(); const target=_getPartTarget(inSubgroup); if(!target)return; if(!Array.isArray(target.container.parts)) target.container.parts=target.container.parts?Object.values(target.container.parts):[]; const models=readPartModelsSelect(); if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} };
 function openEditPart(id,inSubgroup){ const target=_getPartTarget(inSubgroup); if(!target)return; const p=(target.container.parts||[]).find(x=>x.id===id); if(!p)return; editingPartId=id; partImageData=p.image||''; $('partForm').reset(); $('partDialog').querySelector('h2').textContent='✏️ '+T('addPart'); $('partNameInput').value=p.name||''; $('sparePartNumberInput').value=p.partNumber||''; $('partPriceInput').value=p.price||''; populatePartModelsSelect(p.models||[]); if(partImageData){$('partPreview').style.backgroundImage=`url(${partImageData})`;$('partPreview').classList.remove('hidden');}else $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup=inSubgroup?'true':'false'; $('partDialog').showModal(); }
 function deletePart(id,inSubgroup){ if(!isAdmin())return; const target=_getPartTarget(inSubgroup); if(!target)return; if(!confirm(T('deletePartConfirm')))return; const p=(target.container.parts||[]).find(x=>x.id===id); target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id); if(p)moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null}); log('DELETE_PART',p?p.partNumber:id); save(); if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} }
 
