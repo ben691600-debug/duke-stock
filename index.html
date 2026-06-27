@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3527,6 +3527,17 @@ function load(){
   if(!Array.isArray(d.trash)) d.trash=[];
   if(!Array.isArray(d.trashRemovedIds)) d.trashRemovedIds=[];
   return d;
+}
+function _normalizeSuppliersInPlace(){
+  if(!db||!db.suppliers) return;
+  if(!Array.isArray(db.suppliers)) db.suppliers=Object.values(db.suppliers);
+  db.suppliers.forEach(function normalizeNode(s){
+    if(!s) return;
+    if(s.groups&&!s.subgroups){s.subgroups=s.groups;delete s.groups;}
+    if(!Array.isArray(s.subgroups)) s.subgroups=s.subgroups?Object.values(s.subgroups):[];
+    if(!Array.isArray(s.parts)) s.parts=s.parts?Object.values(s.parts):[];
+    (s.subgroups||[]).forEach(function(sg){normalizeNode(sg);});
+  });
 }
 function save(){
   // CORRECTIF CRITIQUE : re-garantir les tableaux essentiels juste avant la sauvegarde,
@@ -7484,6 +7495,7 @@ function cleanupSgTouchDrag(resetClick=true){
 
 // ── Niveau 0 ───────────────────────────────────────────────
 function renderSuppliersModule(){
+  _normalizeSuppliersInPlace();
   _supplierShowLevel(0); // Réinitialiser les boutons au niveau 0
   if(!$('supplierGrid')) return;
   $('supplierGrid').innerHTML=''; db.suppliers=db.suppliers||[];
@@ -7563,6 +7575,7 @@ function renderSuppliersModule(){
 
 // ── Niveau 1 — drag COPIE EXACTE du client machine ─────────
 function renderSupplierParts(){
+  _normalizeSuppliersInPlace();
   _supplierShowLevel(1); // Toujours niveau 1 quand on affiche les parties d'un fournisseur
   if(!$('partGrid')) return;
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
@@ -7746,6 +7759,7 @@ function _findSgById(id, subs){
   return null;
 }
 function renderSubgroupParts(){
+  _normalizeSuppliersInPlace();
   _supplierShowLevel(2);
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
   const sg=_findSgById(selectedSupplierSubgroupId, s.subgroups||[]); if(!sg) return;
