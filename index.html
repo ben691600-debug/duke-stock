@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3924,10 +3924,11 @@ function openApp(){
 
 function renderAll(){
   if(!currentUser)return;
-  // adminOnly = seulement settingsBtn et trashBtn (jamais délégables)
   document.querySelectorAll('.adminOnly').forEach(function(e){e.classList.toggle('hidden',!isAdmin());});
-  renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();renderSuppliersModule();
-  // Appliquer les permissions APRÈS tous les renders
+  renderCars();renderItems();renderUsers();renderHistory();renderAttendancePanel();
+  // Ne re-rendre les fournisseurs que si on est au niveau 0 (liste) pour éviter le retour arrière
+  var suppLevel=($('supplierDetail')&&!$('supplierDetail').classList.contains('hidden'))?1:($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')?2:0);
+  if(suppLevel===0) renderSuppliersModule();
   if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
@@ -7547,11 +7548,16 @@ function renderSuppliersModule(){
     card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const srcId=ev.dataTransfer.getData('text/plain');if(srcId&&srcId!==s.id)_moveSupplierIntoSupplier(srcId,s.id);});
     card.addEventListener('contextmenu',ev=>ev.preventDefault());
     card.addEventListener('pointerdown',ev=>{
-      if(!isAdmin()||ev.target.closest('button')) return;
+      if(ev.target.closest('button')) return;
       clearTimeout(supplierLongPressTimer);
-      try{card.setPointerCapture(ev.pointerId);}catch(e){}
       card.classList.add('dragArmed'); supplierLastX=ev.clientX; supplierLastY=ev.clientY;
-      supplierLongPressTimer=setTimeout(()=>{supplierSuppressNextClick=true;_startSupplierTouchDrag(s.id,ev.clientX,ev.clientY);},520);
+      if(isAdmin()){
+        supplierLongPressTimer=setTimeout(()=>{
+          supplierSuppressNextClick=true;
+          try{card.setPointerCapture(ev.pointerId);}catch(e){}
+          _startSupplierTouchDrag(s.id,ev.clientX,ev.clientY);
+        },520);
+      }
     },{passive:true});
     card.addEventListener('pointermove',ev=>{
       if(ev.target.closest('button')) return;
@@ -7626,11 +7632,17 @@ function renderSupplierParts(){
       card.addEventListener('drop',ev=>{ev.preventDefault();ev.stopPropagation();card.classList.remove('groupDropTarget');const srcId=ev.dataTransfer.getData('text/plain');if(srcId&&srcId!==sg.id)moveSupplierSubgroupInto(sg.id,srcId);});
       card.addEventListener('contextmenu',ev=>ev.preventDefault());
       card.addEventListener('pointerdown',ev=>{
-        if(!isAdmin()||ev.target.closest('button')) return;
+        if(ev.target.closest('button')) return;
         clearTimeout(sgLongPressTimer);
-        try{card.setPointerCapture(ev.pointerId);}catch(e){}
         card.classList.add('dragArmed'); sgLastX=ev.clientX; sgLastY=ev.clientY;
-        sgLongPressTimer=setTimeout(()=>{sgSuppressNextClickL=true;_startSgTouchDrag(sg.id,ev.clientX,ev.clientY);},520);
+        if(isAdmin()){
+          sgLongPressTimer=setTimeout(()=>{
+            ev.preventDefault();
+            sgSuppressNextClickL=true;
+            try{card.setPointerCapture(ev.pointerId);}catch(e){}
+            _startSgTouchDrag(sg.id,ev.clientX,ev.clientY);
+          },520);
+        }
       },{passive:true});
       card.addEventListener('pointermove',ev=>{
         if(ev.target.closest('button')) return;
