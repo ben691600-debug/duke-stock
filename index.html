@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v18.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7548,11 +7548,11 @@ function renderSuppliersModule(){
     card.addEventListener('contextmenu',ev=>ev.preventDefault());
     card.addEventListener('pointerdown',ev=>{
       if(!isAdmin()||ev.target.closest('button')) return;
-      ev.preventDefault(); clearTimeout(supplierLongPressTimer);
+      clearTimeout(supplierLongPressTimer);
       try{card.setPointerCapture(ev.pointerId);}catch(e){}
       card.classList.add('dragArmed'); supplierLastX=ev.clientX; supplierLastY=ev.clientY;
-      supplierLongPressTimer=setTimeout(()=>_startSupplierTouchDrag(s.id,ev.clientX,ev.clientY),520);
-    },{passive:false});
+      supplierLongPressTimer=setTimeout(()=>{supplierSuppressNextClick=true;_startSupplierTouchDrag(s.id,ev.clientX,ev.clientY);},520);
+    },{passive:true});
     card.addEventListener('pointermove',ev=>{
       if(ev.target.closest('button')) return;
       const dx=Math.abs(ev.clientX-supplierLastX),dy=Math.abs(ev.clientY-supplierLastY);
@@ -7627,11 +7627,11 @@ function renderSupplierParts(){
       card.addEventListener('contextmenu',ev=>ev.preventDefault());
       card.addEventListener('pointerdown',ev=>{
         if(!isAdmin()||ev.target.closest('button')) return;
-        ev.preventDefault(); clearTimeout(sgLongPressTimer);
+        clearTimeout(sgLongPressTimer);
         try{card.setPointerCapture(ev.pointerId);}catch(e){}
         card.classList.add('dragArmed'); sgLastX=ev.clientX; sgLastY=ev.clientY;
-        sgLongPressTimer=setTimeout(()=>_startSgTouchDrag(sg.id,ev.clientX,ev.clientY),520);
-      },{passive:false});
+        sgLongPressTimer=setTimeout(()=>{sgSuppressNextClickL=true;_startSgTouchDrag(sg.id,ev.clientX,ev.clientY);},520);
+      },{passive:true});
       card.addEventListener('pointermove',ev=>{
         if(ev.target.closest('button')) return;
         const dx=Math.abs(ev.clientX-sgLastX),dy=Math.abs(ev.clientY-sgLastY);
@@ -7877,7 +7877,7 @@ function _getPartTarget(inSubgroup){
 if($('partImageInput')) $('partImageInput').onchange=e=>readSupplierImage(e.target,v=>partImageData=v,'partPreview');
 if($('partForm')) $('partForm').onsubmit=e=>{ e.preventDefault(); const inSubgroup=$('partDialog').dataset.inSubgroup==='true'; _normalizeSuppliersInPlace(); const target=_getPartTarget(inSubgroup); if(!target)return; if(!Array.isArray(target.container.parts)) target.container.parts=target.container.parts?Object.values(target.container.parts):[]; const models=readPartModelsSelect(); if(editingPartId){const p=target.container.parts.find(x=>x.id===editingPartId);if(p){p.image=partImageData;p.name=$('partNameInput').value.trim();p.partNumber=$('sparePartNumberInput').value.trim();p.price=$('partPriceInput').value;p.models=models;log('EDIT_PART',p.partNumber);}}else{const p={id:uid(),image:partImageData,name:$('partNameInput').value.trim(),partNumber:$('sparePartNumberInput').value.trim(),price:$('partPriceInput').value,models};target.container.parts.push(p);log('ADD_PART',p.partNumber);}editingPartId=null;save();$('partDialog').close();if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} };
 function openEditPart(id,inSubgroup){ const target=_getPartTarget(inSubgroup); if(!target)return; const p=(target.container.parts||[]).find(x=>x.id===id); if(!p)return; editingPartId=id; partImageData=p.image||''; $('partForm').reset(); $('partDialog').querySelector('h2').textContent='✏️ '+T('addPart'); $('partNameInput').value=p.name||''; $('sparePartNumberInput').value=p.partNumber||''; $('partPriceInput').value=p.price||''; populatePartModelsSelect(p.models||[]); if(partImageData){$('partPreview').style.backgroundImage=`url(${partImageData})`;$('partPreview').classList.remove('hidden');}else $('partPreview').classList.add('hidden'); $('partDialog').dataset.inSubgroup=inSubgroup?'true':'false'; $('partDialog').showModal(); }
-function deletePart(id,inSubgroup){ if(!isAdmin())return; const target=_getPartTarget(inSubgroup); if(!target)return; if(!confirm(T('deletePartConfirm')))return; const p=(target.container.parts||[]).find(x=>x.id===id); target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id); if(p)moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null}); log('DELETE_PART',p?p.partNumber:id); save(); if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();renderSuppliersModule();} }
+function deletePart(id,inSubgroup){ if(!isAdmin())return; const target=_getPartTarget(inSubgroup); if(!target)return; if(!confirm(T('deletePartConfirm')))return; const p=(target.container.parts||[]).find(x=>x.id===id); target.container.parts=(target.container.parts||[]).filter(x=>x.id!==id); if(p)moveToTrash('part',p,{supplierId:target.supplier.id,subgroupId:target.subgroup?target.subgroup.id:null}); log('DELETE_PART',p?p.partNumber:id); save(); if(inSubgroup){renderSubgroupParts();}else{renderSupplierParts();} }
 
 // ── Bouton stock client ─────────────────────────────────────
 function _injectClientStockBtn(){
