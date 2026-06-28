@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v191
+const CACHE_NAME = 'duke-stock-v192
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -9,7 +9,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
-  self.skipWaiting();
+  // skipWaiting supprimé - attendre le bouton 'Mettre à jour'
 });
 self.addEventListener('activate', event => {
   event.waitUntil(
@@ -17,7 +17,12 @@ self.addEventListener('activate', event => {
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
-  self.clients.claim();
+  // clients.claim() supprimé - la mise à jour se fait manuellement
+});
+self.addEventListener('message', event => {
+  if(event.data && event.data.type === 'SKIP_WAITING'){
+    self.skipWaiting();
+  }
 });
 self.addEventListener('fetch', event => {
   event.respondWith(

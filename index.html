@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v19.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v19.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -112,10 +112,11 @@ setTimeout(function(){
   --ok:#148B57; --warn:#B7791F; --shadow:0 18px 45px rgba(10,124,194,.16);
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eaf6fc,#f7f8fa);color:var(--dark);overflow:hidden}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eaf6fc,#f7f8fa);color:var(--dark)}
 button,input,select{font:inherit} .hidden{display:none!important}
 img{max-width:100%}
 .centerScreen{min-height:100vh;display:grid;place-items:center;padding:22px}
+#loginView:not(.hidden), #langView:not(.hidden){position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg, #eaf6fc);overflow-y:auto}
 #installBanner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0A7CC2;color:white;padding:14px 18px;align-items:center;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.18)}
 #installBanner span{flex:1;font-weight:800;font-size:15px}
 #installBannerBtn{background:white;color:#0A7CC2;border:0;border-radius:14px;padding:10px 18px;font-weight:900;cursor:pointer;font-size:14px;white-space:nowrap}
@@ -3499,8 +3500,10 @@ function checkSessionTimeout(){
     if(loginPass) loginPass.value='';
     var ub=document.getElementById('universalBackBtn');
     if(ub) ub.classList.remove('visible');
-    // Remonter en haut de page pour que le formulaire de connexion soit visible
+    // Forcer le scroll en haut ET bloquer l'accès au contenu
     window.scrollTo(0,0);
+    document.documentElement.scrollTop=0;
+    document.body.scrollTop=0;
   }
 }
 setInterval(checkSessionTimeout,60000);
@@ -3870,8 +3873,6 @@ function _getCurrentView(){
 function show(view){
   if(ADMIN_ONLY_VIEWS.includes(view)&&!isAdmin()) view='moduleView';
   if(view==='stockView'){const c=(db.cars||[]).find(x=>x.id===selected);if(!canAccessVehicle(c)) view='moduleView';}
-  // Bloquer le scroll du body quand loginView est visible (empêche l'accès au contenu)
-  document.body.style.overflow=(view==='loginView'||view==='langView')?'hidden':'';
   // Push current state to history before navigating
   var prevView=_getCurrentView();
   if(prevView!==view){
@@ -3916,7 +3917,6 @@ function afterLogin(){
 }
 
 function openApp(){
-  document.body.style.overflow=''; // Débloquer le scroll après connexion
   _navHistory=[];
   $('langView').classList.add('hidden');
   $('appView').classList.remove('hidden');
