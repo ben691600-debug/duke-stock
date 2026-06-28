@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v18.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v19.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7538,7 +7538,7 @@ function renderSuppliersModule(){
     const dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
     card.onclick=(ev)=>{
       if(ev.target.closest('button')) return;
-      if(supplierTouchDragActive||supplierSuppressNextClick){ev.preventDefault();ev.stopPropagation();return;}
+      if(supplierTouchDragActive) return;
       openSupplier(s.id);
     };
     card.addEventListener('dragstart',ev=>{if(!isAdmin()){ev.preventDefault();return;}ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',s.id);card.classList.add('groupDragSource');});
@@ -7582,6 +7582,9 @@ function renderSuppliersModule(){
 // ── Niveau 1 — drag COPIE EXACTE du client machine ─────────
 function renderSupplierParts(){
   _normalizeSuppliersInPlace();
+  // Réinitialiser les flags de drag pour éviter que les clicks soient bloqués
+  sgSuppressNextClickL=false; sgSuppressNextClick=false;
+  supplierSuppressNextClick=false;
   _supplierShowLevel(1); // Toujours niveau 1 quand on affiche les parties d'un fournisseur
   if(!$('partGrid')) return;
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
@@ -7621,7 +7624,7 @@ function renderSupplierParts(){
       const db2=card.querySelector('[data-act=delete]'); if(db2) db2.onclick=ev=>{ev.stopPropagation();deleteSubgroup(sg.id);};
       card.onclick=(ev)=>{
         if(ev.target.closest('button')) return;
-        if(sgTouchDragActiveL||sgSuppressNextClickL||sgSuppressNextClick) return;
+        if(sgTouchDragActiveL) return;
         if(movingSupplierSubgroupId&&movingSupplierSubgroupId!==sg.id){moveSupplierSubgroupInto(sg.id);return;}
         openSupplierSubgroup(sg.id);
       };
