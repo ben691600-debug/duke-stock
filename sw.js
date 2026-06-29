@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v192
+const CACHE_NAME = 'duke-stock-v193
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -17,7 +17,7 @@ self.addEventListener('activate', event => {
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
-  // clients.claim() supprimé - la mise à jour se fait manuellement
+  self.clients.claim(); // Nécessaire pour que le SW contrôle la page et que l'install PWA fonctionne
 });
 self.addEventListener('message', event => {
   if(event.data && event.data.type === 'SKIP_WAITING'){
