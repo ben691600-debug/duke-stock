@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v19.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v19.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -83,27 +83,55 @@ function applyAppUpdate(){
 }
 
 let _installPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{
-  if(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true) return;
-  e.preventDefault(); _installPrompt=e;
-  var b=document.getElementById('installBanner');
-  if(b) b.style.display='flex';
+
+function _showPwaInstallBar(){
+  // Ne pas afficher si déjà installée ou si l'utilisateur a fermé la bannière
+  if(window.matchMedia('(display-mode: standalone)').matches) return;
+  if(window.navigator.standalone===true) return;
+  if(localStorage.getItem('pwa_install_dismissed')==='1') return;
+  var bar=document.getElementById('pwaInstallBar');
+  if(bar) setTimeout(function(){bar.style.top='0';},800);
+}
+
+window.addEventListener('beforeinstallprompt',function(e){
+  if(window.matchMedia('(display-mode: standalone)').matches) return;
+  e.preventDefault();
+  _installPrompt=e;
+  // Connecter le bouton Installer à la bannière custom
+  var btn=document.getElementById('pwaInstallBtn');
+  if(btn) btn.onclick=function(){
+    if(_installPrompt){
+      _installPrompt.prompt();
+      _installPrompt.userChoice.then(function(r){
+        var bar=document.getElementById('pwaInstallBar');
+        if(bar) bar.style.top='-120px';
+        _installPrompt=null;
+      });
+    }
+  };
+  _showPwaInstallBar();
 });
-window.addEventListener('appinstalled',()=>{
-  var b=document.getElementById('installBanner');
-  if(b) b.style.display='none';
-  var m=document.getElementById('manualInstallBar');
-  if(m) m.style.display='none';
+
+window.addEventListener('appinstalled',function(){
+  var bar=document.getElementById('pwaInstallBar');
+  if(bar) bar.style.top='-120px';
   _installPrompt=null;
 });
-// Afficher le guide d'installation manuel après 3 secondes si pas de prompt automatique
+
+// Si pas de beforeinstallprompt après 2s (Samsung/Chrome récent) → afficher quand même
 setTimeout(function(){
-  if(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true) return;
+  if(window.matchMedia('(display-mode: standalone)').matches) return;
+  if(window.navigator.standalone===true) return;
+  if(localStorage.getItem('pwa_install_dismissed')==='1') return;
+  // Connecter bouton à l'installation manuelle si pas de prompt natif
   if(!_installPrompt){
-    var m=document.getElementById('manualInstallBar');
-    if(m) m.style.display='block';
+    var btn=document.getElementById('pwaInstallBtn');
+    if(btn) btn.onclick=function(){
+      alert('Pour installer :\n1. Appuyez sur le menu ⋮ de Chrome\n2. Choisissez "Ajouter à l\'écran d\'accueil"\n3. Confirmez l\'installation');
+    };
+    _showPwaInstallBar();
   }
-},3000);
+},2000);
 </script>
 <style>
 :root {
@@ -2003,10 +2031,15 @@ body.draggingMachine{
   <button id="updateBannerBtn" onclick="applyAppUpdate()" data-i="updateBtn">Mettre à jour</button>
 </div>
 
-<!-- Bouton install manuel (toujours visible) -->
-<div id="manualInstallBar" style="position:fixed;top:0;left:0;right:0;z-index:9998;background:#075C92;color:white;text-align:center;padding:10px;font-size:14px;font-weight:800;display:none">
-  📲 Pour installer : menu du navigateur → <b>"Ajouter à l'écran d'accueil"</b>
-  <button onclick="document.getElementById('manualInstallBar').style.display='none'" style="margin-left:10px;background:rgba(255,255,255,0.2);border:0;color:white;border-radius:8px;padding:4px 10px;cursor:pointer">✕</button>
+<!-- Bannière installation custom - coulisse du haut -->
+<div id="pwaInstallBar" style="position:fixed;top:-120px;left:0;right:0;z-index:10000;background:#0A7CC2;color:white;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(0,0,0,.25);transition:top 0.4s cubic-bezier(.4,0,.2,1)">
+  <span style="font-size:32px">📲</span>
+  <div style="flex:1">
+    <div style="font-weight:900;font-size:15px">Duke Stock Manager</div>
+    <div style="font-size:12px;opacity:.9">Installer l'application sur votre téléphone</div>
+  </div>
+  <button id="pwaInstallBtn" style="background:white;color:#0A7CC2;border:0;border-radius:12px;padding:10px 18px;font-weight:900;font-size:14px;cursor:pointer;white-space:nowrap">Installer</button>
+  <button onclick="document.getElementById('pwaInstallBar').style.top='-120px';localStorage.setItem('pwa_install_dismissed','1')" style="background:none;border:0;color:rgba(255,255,255,.8);font-size:24px;cursor:pointer;padding:0 4px;line-height:1">✕</button>
 </div>
 
 <div class="centerScreen" id="loginView">
