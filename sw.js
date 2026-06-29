@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v194
+const CACHE_NAME = 'duke-stock-v195';
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -9,16 +9,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
-  // skipWaiting seulement si c'est la première installation (pas de clients existants)
-  event.waitUntil(
-    self.clients.matchAll({type:'window'}).then(function(clients){
-      if(clients.length === 0){
-        // Première installation : prendre le contrôle immédiatement pour activer PWA
-        self.skipWaiting();
-      }
-      // Mise à jour : attendre le bouton - skipWaiting déclenché par message
-    })
-  );
+  self.skipWaiting();
 });
 self.addEventListener('activate', event => {
   event.waitUntil(
@@ -26,7 +17,7 @@ self.addEventListener('activate', event => {
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
-  self.clients.claim(); // Nécessaire pour que le SW contrôle la page et que l'install PWA fonctionne
+  self.clients.claim();
 });
 self.addEventListener('message', event => {
   if(event.data && event.data.type === 'SKIP_WAITING'){
