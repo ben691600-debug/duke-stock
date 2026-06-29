@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v19.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v19.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3048,6 +3048,10 @@ function initRTDB(){
       if(!Array.isArray(db.history)) db.history=[];
       if(!Array.isArray(db.trash)) db.trash=[];
       if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+      // Normaliser clientServiceRequests : Firebase retourne parfois un objet indexé
+      if(db.clientServiceRequests&&!Array.isArray(db.clientServiceRequests))
+        db.clientServiceRequests=Object.values(db.clientServiceRequests);
+      if(!Array.isArray(db.clientServiceRequests)) db.clientServiceRequests=[];
       // Normaliser suppliers : Firebase stocke parfois comme objet indexé {0:{...},1:{...}}
       if(db.suppliers&&!Array.isArray(db.suppliers)){
         db.suppliers=Object.values(db.suppliers);
@@ -3595,6 +3599,7 @@ function save(){
   if(!Array.isArray(db.history)) db.history=[];
   if(!Array.isArray(db.trash)) db.trash=[];
   if(!Array.isArray(db.trashRemovedIds)) db.trashRemovedIds=[];
+  if(!Array.isArray(db.clientServiceRequests)) db.clientServiceRequests=db.clientServiceRequests?Object.values(db.clientServiceRequests):[];
   // Normaliser suppliers (Firebase peut retourner des objets indexés)
   _normalizeSuppliersInPlace();
   db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();
