@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -310,6 +310,11 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 #clientMachinesList .item p{font-size:12px;margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #clientMachinesList .qtyLine{margin-top:5px;gap:5px}
 #clientMachinesList .mini{font-size:11px;padding:6px 8px;border-radius:10px}
+#planningMachinesList .item{grid-template-columns:64px 1fr;border-radius:18px;padding:9px;gap:9px}
+#planningMachinesList .itemPhoto{width:64px;height:64px;border-radius:14px;font-size:25px}
+#planningMachinesList .item h3{font-size:15px;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#planningMachinesList .item p{font-size:12px;margin:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#planningMachinesList .mini{font-size:11px;padding:6px 8px;border-radius:10px}
 #clientsView .toolbar{align-items:flex-start}
 #clientsView .toolbar .actions{gap:6px}
 #clientsView .toolbar .btn{padding:9px 11px;border-radius:13px;font-size:13px}
@@ -322,6 +327,8 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
   #clientMachinesList{grid-template-columns:1fr}
   #clientMachinesList .item{grid-template-columns:58px 1fr}
   #clientMachinesList .itemPhoto{width:58px;height:58px}
+  #planningMachinesList .item{grid-template-columns:58px 1fr}
+  #planningMachinesList .itemPhoto{width:58px;height:58px}
 }
 
 
@@ -6576,20 +6583,22 @@ function renderMyMissionsModule(){
     var found=findMachineById(ms.machineId);
     var isDone=ms.status==='done';
     var card=document.createElement('div');
-    card.style.cssText='background:white;border:2px solid '+(isDone?'#c8e6c9':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start;cursor:pointer'+(isDone?';opacity:.65':'');
+    card.style.cssText='position:relative;background:white;border:2px solid '+(isDone?'#c8e6c9':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start;cursor:pointer'+(isDone?';opacity:.65':'');
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
     var groupLabel=found&&found.group?esc(found.group.name):'';
+    var wazeLink=found&&found.group?found.group.waze:'';
     var contacts=found&&found.group?normalizeGroupContacts(found.group):[];
     var firstContact=contacts[0]||{};
     card.innerHTML=
-      '<div style="font-size:28px">'+(isDone?'✅':'📅')+'</div>'
-      +'<div style="flex:1;min-width:0">'
+      (!isDone?'<button data-act="done" title="Valider et supprimer" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#2e7d32;color:#fff;border:none;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">✓</button>':'')
+      +'<div style="font-size:28px">'+(isDone?'✅':'📅')+'</div>'
+      +'<div style="flex:1;min-width:0;padding-right:'+(isDone?'0':'48')+'px">'
       +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' à '+esc(ms.time)+'</div>'
       +'<div style="margin-top:4px;font-weight:700">🏭 '+machineLabel+'</div>'
       +(groupLabel?'<div style="margin-top:2px;color:#1a7ad4;font-weight:700">📍 '+groupLabel+'</div>':'')
-      +(firstContact.firstName?'<div style="margin-top:2px">👤 '+esc(firstContact.firstName)+(firstContact.phone?' — 📞 <a href="tel:'+esc(firstContact.phone)+'" onclick="event.stopPropagation()" style="color:#1a7ad4;font-weight:800">'+esc(firstContact.phone)+'</a>':'')+'</div>':'')
+      +(wazeLink?'<a href="'+esc(wazeLink)+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;background:#00d4b1;color:#fff;font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;text-decoration:none">🧭 Waze</a>':'')
+      +(firstContact.firstName?'<div style="margin-top:6px">👤 '+esc(firstContact.firstName)+(firstContact.phone?' — 📞 <a href="tel:'+esc(firstContact.phone)+'" onclick="event.stopPropagation()" style="color:#1a7ad4;font-weight:800">'+esc(firstContact.phone)+'</a>':'')+'</div>':'')
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">📝 '+esc(ms.notes)+'</div>':'')
-      +(!isDone?'<button class="btn ok mini" data-act="done" style="margin-top:8px">✅ Marquer terminée</button>':'')
       +'</div>';
     card.onclick=function(ev){
       if(ev.target.closest('button,a')) return;
@@ -6601,7 +6610,7 @@ function renderMyMissionsModule(){
         renderClientMachineModule();
       }
     };
-    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){ev.stopPropagation();setMissionStatus(ms.id,'done');renderMyMissionsModule();};
+    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){ev.stopPropagation();setMissionStatus(ms.id,'done');deleteMission(ms.id);renderMyMissionsModule();};
     container.appendChild(card);
   });
 }
