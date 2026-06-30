@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6589,14 +6589,15 @@ function renderMyMissionsModule(){
     var wazeLink=found&&found.group?findNearestGroupWaze(found.group.id):'';
     var firstContact=(found&&found.group?findNearestGroupContact(found.group.id):null)||{};
     card.innerHTML=
-      (!isDone?'<button data-act="done" title="Valider et supprimer" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#2e7d32;color:#fff;border:none;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">✓</button>':'')
+      (!isDone?'<button data-act="done" title="Valider et supprimer" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#2e7d32;color:#fff;border:none;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">✓</button>'
+        :'<button data-act="remove" title="Supprimer définitivement" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#c62828;color:#fff;border:none;font-size:17px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🗑️</button>')
       +'<div style="font-size:28px">'+(isDone?'✅':'📅')+'</div>'
-      +'<div style="flex:1;min-width:0;padding-right:'+(isDone?'0':'48')+'px">'
+      +'<div style="flex:1;min-width:0;padding-right:48px">'
       +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' à '+esc(ms.time)+'</div>'
       +'<div style="margin-top:4px;font-weight:700">🏭 '+machineLabel+'</div>'
       +(groupLabel?'<div style="margin-top:2px;color:#1a7ad4;font-weight:700">📍 '+groupLabel+'</div>':'')
       +(wazeLink?'<a href="'+esc(wazeLink)+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;background:#00d4b1;color:#fff;font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;text-decoration:none">🧭 Waze</a>':'')
-      +(firstContact.firstName?'<div style="margin-top:6px">👤 '+esc(firstContact.firstName)+(firstContact.phone?' — 📞 <a href="tel:'+esc(firstContact.phone)+'" onclick="event.stopPropagation()" style="color:#1a7ad4;font-weight:800">'+esc(firstContact.phone)+'</a>':'')+'</div>':'')
+      +((firstContact.firstName||firstContact.phone)?'<div style="margin-top:6px">👤 '+(firstContact.firstName?esc(firstContact.firstName):'Contact')+(firstContact.phone?' — 📞 <a href="tel:'+esc(firstContact.phone)+'" onclick="event.stopPropagation()" style="color:#1a7ad4;font-weight:800">'+esc(firstContact.phone)+'</a>':'')+'</div>':'')
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">📝 '+esc(ms.notes)+'</div>':'')
       +'</div>';
     card.onclick=function(ev){
@@ -6613,6 +6614,13 @@ function renderMyMissionsModule(){
       ev.stopPropagation();
       log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(found&&found.group?' | '+found.group.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
       setMissionStatus(ms.id,'done');
+      deleteMission(ms.id);
+      renderMyMissionsModule();
+    };
+    var rb=card.querySelector('[data-act=remove]'); if(rb) rb.onclick=function(ev){
+      ev.stopPropagation();
+      if(!confirm('Supprimer définitivement cette mission terminée ?')) return;
+      log('MISSION_REMOVED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(found&&found.group?' | '+found.group.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
       deleteMission(ms.id);
       renderMyMissionsModule();
     };
@@ -6644,7 +6652,7 @@ function findNearestGroupContact(groupId){
     var g=findGroupById(pathIds[i]);
     if(g){
       var contacts=normalizeGroupContacts(g);
-      if(contacts && contacts.length && contacts[0].firstName) return contacts[0];
+      if(contacts && contacts.length && (contacts[0].firstName||contacts[0].phone)) return contacts[0];
     }
   }
   return null;
