@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2279,24 +2279,49 @@ body.draggingMachine{
 </section>
 
 <section id="planningView" class="hidden">
-  <div class="toolbar moduleActionToolbar">
-    <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
-      <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
-        <option value="">👥 Tous les opérateurs</option>
-      </select>
-      <select id="planningStatusFilter" style="flex:1;min-width:120px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
-        <option value="">Tous statuts</option>
-        <option value="planned">📅 Planifiée</option>
-        <option value="done">✅ Terminée</option>
-      </select>
+  <div class="toolbar" style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn primary" id="planningTabAssign" style="flex:1">📍 Assigner</button>
+    <button class="btn secondary" id="planningTabGlobal" style="flex:1">📋 Vue globale</button>
+  </div>
+
+  <!-- Onglet 1 : Assigner — copie exacte de la structure clientsView -->
+  <div id="planningAssignPanel">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons oneButton">
+        <button class="btn secondary" id="planningUpBtn">← Retour</button>
+      </div>
     </div>
+    <div id="planningPath" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
+    <input class="search" id="planningSearch" placeholder="Rechercher groupe, machine, série...">
+    <h2 data-i="groups" style="margin:14px 0 8px">Groupes</h2>
+    <div id="planningEmptyGroups" class="hidden"><p class="muted">Aucun groupe ici.</p></div>
+    <div class="supplierGrid" id="planningGroupsGrid"></div>
+    <h2 data-i="machines" style="margin:18px 0 8px">Machines</h2>
+    <div id="planningEmptyMachines" class="hidden"><p class="muted">Aucune machine ici.</p></div>
+    <div id="planningMachinesList" style="display:flex;flex-direction:column;gap:10px"></div>
   </div>
-  <h2 style="margin:14px 0 8px">📅 Planning des interventions</h2>
-  <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
-    <div style="font-size:48px;margin-bottom:10px">📅</div>
-    <p>Aucune mission planifiée</p>
+
+  <!-- Onglet 2 : Vue globale par opérateur -->
+  <div id="planningGlobalPanel" class="hidden">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+          <option value="">👥 Tous les opérateurs</option>
+        </select>
+        <select id="planningStatusFilter" style="flex:1;min-width:120px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+          <option value="">Tous statuts</option>
+          <option value="planned">📅 Planifiée</option>
+          <option value="done">✅ Terminée</option>
+        </select>
+      </div>
+    </div>
+    <h2 style="margin:14px 0 8px">📅 Planning des interventions</h2>
+    <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
+      <div style="font-size:48px;margin-bottom:10px">📅</div>
+      <p>Aucune mission planifiée</p>
+    </div>
+    <div id="planningList" style="display:flex;flex-direction:column;gap:10px"></div>
   </div>
-  <div id="planningList" style="display:flex;flex-direction:column;gap:10px"></div>
 </section>
 
 <section id="myMissionsView" class="hidden">
@@ -3981,7 +4006,7 @@ function translate(){document.documentElement.lang=lang;document.documentElement
 // ── Navigation history stack ─────────────────────────────
 var _navHistory=[];
 function _getCurrentView(){
-  var views=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView'];
+  var views=['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView','planningView','myMissionsView'];
   for(var i=0;i<views.length;i++){var el=$(views[i]);if(el&&!el.classList.contains('hidden'))return views[i];}
   return 'moduleView';
 }
@@ -6366,7 +6391,99 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
 };
 
 // ── Vue Gestion Planning (admin) ─────────────────────────────────────
-function renderPlanningModule(){
+// ══════════════════════════════════════════════════════════════════
+// GESTION PLANNING — Onglet 1: Assigner (copie navigation clientsView)
+// ══════════════════════════════════════════════════════════════════
+let planningPathIds=[];
+function planningCurrentNode(){
+  let node=db.clientRoot;
+  for(const gid of planningPathIds){
+    node=(node.groups||[]).find(g=>g.id===gid);
+    if(!node) return db.clientRoot;
+  }
+  node.groups=node.groups||[]; node.machines=node.machines||[];
+  return node;
+}
+function renderPlanningAssignPanel(){
+  if(!$('planningGroupsGrid')) return;
+  const node=planningCurrentNode();
+  const isRoot=planningPathIds.length===0;
+  if($('planningUpBtn')) $('planningUpBtn').classList.toggle('hidden', isRoot);
+
+  const path=$('planningPath'); path.innerHTML='';
+  const rootBtn=document.createElement('button');
+  rootBtn.className='btn secondary'; rootBtn.textContent='🏠 Racine';
+  rootBtn.onclick=()=>{planningPathIds=[];renderPlanningAssignPanel();};
+  path.appendChild(rootBtn);
+  let temp=db.clientRoot;
+  planningPathIds.forEach((gid,idx)=>{
+    const g=(temp.groups||[]).find(x=>x.id===gid); if(!g) return;
+    const sep=document.createElement('span'); sep.textContent='\u203a'; path.appendChild(sep);
+    const b=document.createElement('button'); b.className='btn secondary'; b.textContent=g.name;
+    b.onclick=()=>{planningPathIds=planningPathIds.slice(0,idx+1);renderPlanningAssignPanel();};
+    path.appendChild(b); temp=g;
+  });
+
+  const q=($('planningSearch')?$('planningSearch').value.toLowerCase().trim():'');
+  const grid=$('planningGroupsGrid'); grid.innerHTML='';
+  const groups=(node.groups||[]).filter(g=>!q||(g.name||'').toLowerCase().includes(q));
+  if($('planningEmptyGroups')) $('planningEmptyGroups').classList.toggle('hidden', groups.length>0);
+  groups.forEach(g=>{
+    const card=document.createElement('div'); card.className='groupCard';
+    card.innerHTML=`
+      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
+      <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
+      <p>${(g.groups||[]).length} groupes \u00b7 ${(g.machines||[]).length} machines</p>`;
+    card.onclick=()=>{planningPathIds.push(g.id);renderPlanningAssignPanel();};
+    grid.appendChild(card);
+  });
+
+  const list=$('planningMachinesList'); list.innerHTML='';
+  const machines=(node.machines||[]).filter(m=>!q||[m.model,m.serial].join(' ').toLowerCase().includes(q));
+  if($('planningEmptyMachines')) $('planningEmptyMachines').classList.toggle('hidden', machines.length>0);
+  machines.forEach(m=>{
+    const mission=getUpcomingMissionForMachine(m.id);
+    const op=mission?(db.users||[]).find(u=>u.username===mission.operatorUsername):null;
+    const opName=op?((op.firstName||op.username)+(op.lastName?' '+op.lastName:'')):'';
+    const card=document.createElement('div'); card.className='item';
+    card.innerHTML=`
+      <div class="machineIdentityCell">${(getFaultMachineImageByModel(m.model)||m.image)?`<img class="itemPhoto" src="${getFaultMachineImageByModel(m.model)||m.image}">`:`<div class="itemPhoto">🏭</div>`}</div>
+      <div>
+        <h3 title="${esc(m.model)}">${esc(m.model)}</h3>
+        <p>${T('serialNumber')}: ${esc(m.serial)}</p>
+        ${mission?`<div style="background:#fff8e1;border:2px solid #fb8c00;border-radius:12px;padding:6px 10px;margin-top:6px;font-size:12px;font-weight:800;color:#e65100">📅 ${esc(mission.date)} ${esc(mission.time)} \u2014 ${esc(opName)}</div>`:''}
+        <div class="qtyLine" style="margin-top:8px">
+          <button class="btn primary mini" data-act="assign" style="flex:1">${mission?'\u270f\ufe0f Modifier la mission':'\ud83d\udcc5 Assigner un op\u00e9rateur'}</button>
+        </div>
+      </div>`;
+    card.querySelector('[data-act=assign]').onclick=()=>{openAssignMissionDialog(m.id, mission?mission.id:null);};
+    list.appendChild(card);
+  });
+}
+if($('planningUpBtn')) $('planningUpBtn').onclick=()=>{if(planningPathIds.length>0){planningPathIds.pop();renderPlanningAssignPanel();}};
+if($('planningSearch')) $('planningSearch').addEventListener('input',renderPlanningAssignPanel);
+
+function showPlanningTab(tab){
+  var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
+  var btnAssign=$('planningTabAssign'), btnGlobal=$('planningTabGlobal');
+  if(tab==='global'){
+    if(assignPanel) assignPanel.classList.add('hidden');
+    if(globalPanel) globalPanel.classList.remove('hidden');
+    if(btnAssign){btnAssign.className='btn secondary';}
+    if(btnGlobal){btnGlobal.className='btn primary';}
+    renderPlanningGlobalPanel();
+  } else {
+    if(assignPanel) assignPanel.classList.remove('hidden');
+    if(globalPanel) globalPanel.classList.add('hidden');
+    if(btnAssign){btnAssign.className='btn primary';}
+    if(btnGlobal){btnGlobal.className='btn secondary';}
+    renderPlanningAssignPanel();
+  }
+}
+if($('planningTabAssign')) $('planningTabAssign').onclick=()=>showPlanningTab('assign');
+if($('planningTabGlobal')) $('planningTabGlobal').onclick=()=>showPlanningTab('global');
+
+function renderPlanningGlobalPanel(){
   missionsEnsure();
   var opFilter=$('planningOperatorFilter'); var stFilter=$('planningStatusFilter');
   if(opFilter && opFilter.options.length<=1){
@@ -6399,25 +6516,29 @@ function renderPlanningModule(){
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
     var groupLabel=found&&found.group?esc(found.group.name):'';
     card.innerHTML=
-      '<div style="font-size:28px">'+(isDone?'✅':'📅')+'</div>'
+      '<div style="font-size:28px">'+(isDone?'\u2705':'\ud83d\udcc5')+'</div>'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' à '+esc(ms.time)+'</div>'
-      +'<div style="font-weight:800;color:#1a7ad4;margin-top:2px">👤 '+esc(opName)+'</div>'
-      +'<div style="margin-top:4px">🏭 '+machineLabel+(groupLabel?' — '+groupLabel:'')+'</div>'
-      +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">📝 '+esc(ms.notes)+'</div>':'')
+      +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' \u00e0 '+esc(ms.time)+'</div>'
+      +'<div style="font-weight:800;color:#1a7ad4;margin-top:2px">\ud83d\udc64 '+esc(opName)+'</div>'
+      +'<div style="margin-top:4px">\ud83c\udfed '+machineLabel+(groupLabel?' \u2014 '+groupLabel:'')+'</div>'
+      +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">\ud83d\udcdd '+esc(ms.notes)+'</div>':'')
       +'<div style="display:flex;gap:6px;margin-top:10px">'
-      +'<button class="btn secondary mini" data-act="edit">✏️ Modifier</button>'
-      +(!isDone?'<button class="btn ok mini" data-act="done">✅ Terminée</button>':'')
-      +'<button class="btn danger mini" data-act="delete">🗑️</button>'
+      +'<button class="btn secondary mini" data-act="edit">\u270f\ufe0f Modifier</button>'
+      +(!isDone?'<button class="btn ok mini" data-act="done">\u2705 Termin\u00e9e</button>':'')
+      +'<button class="btn danger mini" data-act="delete">\ud83d\uddd1\ufe0f</button>'
       +'</div></div>';
     var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=function(){openAssignMissionDialog(ms.machineId, ms.id);};
-    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(){setMissionStatus(ms.id,'done');renderPlanningModule();};
-    var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=function(){if(confirm('Supprimer cette mission ?')){deleteMission(ms.id);renderPlanningModule();}};
+    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(){setMissionStatus(ms.id,'done');renderPlanningGlobalPanel();};
+    var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=function(){if(confirm('Supprimer cette mission ?')){deleteMission(ms.id);renderPlanningGlobalPanel();}};
     container.appendChild(card);
   });
 }
-if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlanningModule;
-if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningModule;
+if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlanningGlobalPanel;
+if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
+function renderPlanningModule(){
+  planningPathIds=[];
+  showPlanningTab('assign');
+}
 if($('openPlanningModule')) $('openPlanningModule').onclick=function(){
   if(!isAdmin()) return;
   show('planningView');
