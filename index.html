@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.11'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.12'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2159,7 +2159,7 @@ body.draggingMachine{
           <h2 data-i="faultMachineManagement">Gestion liste machines / pannes</h2>
           <p>Modèles machines et listes de pannes.</p>
         </button>
-        <button class="moduleCard" id="openPlanningModule" data-perm="viewPlanning" style="display:none">
+        <button class="moduleCard" id="openPlanningModule" data-perm="viewPlanning">
           <div class="moduleIcon">📅</div>
           <h2 data-i="planningManagement">Gestion planning</h2>
           <p data-i="planningManagementText">Assignez vos opérateurs aux interventions.</p>
