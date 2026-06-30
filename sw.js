@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v2010';
+const CACHE_NAME = 'duke-stock-v2011';
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -9,7 +9,8 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
-  self.skipWaiting();
+  // NE PAS appeler skipWaiting() ici — le nouveau SW attend que l'utilisateur
+  // clique sur "Mettre à jour", qui envoie le message SKIP_WAITING ci-dessous.
 });
 self.addEventListener('activate', event => {
   event.waitUntil(
