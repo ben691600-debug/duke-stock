@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6586,9 +6586,8 @@ function renderMyMissionsModule(){
     card.style.cssText='position:relative;background:white;border:2px solid '+(isDone?'#c8e6c9':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start;cursor:pointer'+(isDone?';opacity:.65':'');
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
     var groupLabel=found&&found.group?esc(found.group.name):'';
-    var wazeLink=found&&found.group?found.group.waze:'';
-    var contacts=found&&found.group?normalizeGroupContacts(found.group):[];
-    var firstContact=contacts[0]||{};
+    var wazeLink=found&&found.group?findNearestGroupWaze(found.group.id):'';
+    var firstContact=(found&&found.group?findNearestGroupContact(found.group.id):null)||{};
     card.innerHTML=
       (!isDone?'<button data-act="done" title="Valider et supprimer" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#2e7d32;color:#fff;border:none;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">✓</button>':'')
       +'<div style="font-size:28px">'+(isDone?'✅':'📅')+'</div>'
@@ -6610,9 +6609,45 @@ function renderMyMissionsModule(){
         renderClientMachineModule();
       }
     };
-    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){ev.stopPropagation();setMissionStatus(ms.id,'done');deleteMission(ms.id);renderMyMissionsModule();};
+    var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){
+      ev.stopPropagation();
+      log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(found&&found.group?' | '+found.group.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
+      setMissionStatus(ms.id,'done');
+      deleteMission(ms.id);
+      renderMyMissionsModule();
+    };
     container.appendChild(card);
   });
+}
+function findGroupById(gid){
+  if(!gid) return null;
+  var found=null;
+  function walk(node){
+    (node.groups||[]).forEach(function(g){
+      if(g.id===gid) found=g; else walk(g);
+    });
+  }
+  walk(db.clientRoot);
+  return found;
+}
+function findNearestGroupWaze(groupId){
+  var pathIds=findClientPathToGroup(groupId);
+  for(var i=pathIds.length-1;i>=0;i--){
+    var g=findGroupById(pathIds[i]);
+    if(g && g.waze) return g.waze;
+  }
+  return '';
+}
+function findNearestGroupContact(groupId){
+  var pathIds=findClientPathToGroup(groupId);
+  for(var i=pathIds.length-1;i>=0;i--){
+    var g=findGroupById(pathIds[i]);
+    if(g){
+      var contacts=normalizeGroupContacts(g);
+      if(contacts && contacts.length && contacts[0].firstName) return contacts[0];
+    }
+  }
+  return null;
 }
 function findClientPathToGroup(groupId){
   if(!groupId) return [];
