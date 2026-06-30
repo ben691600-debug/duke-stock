@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2279,13 +2279,42 @@ body.draggingMachine{
 </section>
 
 <section id="planningView" class="hidden">
-  <div class="toolbar" style="display:flex;gap:8px;margin-bottom:12px">
-    <button class="btn primary" id="planningTabAssign" style="flex:1">📍 Assigner</button>
-    <button class="btn secondary" id="planningTabGlobal" style="flex:1">📋 Vue globale</button>
+
+  <!-- Écran d'accueil du module : choix du sous-menu -->
+  <div id="planningMenuPanel">
+    <h2 style="margin:4px 0 14px">📅 Gestion planning</h2>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="groupCard" id="planningMenuAssignCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
+        <div style="font-size:34px">📍</div>
+        <div>
+          <h3 style="margin:0 0 4px">Gestion opérateur à l'aide des machines</h3>
+          <p class="muted" style="margin:0">Parcourir les groupes et machines pour assigner un opérateur à une intervention.</p>
+        </div>
+      </div>
+      <div class="groupCard" id="planningMenuGlobalCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
+        <div style="font-size:34px">📋</div>
+        <div>
+          <h3 style="margin:0 0 4px">Gestion globale des opérateurs</h3>
+          <p class="muted" style="margin:0">Vue d'ensemble du planning de tous les opérateurs, avec filtres et gestion des missions.</p>
+        </div>
+      </div>
+      <div class="groupCard" id="planningMenuMyMissionsCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
+        <div style="font-size:34px">🧑‍🔧</div>
+        <div>
+          <h3 style="margin:0 0 4px">Mes missions</h3>
+          <p class="muted" style="margin:0">Voir mes propres interventions planifiées.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Onglet 1 : Assigner — copie exacte de la structure clientsView -->
-  <div id="planningAssignPanel">
+  <div id="planningAssignPanel" class="hidden">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons oneButton">
+        <button class="btn secondary" id="planningBackToMenuBtn1">← Menu planning</button>
+      </div>
+    </div>
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons oneButton">
         <button class="btn secondary" id="planningUpBtn">← Retour</button>
@@ -2303,6 +2332,11 @@ body.draggingMachine{
 
   <!-- Onglet 2 : Vue globale par opérateur -->
   <div id="planningGlobalPanel" class="hidden">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons oneButton">
+        <button class="btn secondary" id="planningBackToMenuBtn2">← Menu planning</button>
+      </div>
+    </div>
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
@@ -6465,23 +6499,33 @@ if($('planningSearch')) $('planningSearch').addEventListener('input',renderPlann
 
 function showPlanningTab(tab){
   var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
-  var btnAssign=$('planningTabAssign'), btnGlobal=$('planningTabGlobal');
+  var menuPanel=$('planningMenuPanel');
+  if(menuPanel) menuPanel.classList.add('hidden');
   if(tab==='global'){
     if(assignPanel) assignPanel.classList.add('hidden');
     if(globalPanel) globalPanel.classList.remove('hidden');
-    if(btnAssign){btnAssign.className='btn secondary';}
-    if(btnGlobal){btnGlobal.className='btn primary';}
     renderPlanningGlobalPanel();
   } else {
     if(assignPanel) assignPanel.classList.remove('hidden');
     if(globalPanel) globalPanel.classList.add('hidden');
-    if(btnAssign){btnAssign.className='btn primary';}
-    if(btnGlobal){btnGlobal.className='btn secondary';}
     renderPlanningAssignPanel();
   }
 }
-if($('planningTabAssign')) $('planningTabAssign').onclick=()=>showPlanningTab('assign');
-if($('planningTabGlobal')) $('planningTabGlobal').onclick=()=>showPlanningTab('global');
+function showPlanningMenu(){
+  var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
+  var menuPanel=$('planningMenuPanel');
+  if(assignPanel) assignPanel.classList.add('hidden');
+  if(globalPanel) globalPanel.classList.add('hidden');
+  if(menuPanel) menuPanel.classList.remove('hidden');
+}
+if($('planningMenuAssignCard')) $('planningMenuAssignCard').onclick=()=>showPlanningTab('assign');
+if($('planningMenuGlobalCard')) $('planningMenuGlobalCard').onclick=()=>showPlanningTab('global');
+if($('planningMenuMyMissionsCard')) $('planningMenuMyMissionsCard').onclick=()=>{
+  show('myMissionsView');
+  if(typeof renderMyMissionsModule==='function') renderMyMissionsModule();
+};
+if($('planningBackToMenuBtn1')) $('planningBackToMenuBtn1').onclick=showPlanningMenu;
+if($('planningBackToMenuBtn2')) $('planningBackToMenuBtn2').onclick=showPlanningMenu;
 
 function renderPlanningGlobalPanel(){
   missionsEnsure();
@@ -6537,7 +6581,7 @@ if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlann
 if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
 function renderPlanningModule(){
   planningPathIds=[];
-  showPlanningTab('assign');
+  showPlanningMenu();
 }
 if($('openPlanningModule')) $('openPlanningModule').onclick=function(){
   if(!isAdmin()) return;
