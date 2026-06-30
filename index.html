@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2284,25 +2284,18 @@ body.draggingMachine{
   <div id="planningMenuPanel">
     <h2 style="margin:4px 0 14px">📅 Gestion planning</h2>
     <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="groupCard" id="planningMenuAssignCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
-        <div style="font-size:34px">📍</div>
-        <div>
-          <h3 style="margin:0 0 4px">Gestion opérateur à l'aide des machines</h3>
-          <p class="muted" style="margin:0">Parcourir les groupes et machines pour assigner un opérateur à une intervention.</p>
-        </div>
-      </div>
-      <div class="groupCard" id="planningMenuGlobalCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
-        <div style="font-size:34px">📋</div>
-        <div>
-          <h3 style="margin:0 0 4px">Gestion globale des opérateurs</h3>
-          <p class="muted" style="margin:0">Vue d'ensemble du planning de tous les opérateurs, avec filtres et gestion des missions.</p>
-        </div>
-      </div>
       <div class="groupCard" id="planningMenuMyMissionsCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
         <div style="font-size:34px">🧑‍🔧</div>
         <div>
           <h3 style="margin:0 0 4px">Mes missions</h3>
           <p class="muted" style="margin:0">Voir mes propres interventions planifiées.</p>
+        </div>
+      </div>
+      <div class="groupCard" id="planningMenuAssignCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
+        <div style="font-size:34px">📍</div>
+        <div>
+          <h3 style="margin:0 0 4px">Gestion opérateur à l'aide des machines</h3>
+          <p class="muted" style="margin:0">Parcourir les groupes et machines pour assigner un opérateur à une intervention.</p>
         </div>
       </div>
     </div>
@@ -2573,7 +2566,7 @@ body.draggingMachine{
   </div>
 </form></dialog>
 
-<form id="machineServiceForm">
+<dialog class="modal" id="machineServiceDialog"><form id="machineServiceForm">
   <h2 id="machineServiceTitle">Machine</h2>
   <p class="muted" id="machineServiceSub"></p>
   <label><span data-i="serviceDate">Date</span><input id="serviceDateInput" type="date" required></label>
@@ -6519,7 +6512,6 @@ function showPlanningMenu(){
   if(menuPanel) menuPanel.classList.remove('hidden');
 }
 if($('planningMenuAssignCard')) $('planningMenuAssignCard').onclick=()=>showPlanningTab('assign');
-if($('planningMenuGlobalCard')) $('planningMenuGlobalCard').onclick=()=>showPlanningTab('global');
 if($('planningMenuMyMissionsCard')) $('planningMenuMyMissionsCard').onclick=()=>{
   show('myMissionsView');
   if(typeof renderMyMissionsModule==='function') renderMyMissionsModule();
