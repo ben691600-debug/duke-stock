@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.10'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6584,11 +6584,13 @@ function renderMyMissionsModule(){
     var isDone=ms.status==='done';
     var card=document.createElement('div');
     card.style.cssText='position:relative;background:white;border:2px solid '+(isDone?'#c8e6c9':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start;cursor:pointer'+(isDone?';opacity:.65':'');
+    var machineGroup=found?(found.group||found.node||null):null;
+    var machineGroupId=machineGroup?machineGroup.id:null;
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
-    var groupLabel=found&&found.group?esc(found.group.name):'';
-    var wazeLink=found&&found.group?findNearestGroupWaze(found.group.id):'';
-    var contactGroupId=found&&found.group?findNearestGroupWithContact(found.group.id):'';
-    var firstContact=(contactGroupId?findNearestGroupContact(found.group.id):null)||{};
+    var groupLabel=machineGroup?esc(machineGroup.name):'';
+    var wazeLink=machineGroupId?findNearestGroupWaze(machineGroupId):'';
+    var contactGroupId=machineGroupId?findNearestGroupWithContact(machineGroupId):'';
+    var firstContact=(contactGroupId?findNearestGroupContact(machineGroupId):null)||{};
     card.innerHTML=
       (!isDone?'<button data-act="done" title="Valider et supprimer" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#2e7d32;color:#fff;border:none;font-size:19px;font-weight:900;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">✓</button>'
         :'<button data-act="remove" title="Supprimer définitivement" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:12px;background:#c62828;color:#fff;border:none;font-size:17px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🗑️</button>')
@@ -6607,9 +6609,9 @@ function renderMyMissionsModule(){
       +'</div>';
     card.onclick=function(ev){
       if(ev.target.closest('button,a')) return;
-      if(found){
+      if(found&&machineGroup){
         clientPathIds=[];
-        var path=findClientPathToGroup(found.group?found.group.id:null);
+        var path=findClientPathToGroup(machineGroup.id);
         if(path) clientPathIds=path;
         show('clientsView');
         renderClientMachineModule();
@@ -6621,7 +6623,7 @@ function renderMyMissionsModule(){
     };
     var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){
       ev.stopPropagation();
-      log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(found&&found.group?' | '+found.group.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
+      log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(machineGroup?' | '+machineGroup.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
       setMissionStatus(ms.id,'done');
       deleteMission(ms.id);
       renderMyMissionsModule();
@@ -6629,7 +6631,7 @@ function renderMyMissionsModule(){
     var rb=card.querySelector('[data-act=remove]'); if(rb) rb.onclick=function(ev){
       ev.stopPropagation();
       if(!confirm('Supprimer définitivement cette mission terminée ?')) return;
-      log('MISSION_REMOVED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(found&&found.group?' | '+found.group.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
+      log('MISSION_REMOVED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(machineGroup?' | '+machineGroup.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
       deleteMission(ms.id);
       renderMyMissionsModule();
     };
