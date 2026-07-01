@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -191,7 +191,7 @@ img{max-width:100%}
 .brand h1{font-size:21px;margin:0;color:var(--blue)} .brand p{margin:2px 0 0;color:#72808c;font-size:13px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .btn{border:0;border-radius:16px;padding:11px 14px;font-weight:800;cursor:pointer}
-.primary{background:var(--blue);color:white} .secondary{background:#e9eef4;color:var(--dark)} .danger{background:#fde8eb;color:var(--danger)} .ok{background:#e5f6ee;color:var(--ok)} .warn{background:#fff4dc;color:var(--warn)}
+.primary{background:var(--blue);color:white} .secondary{background:var(--blue);color:white} .danger{background:#fde8eb;color:var(--danger)} .ok{background:#e5f6ee;color:var(--ok)} .warn{background:#fff4dc;color:var(--warn)}
 main{max-width:1100px;margin:auto;padding:18px}
 .hero{display:grid;grid-template-columns:1fr;gap:18px;place-items:center}
 .carTile{width:min(320px,86vw);aspect-ratio:1/1;border-radius:34px;border:2px solid rgba(10,124,194,.15);background:white;box-shadow:var(--shadow);display:grid;place-items:center;padding:22px;cursor:pointer}
