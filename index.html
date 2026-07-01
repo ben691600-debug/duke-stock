@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.16'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.17'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2558,8 +2558,22 @@ body.draggingMachine{
   <h2 data-i="assignMission">Assigner une mission</h2>
   <label><span data-i="operator">Opérateur</span><select id="missionOperatorSelect" required><option value="">—</option></select></label>
   <label><span data-i="date">Date</span><input id="missionDateInput" type="date" required></label>
-  <label><span data-i="time">Heure</span><input id="missionTimeInput" type="time" required></label>
-  <label><span data-i="notes">Notes (optionnel)</span><textarea id="missionNotesInput" rows="2" placeholder="Détails de l'intervention..."></textarea></label>
+  <label><span data-i="time">Heure</span><input id="missionTimeInput" type="time"></label>
+  <label><span>Type d'intervention</span>
+    <select id="missionTypeSelect" required>
+      <option value="">— Choisir un type —</option>
+      <option value="Maintenance">🔧 Maintenance</option>
+      <option value="Réparation">🛠️ Réparation</option>
+      <option value="Autre">📋 Autre</option>
+    </select>
+  </label>
+  <div id="missionFaultRow" style="display:none">
+    <label><span>Numéro / description panne</span>
+      <select id="missionFaultSelect">
+        <option value="">— Choisir une panne —</option>
+      </select>
+    </label>
+  </div>
   <div class="formActions">
     <button type="button" class="btn secondary close" data-i="cancel">Annuler</button>
     <button class="btn primary" data-i="save">Enregistrer</button>
@@ -6381,21 +6395,56 @@ function openAssignMissionDialog(machineId, missionId){
         return '<option value="'+esc(u.username)+'">'+esc(u.firstName||u.username)+(u.lastName?' '+esc(u.lastName):'')+'</option>';
       }).join('');
   }
+
+  // Peupler les pannes selon le modèle de la machine
+  var typeSelect=$('missionTypeSelect');
+  var faultSelect=$('missionFaultSelect');
+  var faultRow=$('missionFaultRow');
+  if(typeSelect && faultSelect && faultRow){
+    // Reconstruire le select type (avec pannes spécifiques à la machine)
+    var machineRes=machineId?findMachineById(machineId):null;
+    var machineModel=machineRes?machineRes.machine.model:'';
+    var faultMachine=(db.faultMachines||[]).find(function(fm){
+      return (fm.model||'').trim().toLowerCase()===(machineModel||'').trim().toLowerCase();
+    });
+    var faults=faultMachine?faultMachine.faults||[]:[];
+
+    typeSelect.innerHTML='<option value="">— Choisir un type —</option>'
+      +'<option value="Maintenance">🔧 Maintenance</option>'
+      +'<option value="Réparation">🛠️ Réparation</option>'
+      +(faults.length?'<option value="Panne">⚡ Panne</option>':'')
+      +'<option value="Autre">📋 Autre</option>';
+
+    faultSelect.innerHTML='<option value="">— Choisir une panne —</option>'
+      +faults.map(function(f){
+        var label=(f.number?f.number+' — ':'')+esc(f.text||'');
+        return '<option value="'+esc((f.number||'')+' '+esc(f.text||''))+'">'+label+'</option>';
+      }).join('');
+
+    faultRow.style.display='none';
+    typeSelect.onchange=function(){
+      faultRow.style.display=(typeSelect.value==='Panne'&&faults.length)?'block':'none';
+    };
+  }
+
   if(missionId){
     missionsEnsure();
     var ms=db.missions.find(function(x){return x.id===missionId;});
     if(ms){
       if(sel) sel.value=ms.operatorUsername;
       if($('missionDateInput')) $('missionDateInput').value=ms.date;
-      if($('missionTimeInput')) $('missionTimeInput').value=ms.time;
-      if($('missionNotesInput')) $('missionNotesInput').value=ms.notes||'';
+      if($('missionTimeInput')) $('missionTimeInput').value=ms.time||'';
+      if(typeSelect) typeSelect.value=ms.missionType||'';
+      if(ms.missionType==='Panne'&&faultRow) faultRow.style.display='block';
+      if(faultSelect) faultSelect.value=ms.faultRef||'';
     }
     dlg.querySelector('h2').textContent=T('editMission');
   } else {
     if(sel) sel.value='';
     if($('missionDateInput')){var t=new Date();$('missionDateInput').value=t.toISOString().slice(0,10);}
-    if($('missionTimeInput')) $('missionTimeInput').value='09:00';
-    if($('missionNotesInput')) $('missionNotesInput').value='';
+    if($('missionTimeInput')) $('missionTimeInput').value='';
+    if(typeSelect) typeSelect.value='';
+    if(faultRow) faultRow.style.display='none';
     dlg.querySelector('h2').textContent=T('assignMission');
   }
   dlg.showModal();
@@ -6404,13 +6453,19 @@ function openAssignMissionDialog(machineId, missionId){
 if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   e.preventDefault();
   if(!_missionAssignMachineId) return;
+  var faultRef=($('missionFaultRow')&&$('missionFaultRow').style.display!=='none'&&$('missionFaultSelect'))?$('missionFaultSelect').value:'';
+  var missionType=($('missionTypeSelect')?$('missionTypeSelect').value:'');
+  // Construire les notes automatiquement depuis le type
+  var autoNotes=missionType+(faultRef?' — '+faultRef:'');
   createOrUpdateMission({
     id:_missionEditingId,
     machineId:_missionAssignMachineId,
     operatorUsername:$('missionOperatorSelect').value,
     date:$('missionDateInput').value,
-    time:$('missionTimeInput').value,
-    notes:$('missionNotesInput').value.trim()
+    time:$('missionTimeInput')?$('missionTimeInput').value:'',
+    notes:autoNotes,
+    missionType:missionType,
+    faultRef:faultRef
   });
   $('missionAssignDialog').close();
   _missionAssignMachineId=null; _missionEditingId=null;
@@ -6897,9 +6952,21 @@ function openClientServiceRequests(mid){
     if(planBtnEl) planBtnEl.onclick=function(){
       openAssignMissionDialog(r.machineId||mid, null);
       setTimeout(function(){
-        var notesInput=$('missionNotesInput');
-        if(notesInput && r.faultLabel) notesInput.value='Panne: '+r.faultLabel+(r.serviceNumber?' | '+r.serviceNumber:'')+(r.openedBy?' | Client: '+r.openedBy:'');
-      },50);
+        // Pré-sélectionner "Panne" et choisir la panne correspondante
+        var typeSelect=$('missionTypeSelect');
+        var faultSelect=$('missionFaultSelect');
+        var faultRow=$('missionFaultRow');
+        if(typeSelect && r.faultLabel){
+          typeSelect.value='Panne';
+          if(faultRow) faultRow.style.display='block';
+          if(faultSelect){
+            // Chercher l'option dont le texte contient faultLabel
+            Array.from(faultSelect.options).forEach(function(opt){
+              if(opt.value.toLowerCase().indexOf((r.faultLabel||'').toLowerCase())!==-1) faultSelect.value=opt.value;
+            });
+          }
+        }
+      },80);
     };
     div.querySelectorAll('[data-st]').forEach(function(btn){
       btn.onclick=function(){
