@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.17'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.18'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6150,11 +6150,8 @@ function renderClientMachineModule(){
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
     var _faultMachine=(db.faultMachines||[]).find(function(fm){var mn=(fm.model||'').toLowerCase().trim();var mm=(m.model||'').toLowerCase().trim();return mn===mm;});
     var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){if(!maint.specificSerial) return true;return (maint.specificSerial.trim().toLowerCase()===(m.serial||m.serialNumber||'').trim().toLowerCase());});
-    var _isEndo=(function(m){
-      var model=(m.model||'').toLowerCase().trim();
-      var type=(m.type||'').toLowerCase().trim();
-      return model.startsWith('ew')||model.indexOf('endoscope')!==-1||model.indexOf('scope')!==-1||model.indexOf('washer')!==-1||type.indexOf('endoscope')!==-1||type.indexOf('washer')!==-1;
-    })(m)||_hasMaint;
+    // La languette "Maintenance" ne s'affiche QUE s'il y a des maintenances réellement définies pour ce modèle/série
+    var _isEndo=_hasMaint;
     // Wrapper pour la languette
     var wrapper=document.createElement('div');
     wrapper.style.cssText='position:relative;margin-top:'+ (_isEndo?'26px':'0');
