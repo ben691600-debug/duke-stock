@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.14'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.15'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6909,6 +6909,9 @@ function openClientServiceRequests(mid){
           if(!confirm(T('confirmCloseRequest'))) return;
           db.trashRemovedIds=db.trashRemovedIds||[];
           if(live.id && db.trashRemovedIds.indexOf(live.id)===-1) db.trashRemovedIds.push(live.id);
+          // Supprimer aussi la mission auto liée à cette demande
+          missionsEnsure();
+          db.missions=db.missions.filter(function(m){return m.sourceRequestId!==live.id;});
           db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){return x.id!==live.id;});
         } else {
           live.status=newSt;
@@ -6923,12 +6926,32 @@ function openClientServiceRequests(mid){
       function doAssign(){
         var live=(db.clientServiceRequests||[]).find(function(x){return x.id===r.id;});
         if(!live) return;
+        var prevOperator=live.assignedTo;
         live.assignedTo=assignSel.value||null;
-        // Mettre à jour uniquement le label "Affecté à" sans tout rerender
         var lbl=document.getElementById('assignedLabel_'+r.id);
         if(lbl){
           if(live.assignedTo) lbl.innerHTML=T('assignedTo')+': <b>'+esc(live.assignedTo)+'</b>';
           else lbl.textContent=T('assignTo')+': —';
+        }
+        // Création automatique d'une mission planning si un opérateur est affecté
+        if(live.assignedTo && live.assignedTo!==prevOperator){
+          missionsEnsure();
+          // Supprimer l'éventuelle ancienne mission auto liée à cette demande
+          db.missions=db.missions.filter(function(m){return m.sourceRequestId!==live.id;});
+          var today=new Date();
+          var todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+          var nm={
+            id:uid(), machineId:live.machineId, operatorUsername:live.assignedTo,
+            date:todayStr, time:'', notes:'Appel client: '+(live.faultLabel||'')+(live.serviceNumber?' | '+live.serviceNumber:'')+(live.openedBy?' | Client: '+live.openedBy:''),
+            status:'planned', createdAt:Date.now(), createdBy:currentUser?currentUser.username:'',
+            sourceRequestId:live.id, sourceType:'client_request'
+          };
+          db.missions.push(nm);
+          log('AUTO_MISSION', live.machineId+' → '+live.assignedTo+' (demande '+live.id+')');
+        } else if(!live.assignedTo && prevOperator){
+          // Si on désaffecte, supprimer la mission auto liée
+          missionsEnsure();
+          db.missions=db.missions.filter(function(m){return m.sourceRequestId!==live.id;});
         }
         save();
         if(typeof window._updateNotifBell==='function') window._updateNotifBell();
