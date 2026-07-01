@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.15'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.16'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -165,6 +165,7 @@ setTimeout(function(){
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eaf6fc,#f7f8fa);color:var(--dark)}
 button,input,select{font:inherit} .hidden{display:none!important}
+button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 img{max-width:100%}
 .centerScreen{min-height:100vh;display:grid;place-items:center;padding:22px}
 #loginView:not(.hidden), #langView:not(.hidden){position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg, #eaf6fc);overflow-y:auto}
@@ -4090,6 +4091,7 @@ function openApp(){
   // Remettre tous les éléments à visible avant de re-appliquer les permissions
   // (évite les résidus de la session précédente)
   ['openVehiclesModule','openClientsModule','openSuppliersModule','openFaultMachineModule',
+   'openPlanningModule','openMyMissionsModule',
    'historyBtn','exportMainBtn','addBtn','addSupplierBtn','addPartBtn','addSubgroupBtn',
    'addPartInSubgroupBtn','faultMachineCreateButton','addClientGroupBtn','addMachineBtn',
    'settingsBtn','trashBtn'].forEach(function(id){
@@ -10872,6 +10874,9 @@ html { overscroll-behavior: none; }
   box-shadow: 0 4px 20px rgba(10,124,194,.20) !important;
   backdrop-filter: blur(10px) !important;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
   display: none;
   align-items: center;
   justify-content: center;
