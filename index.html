@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -248,21 +248,20 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 
 
 .moduleChoice{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;margin-top:24px}
-/* ── Carrousel universel ─────────────────────────────────────── */
-.carouselWrap{position:relative;overflow:hidden;width:100%;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-.carouselTrackH{display:flex;transition:transform .32s cubic-bezier(.4,0,.2,1);will-change:transform}
-.carouselSlideH{min-width:100%;box-sizing:border-box;padding:0 2px}
-/* Vertical : une slide visible à la fois avec fondu */
-.carouselSlideV{display:none;animation:carouselFadeIn .28s ease}
-.carouselSlideV.active{display:block}
-@keyframes carouselFadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-.carouselNav{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:10px}
-.carouselArrow{width:38px;height:38px;border-radius:50%;border:2px solid var(--blue);background:white;color:var(--blue);font-size:18px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation;flex-shrink:0;line-height:1;transition:background .15s,color .15s}
-.carouselArrow:active{background:var(--blue);color:white}
-.carouselDots{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:55%}
-.carouselDot{width:7px;height:7px;border-radius:50%;background:#c8d8e8;cursor:pointer;transition:all .2s;flex-shrink:0}
-.carouselDot.active{background:var(--blue);width:18px;border-radius:4px}
-.carouselCounter{font-size:12px;font-weight:800;color:#6f7b87;min-width:36px;text-align:center;flex-shrink:0}
+/* ── Scroll-snap carousel natif ──────────────────────────────── */
+/* Conteneur scroll horizontal (groupes) */
+.snapH{display:flex;flex-direction:row;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:0 13%;gap:12px;box-sizing:border-box;padding-bottom:6px}
+.snapH::-webkit-scrollbar{display:none}
+/* Conteneur scroll vertical (menus, machines) */
+.snapV{display:flex;flex-direction:column;overflow-y:scroll;overflow-x:hidden;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:11% 0;gap:12px;box-sizing:border-box;max-height:72vh}
+.snapV::-webkit-scrollbar{display:none}
+/* Cellule snap — inactive = réduite et atténuée */
+.snapCell{scroll-snap-align:center;flex-shrink:0;transition:transform .25s ease,opacity .25s ease,box-shadow .25s ease;transform:scale(0.86);opacity:0.5}
+.snapCell.snapActive{transform:scale(1)!important;opacity:1!important;box-shadow:0 8px 32px rgba(10,124,194,.20)}
+/* Horizontal : cellule = 76% de la largeur visible */
+.snapH>.snapCell{min-width:76%}
+/* Compteur */
+.snapCounter{text-align:center;font-size:12px;font-weight:800;color:#6f7b87;margin-top:6px;letter-spacing:.3px}
 
 .clientHidden{display:none!important}
 .moduleIcon{font-size:54px;line-height:1}
@@ -6517,115 +6516,93 @@ function makeCarousel(container, slides, dir){
   if(slides.length===1){container.appendChild(slides[0]);return;}
 
   var isH=(dir==='h');
-  var idx=0;
-  var touchA=0, touchB=0, dragging=false;
+  var n=slides.length;
 
-  // Track
-  var wrap=document.createElement('div');
-  wrap.className='carouselWrap';
-  var track=document.createElement('div');
+  // Scroll container
+  var sc=document.createElement('div');
+  sc.className=isH?'snapH':'snapV';
 
-  if(isH){
-    track.className='carouselTrackH';
-    slides.forEach(function(s){
-      var cell=document.createElement('div');
-      cell.className='carouselSlideH';
-      cell.appendChild(s);
-      track.appendChild(cell);
+  // Cellules
+  var cells=[];
+  slides.forEach(function(s){
+    var cell=document.createElement('div');
+    cell.className='snapCell';
+    cell.appendChild(s);
+    sc.appendChild(cell);
+    cells.push(cell);
+  });
+
+  // Compteur
+  var ctr=document.createElement('div');
+  ctr.className='snapCounter';
+  ctr.textContent='1 / '+n;
+
+  // Activer la cellule la plus centrée
+  var _st=null;
+  function updateActive(){
+    var best=0, bestD=Infinity;
+    var viewMid=isH?(sc.scrollLeft+sc.offsetWidth/2):(sc.scrollTop+sc.offsetHeight/2);
+    cells.forEach(function(cell,i){
+      var cellMid=isH
+        ?(cell.offsetLeft+cell.offsetWidth/2)
+        :(cell.offsetTop+cell.offsetHeight/2);
+      var d=Math.abs(cellMid-viewMid);
+      if(d<bestD){bestD=d;best=i;}
     });
-  } else {
-    slides.forEach(function(s,i){
-      var cell=document.createElement('div');
-      cell.className='carouselSlideV'+(i===0?' active':'');
-      cell.appendChild(s);
-      track.appendChild(cell);
-    });
-  }
-  wrap.appendChild(track);
-
-  // Prev / Next
-  var prev=document.createElement('button');
-  prev.type='button'; prev.className='carouselArrow';
-  prev.innerHTML=isH?'◀':'▲'; prev.setAttribute('aria-label','Précédent');
-  var next=document.createElement('button');
-  next.type='button'; next.className='carouselArrow';
-  next.innerHTML=isH?'▶':'▼'; next.setAttribute('aria-label','Suivant');
-
-  // Dots (max 7)
-  var dots=document.createElement('div'); dots.className='carouselDots';
-  var ndots=Math.min(slides.length,7);
-  for(var di=0;di<ndots;di++){
-    var dot=document.createElement('span'); dot.className='carouselDot';
-    (function(di2){dot.onclick=function(){goTo(Math.round(di2*(slides.length-1)/(ndots-1)));}})(di);
-    dots.appendChild(dot);
+    cells.forEach(function(c,i){c.classList.toggle('snapActive',i===best);});
+    ctr.textContent=(best+1)+' / '+n;
   }
 
-  // Counter
-  var counter=document.createElement('div'); counter.className='carouselCounter';
-
-  function goTo(n){
-    idx=((n%slides.length)+slides.length)%slides.length;
-    if(isH){
-      track.style.transform='translateX(-'+(idx*100)+'%)';
-    } else {
-      track.querySelectorAll('.carouselSlideV').forEach(function(c,i){
-        c.classList.toggle('active',i===idx);
-      });
-    }
-    counter.textContent=(idx+1)+' / '+slides.length;
-    dots.querySelectorAll('.carouselDot').forEach(function(d,i){
-      var t=Math.round(i*(slides.length-1)/(ndots-1));
-      d.classList.toggle('active',t===idx);
-    });
-  }
-
-  prev.onclick=function(e){e.stopPropagation();goTo(idx-1);};
-  next.onclick=function(e){e.stopPropagation();goTo(idx+1);};
-
-  // Touch swipe
-  wrap.addEventListener('touchstart',function(e){
-    touchA=isH?e.touches[0].clientX:e.touches[0].clientY;
-    touchB=isH?e.touches[0].clientY:e.touches[0].clientX;
-    dragging=false;
-  },{passive:true});
-  wrap.addEventListener('touchmove',function(e){
-    var pa=isH?e.touches[0].clientX:e.touches[0].clientY;
-    var pb=isH?e.touches[0].clientY:e.touches[0].clientX;
-    if(Math.abs(pa-touchA)>10&&Math.abs(pa-touchA)>Math.abs(pb-touchB)) dragging=true;
-  },{passive:true});
-  wrap.addEventListener('touchend',function(e){
-    if(!dragging) return;
-    var end=isH?e.changedTouches[0].clientX:e.changedTouches[0].clientY;
-    if(Math.abs(end-touchA)>45) goTo(end<touchA?idx+1:idx-1);
-    dragging=false;
+  sc.addEventListener('scroll',function(){
+    clearTimeout(_st);
+    _st=setTimeout(updateActive,60);
   },{passive:true});
 
-  // Assemble
-  var nav=document.createElement('div'); nav.className='carouselNav';
-  nav.appendChild(prev); nav.appendChild(dots);
-  nav.appendChild(next); nav.appendChild(counter);
-  container.appendChild(wrap);
-  container.appendChild(nav);
-  goTo(0);
+  container.appendChild(sc);
+  container.appendChild(ctr);
+
+  // Activer le premier immédiatement
+  setTimeout(updateActive,40);
 }
 
-// ── Carrousel du menu principal (vertical) ──────────────────────────
+// ── Scroll-snap du menu principal (vertical) ──────────────────────
 function buildModuleCarousel(){
   var mc=document.querySelector('#moduleView .moduleChoice');
-  if(!mc) return;
+  if(!mc||mc._snapDone) return;
   var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
-    return !b.classList.contains('hidden') && b.style.display!=='none';
+    return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
   });
   if(!btns.length) return;
-  // Créer un conteneur carrousel à côté de moduleChoice
-  var cc=document.getElementById('moduleCarouselContainer');
-  if(!cc){
-    cc=document.createElement('div');
-    cc.id='moduleCarouselContainer';
-    mc.parentNode.insertBefore(cc,mc);
+
+  // Appliquer scroll-snap directement sur .moduleChoice
+  mc.className='snapV';
+  mc._snapDone=true;
+  btns.forEach(function(btn){
+    btn.classList.add('snapCell');
+  });
+  // Activer la première carte
+  if(btns[0]) btns[0].classList.add('snapActive');
+
+  // Compteur (inséré après le conteneur)
+  if(!mc.nextSibling||!mc.nextSibling.classList||!mc.nextSibling.classList.contains('snapCounter')){
+    var ctr=document.createElement('div');
+    ctr.className='snapCounter';
+    ctr.textContent='1 / '+btns.length;
+    mc.parentNode.insertBefore(ctr,mc.nextSibling);
+    mc.addEventListener('scroll',function(){
+      clearTimeout(mc._st);
+      mc._st=setTimeout(function(){
+        var best=0,bestD=Infinity;
+        var vMid=mc.scrollTop+mc.offsetHeight/2;
+        btns.forEach(function(btn,i){
+          var d=Math.abs(btn.offsetTop+btn.offsetHeight/2-vMid);
+          if(d<bestD){bestD=d;best=i;}
+        });
+        btns.forEach(function(b,i){b.classList.toggle('snapActive',i===best);});
+        ctr.textContent=(best+1)+' / '+btns.length;
+      },60);
+    },{passive:true});
   }
-  mc.style.display='none';
-  makeCarousel(cc,btns,'v');
 }
 
 function _maintColor(nextDateStr){
