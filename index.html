@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.1'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2291,17 +2291,10 @@ body.draggingMachine{
   <div id="planningMenuPanel">
     <h2 style="margin:4px 0 14px">📅 Gestion planning</h2>
     <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="groupCard" id="planningMenuMyMissionsCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
-        <div style="font-size:34px">🧑‍🔧</div>
-        <div>
-          <h3 style="margin:0 0 4px">Mes missions</h3>
-          <p class="muted" style="margin:0">Voir mes propres interventions planifiées.</p>
-        </div>
-      </div>
       <div class="groupCard" id="planningMenuAssignCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
         <div style="font-size:34px">📍</div>
         <div>
-          <h3 style="margin:0 0 4px">Gestion opérateur à l'aide des machines</h3>
+          <h3 style="margin:0 0 4px;color:#0A7CC2">Gestion opérateur à l'aide des machines</h3>
           <p class="muted" style="margin:0">Parcourir les groupes et machines pour assigner un opérateur à une intervention.</p>
         </div>
       </div>
@@ -6214,9 +6207,7 @@ function renderClientMachineModule(){
         <p class="machineClickHint">${T('openMachine')}</p>
         <div class="machineQrInline"><img class="embeddedMachineQr" data-act="qr" title="QR service client" alt="QR service client" src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(clientServiceUrl(m.id))}"></div>
         ${!isClientUser()?`<div class="qtyLine clientMachineActionsWithDocs">
-          <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="manual" title="Manuel" aria-label="Manuel">📘</button>
-          <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="spare" title="Vue explosion / spare parts" aria-label="Vue explosion / spare parts">⚙️</button>
-          <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="electrical" title="Schéma électrique" aria-label="Schéma électrique">⚡</button>
+          <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="books" title="Documents techniques" aria-label="Documents techniques" style="position:relative">📚</button>
           <button class="btn secondary mini" type="button" data-act="clientReq" title="Demandes client" aria-label="Demandes client">🔔</button>
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="assignMission" title="Assigner mission" aria-label="Assigner mission">📅</button>`:''}
           ${(isAdmin()||isOperator())?`<button class="btn secondary mini" type="button" data-act="machineCredentials" title="Acces machine" style="font-size:14px">🔐</button>`:''}
@@ -6240,7 +6231,32 @@ function renderClientMachineModule(){
       btn.onclick=(ev)=>{
         ev.stopPropagation();
         ev.preventDefault();
-        if(typeof window.openTechDocModel==='function') window.openTechDocModel(m.model||'', '', btn.dataset.doc);
+        if(btn.dataset.doc==='books'){
+          // Afficher un mini popup sous le bouton avec 3 choix
+          var existing=btn.parentNode.querySelector('.docBooksPopup');
+          if(existing){existing.remove();return;}
+          var popup=document.createElement('div');
+          popup.className='docBooksPopup';
+          popup.style.cssText='position:absolute;left:0;top:calc(100% + 6px);background:white;border:2px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:999;min-width:180px;overflow:hidden';
+          [['📘','Manuel','manual'],['⚙️','Vue explosion / spare parts','spare'],['⚡','Schéma électrique','electrical']].forEach(function(item){
+            var row=document.createElement('button');
+            row.type='button';
+            row.style.cssText='display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:none;background:white;text-align:left;font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation';
+            row.innerHTML='<span style="font-size:18px">'+item[0]+'</span><span>'+item[1]+'</span>';
+            row.onclick=function(e){
+              e.stopPropagation();
+              popup.remove();
+              if(typeof window.openTechDocModel==='function') window.openTechDocModel(m.model||'','',item[2]);
+            };
+            popup.appendChild(row);
+          });
+          // Fermer au clic ailleurs
+          setTimeout(function(){document.addEventListener('click',function close(){popup.remove();document.removeEventListener('click',close);},{once:true});},10);
+          btn.parentNode.style.position='relative';
+          btn.parentNode.appendChild(popup);
+        } else {
+          if(typeof window.openTechDocModel==='function') window.openTechDocModel(m.model||'','',btn.dataset.doc);
+        }
       };
     });
     card.dataset.machineId=m.id;
