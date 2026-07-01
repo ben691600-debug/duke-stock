@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.0'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -248,17 +248,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 
 
 .moduleChoice{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;margin-top:24px}
-/* ── Tambour rotatif (drum carousel) ────────────────────────── */
-.drumOuter{position:relative;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:none}
-.drumTrack{position:relative;will-change:transform}
-.drumCell{box-sizing:border-box;overflow:hidden;transition:transform .25s ease,opacity .25s ease,box-shadow .25s ease;transform-origin:center}
-.drumCell.drumActive{box-shadow:0 6px 28px rgba(10,124,194,.20)}
-/* Horizontal snap pour les groupes */
-.snapH{display:flex;flex-direction:row;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:0 13%;gap:12px;box-sizing:border-box}
-.snapH::-webkit-scrollbar{display:none}
-.snapCell{scroll-snap-align:center;flex-shrink:0;min-width:76%;transition:transform .25s ease,opacity .25s ease}
-.snapCell.snapActive{box-shadow:0 6px 28px rgba(10,124,194,.18)}
-.snapCounter,.drumCounter{text-align:center;font-size:12px;font-weight:800;color:#6f7b87;margin-top:6px;letter-spacing:.3px}
+
 
 .clientHidden{display:none!important}
 .moduleIcon{font-size:54px;line-height:1}
@@ -6095,12 +6085,6 @@ function renderClientMachineModule(){
     }, {passive:false});
     $('clientGroupsGrid').appendChild(card);
   });
-  // ── Carrousel horizontal des groupes ──────────────────────────────
-  (function(){
-    var grid=$('clientGroupsGrid');
-    var cards=Array.from(grid.children);
-    if(cards.length>1) makeCarousel(grid, cards, 'h');
-  })();
 
   var ml=$('clientMachinesList');
   if(!ml) { window._clientTypeFilter=''; }
@@ -6327,14 +6311,6 @@ function renderClientMachineModule(){
     // Si endoscope, wrapper est déjà ajouté plus haut
   });
 
-  // ── Carrousel vertical des machines ───────────────────────────────
-  (function(){
-    var ml=$('clientMachinesList');
-    if(!ml) return;
-    var items=Array.from(ml.children);
-    if(items.length>1) makeCarousel(ml, items, 'v');
-  })();
-
   if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
@@ -6503,149 +6479,6 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   if(typeof renderClientMachineModule==='function') renderClientMachineModule();
   if(typeof renderPlanningModule==='function') renderPlanningModule();
 };
-
-// ── Carrousel universel ──────────────────────────────────────────────
-// dir: 'h' = horizontal (gauche/droite), 'v' = vertical (haut/bas)
-// slides: tableau de DOM elements (une slide = un item)
-function makeCarousel(container, slides, dir){
-  container.innerHTML='';
-  if(!slides||!slides.length) return;
-  if(slides.length===1){container.appendChild(slides[0]);return;}
-  var n=slides.length;
-
-  // ── Horizontal : scroll-snap natif (groupes) ──────────────────
-  if(dir==='h'){
-    var sc=document.createElement('div'); sc.className='snapH';
-    var ctrH=document.createElement('div'); ctrH.className='snapCounter'; ctrH.textContent='1 / '+n;
-    var cellsH=[];
-    slides.forEach(function(s){
-      var cell=document.createElement('div'); cell.className='snapCell';
-      cell.style.cssText='transform:scale(0.86);opacity:.5';
-      cell.appendChild(s); sc.appendChild(cell); cellsH.push(cell);
-    });
-    var _stH=null;
-    sc.addEventListener('scroll',function(){
-      clearTimeout(_stH);
-      _stH=setTimeout(function(){
-        var mid=sc.scrollLeft+sc.offsetWidth/2;
-        var best=0,bestD=Infinity;
-        cellsH.forEach(function(c,i){var d=Math.abs(c.offsetLeft+c.offsetWidth/2-mid);if(d<bestD){bestD=d;best=i;}});
-        cellsH.forEach(function(c,i){
-          c.classList.toggle('snapActive',i===best);
-          c.style.transform=i===best?'scale(1)':'scale(0.86)';
-          c.style.opacity=i===best?'1':'0.5';
-        });
-        ctrH.textContent=(best+1)+' / '+n;
-      },60);
-    },{passive:true});
-    container.appendChild(sc); container.appendChild(ctrH);
-    setTimeout(function(){if(cellsH[0]){cellsH[0].style.transform='scale(1)';cellsH[0].style.opacity='1';cellsH[0].classList.add('snapActive');}},40);
-    return;
-  }
-
-  // ── Vertical : tambour rotatif (menus, machines) ──────────────
-  var cur=0;
-  var slotH=0; // hauteur d'un slot, mesurée dynamiquement
-  var isDrag=false, startY=0, startOffset=0;
-
-  // Container outer (overflow:hidden = le tambour)
-  var outer=document.createElement('div'); outer.className='drumOuter';
-  // Track contient toutes les slides empilées
-  var track=document.createElement('div'); track.className='drumTrack';
-  var drumCells=[];
-  slides.forEach(function(s){
-    var cell=document.createElement('div'); cell.className='drumCell';
-    cell.appendChild(s); track.appendChild(cell); drumCells.push(cell);
-  });
-  outer.appendChild(track);
-
-  // Compteur
-  var ctr=document.createElement('div'); ctr.className='drumCounter';
-  ctr.textContent='1 / '+n;
-
-  // Y position du track pour centrer l'index i dans le slot du milieu
-  function targetY(i){ return slotH - i*slotH; }
-
-  // Mise à jour visuelle : scale + opacité proportionnels à la distance
-  function updateCells(rawIdx){
-    drumCells.forEach(function(cell,i){
-      var dist=Math.abs(i-rawIdx);
-      var sc=dist===0?1:dist<=1?0.84:0.72;
-      var op=dist===0?1:dist<=1?0.50:0.20;
-      cell.style.transform='scale('+sc+')';
-      cell.style.opacity=op;
-      cell.classList.toggle('drumActive',dist===0);
-    });
-    ctr.textContent=(Math.round(rawIdx)+1)+' / '+n;
-  }
-
-  function goTo(idx,animated){
-    cur=((Math.round(idx)%n)+n)%n;
-    track.style.transition=animated?'transform .28s ease':'none';
-    track.style.transform='translateY('+targetY(cur)+'px)';
-    updateCells(cur);
-  }
-
-  // Touch : bloquer le scroll de page, faire tourner le tambour
-  outer.addEventListener('touchstart',function(e){
-    isDrag=true;
-    startY=e.touches[0].clientY;
-    startOffset=targetY(cur);
-    track.style.transition='none';
-  },{passive:true});
-
-  outer.addEventListener('touchmove',function(e){
-    if(!isDrag) return;
-    e.preventDefault(); // bloque le scroll de page
-    var dy=e.touches[0].clientY-startY;
-    var newY=startOffset+dy;
-    track.style.transform='translateY('+newY+'px)';
-    // Opacité en temps réel
-    var rawIdx=(slotH-newY)/slotH;
-    updateCells(rawIdx);
-  },{passive:false}); // false obligatoire pour preventDefault
-
-  outer.addEventListener('touchend',function(e){
-    if(!isDrag) return; isDrag=false;
-    var dy=e.changedTouches[0].clientY-startY;
-    var steps=Math.round(-dy/slotH);
-    goTo(cur+steps,true);
-  },{passive:true});
-
-  container.appendChild(outer);
-  container.appendChild(ctr);
-
-  // Mesure et init après rendu (les cellules doivent être dans le DOM)
-  setTimeout(function(){
-    // Hauteur du slot = hauteur de la première cellule
-    slotH=drumCells[0]?drumCells[0].offsetHeight+10:220;
-    // Hauteur du tambour = 3 slots (haut+milieu+bas)
-    outer.style.height=(3*slotH)+'px';
-    // Track hauteur = n slots
-    track.style.height=(n*slotH)+'px';
-    drumCells.forEach(function(c){c.style.height=slotH+'px';});
-    goTo(0,false);
-  },60);
-}
-
-// ── Tambour du menu principal ─────────────────────────────────────
-function buildModuleCarousel(){
-  var mc=document.querySelector('#moduleView .moduleChoice');
-  if(!mc) return;
-  var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
-    return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
-  });
-  if(!btns.length) return;
-  // Conteneur séparé pour le tambour (évite de modifier .moduleChoice)
-  var cc=document.getElementById('moduleCarouselContainer');
-  if(!cc){
-    cc=document.createElement('div'); cc.id='moduleCarouselContainer';
-    mc.parentNode.insertBefore(cc,mc);
-  }
-  mc.style.display='none';
-  cc.innerHTML=''; // reset avant reconstruction
-  makeCarousel(cc,btns,'v');
-}
 
 function _maintColor(nextDateStr){
   if(!nextDateStr) return 'blue';
@@ -10453,8 +10286,6 @@ var _waitReady=setInterval(function(){
         _oldShow.call(this,view);
         // Appliquer UI seulement si non-admin
         if(cu&&cu.role&&cu.role!=='admin') setTimeout(window.applyPermissionUI,30);
-        // Reconstruire le carrousel du menu principal à chaque navigation
-        if(view==='moduleView') setTimeout(buildModuleCarousel,80);
       };
       var _oldRender=renderAll;
       window.renderAll=function(){
@@ -10462,8 +10293,6 @@ var _waitReady=setInterval(function(){
         // Appliquer UI seulement si un utilisateur non-admin est connecté
         var cu=(typeof currentUser!=='undefined')?currentUser:null;
         if(cu&&!admin()) setTimeout(window.applyPermissionUI,30);
-        // Rebâtir le carrousel après chaque render (permissions peuvent changer)
-        setTimeout(buildModuleCarousel,100);
       };
       // Bouton paramètres
       var sb=document.getElementById('settingsBtn');
