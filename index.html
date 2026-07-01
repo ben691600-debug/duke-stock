@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.19'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.20'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6552,10 +6552,23 @@ function openMachineMaintenanceDialog(machineId){
       var today=new Date().toISOString().slice(0,10);
       var liveMachine=findMachineInTree(machineId);
       if(!liveMachine) return;
+      // Mettre à jour maintenanceHistory
       liveMachine.maintenanceHistory=liveMachine.maintenanceHistory||[];
       var existing=liveMachine.maintenanceHistory.find(function(h){return h.maintId===maint.id;});
       if(existing) existing.date=today;
       else liveMachine.maintenanceHistory.push({maintId:maint.id,date:today});
+      // Ajouter une ligne dans l'historique machine (visible dans "Historique machine")
+      liveMachine.serviceHistory=liveMachine.serviceHistory||[];
+      liveMachine.serviceHistory.unshift({
+        id:uid(),
+        date:new Date().toLocaleDateString(),
+        type:'maintenance',
+        note:'✅ Maintenance effectuée : '+esc(maint.description||'Maintenance')
+          +' (fréquence : '+esc(String(maint.freqMonths||'?'))+' mois)'
+          +' — Prochaine : '+(_calcNextDate(today,maint.freqMonths)||'—'),
+        operatorName:currentUser?currentUser.username:'',
+        createdAt:new Date().toISOString()
+      });
       save();
       $('machineMaintenanceDialog').close();
       setTimeout(function(){openMachineMaintenanceDialog(machineId);},50);
@@ -7672,7 +7685,7 @@ function openMachineService(mid){
 
   function renderHistory(filter){
     box.innerHTML='';
-    var interventions=(m.serviceHistory||[]).filter(function(s){return s.type==='intervention';});
+    var interventions=(m.serviceHistory||[]).filter(function(s){return s.type==='intervention'||s.type==='maintenance';});
     var oldServices=(m.services||[]);
     // Filtre par numéro de panne ou note
     if(filter){
@@ -7690,6 +7703,16 @@ function openMachineService(mid){
     interventions.forEach(function(s){
       var entryId = s.id || s.serviceNumber || s.date || '';
       var div=document.createElement('div');
+      // Style différent pour les maintenances
+      if(s.type==='maintenance'){
+        div.className='serviceMini';
+        div.style.cssText='background:#e8f5e9;border-left:4px solid #2e7d32';
+        div.innerHTML='<b style="color:#2e7d32">🔧 '+esc(s.date||'')+'</b>'
+          +(s.operatorName?'<span class="badge" style="background:#2e7d32">'+esc(s.operatorName)+'</span>':'')+'<br>'
+          +'<span style="font-size:13px">'+esc(s.note||'')+'</span>';
+        box.appendChild(div);
+        return;
+      }
       div.className='serviceMini';
       div.dataset.entryId = entryId;
       var partsHtml=(s.partsUsed||[]).length?('<br><small>⚙️ '+(s.partsUsed||[]).map(function(p){return p.partName+(p.qty>1?' ×'+p.qty:'');}).join(', ')+'</small>'):'';
