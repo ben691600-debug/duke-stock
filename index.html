@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.12'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.13'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6819,31 +6819,58 @@ function openClientServiceRequests(mid){
     var div=document.createElement('div');
     div.className=getCardClass(r.status);
     var st=r.status||'open';
-    // "Affecté à" affiché avec l'id du span pour le mettre à jour sans rerender
+
+    // Infos client ouvreur
+    var openedByHtml='';
+    if(r.openedBy){
+      var clientUser=(db.users||[]).find(function(u){return u.username===r.openedBy;});
+      var clientPhone=clientUser&&clientUser.phone?clientUser.phone:'';
+      openedByHtml='<div style="margin-top:6px;padding:6px 10px;background:#f0f7ff;border-radius:10px;font-size:12px">'
+        +'👤 <b>'+esc(r.openedBy)+'</b>'
+        +(clientPhone?' — 📞 <a href="tel:'+esc(clientPhone)+'" style="color:#1a7ad4;font-weight:800">'+esc(clientPhone)+'</a>':'')
+        +'</div>';
+    }
+
     var assignedInfo=r.assignedTo
       ?('<div style="font-size:12px;color:#6f7b87;margin-top:6px">'+T('assignedTo')+': <b id="assignedLabel_'+esc(r.id)+'">'+esc(r.assignedTo)+'</b></div>')
       :'<div style="font-size:12px;color:#6f7b87;margin-top:6px" id="assignedLabel_'+esc(r.id)+'">'+T('assignTo')+': —</div>';
+
+    // Bouton Planifier (admin uniquement)
+    var planBtn=isAdmin()
+      ?'<button type="button" data-plan-req="'+esc(r.id)+'" class="btn primary" style="width:100%;min-height:44px;border-radius:14px;margin-top:8px;font-size:14px;font-weight:900">📅 Planifier en mission</button>'
+      :'';
+
     div.innerHTML='<b>'+esc(r.faultLabel||'-')+'</b><br>'
       +'<span class="muted">'+esc(new Date(r.createdAt||Date.now()).toLocaleString())+'</span><br>'
       +'<span class="serviceStatusPill '+getStatusClass(r.status)+'">'+getStatusLabel(r.status)+'</span>'
+      +openedByHtml
       +assignedInfo
       +buildAssignDropdown(r, mid)
+      +planBtn
       +(isClientUser()?''
         :'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px">'
           +'<button type="button" class="btn secondary" data-st="open" style="min-height:40px;border-radius:14px">'+T('statusOpen')+'</button>'
           +'<button type="button" class="btn ok" data-st="closed" style="min-height:40px;border-radius:14px">'+T('statusClosed')+'</button>'
         +'</div>'
-        // "En cours" = statut indépendant, toujours visible
         +'<button type="button" class="btn" data-st="in_progress" style="width:100%;min-height:40px;border-radius:14px;margin-top:7px;background:#fff9c4;color:#e65100;border:1.5px solid #fb8c00;font-weight:900">'+T('statusInProgress')+'</button>'
-        // Début dépannage : visible SAUF si déjà in_progress avec intervention commencée
         +(st!=='in_progress'||!r.startTime
           ?'<button type="button" class="btn ok" data-intervention="start" style="width:100%;min-height:44px;border-radius:14px;margin-top:10px;font-size:15px;font-weight:900">▶ Début de dépannage</button>'
           :'')
-        // Fin dépannage : visible seulement si in_progress ET intervention démarrée
         +(st==='in_progress'&&r.startTime
           ?'<button type="button" class="btn danger" data-intervention="stop" style="width:100%;min-height:44px;border-radius:14px;margin-top:7px;font-size:15px;font-weight:900">■ Fin de dépannage</button>'
           :'')
        );
+
+    // Bouton Planifier → ouvre le dialog assignMission pré-rempli avec la panne
+    var planBtnEl=div.querySelector('[data-plan-req]');
+    if(planBtnEl) planBtnEl.onclick=function(){
+      openAssignMissionDialog(r.machineId, null);
+      // Pré-remplir les notes avec le numéro de panne
+      setTimeout(function(){
+        var notesInput=$('missionNotesInput');
+        if(notesInput && r.faultLabel) notesInput.value='Panne: '+r.faultLabel+(r.serviceNumber?' | '+r.serviceNumber:'')+(r.openedBy?' | Client: '+r.openedBy:'');
+      },50);
+    };
     div.querySelectorAll('[data-st]').forEach(function(btn){
       btn.onclick=function(){
         // Retrouver r par id dans db pour éviter les références périmées après sync
@@ -6941,7 +6968,7 @@ function clientServiceOpenPublic(mid){
     db.serviceCounter=(db.serviceCounter||0)+1;
     var _d=new Date();
     var _sn='SRV-'+_d.getFullYear()+String(_d.getMonth()+1).padStart(2,'0')+String(_d.getDate()).padStart(2,'0')+'-'+String(db.serviceCounter).padStart(4,'0');
-    db.clientServiceRequests.unshift({id:uid(),serviceNumber:_sn,machineId:mid,machineModel:machine.model||'',serial:machine.serial||'',groupPath:res.path||[],faultLabel:select.value,status:'open',createdAt:new Date().toISOString(),source:'client_qr'});
+    db.clientServiceRequests.unshift({id:uid(),serviceNumber:_sn,machineId:mid,machineModel:machine.model||'',serial:machine.serial||'',groupPath:res.path||[],faultLabel:select.value,status:'open',createdAt:new Date().toISOString(),source:'client_qr',openedBy:currentUser?currentUser.username:''});
     save();
     alert(T('serviceRequestOpened'));
     renderStatus();
