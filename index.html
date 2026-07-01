@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.13'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.14'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6587,7 +6587,13 @@ function renderMyMissionsModule(){
     var machineGroup=found?(found.group||found.node||null):null;
     var machineGroupId=machineGroup?machineGroup.id:null;
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
-    var groupLabel=machineGroup?esc(machineGroup.name):'';
+    // Hiérarchie complète : tous les groupes parents jusqu'à la racine
+    var fullHierarchy='';
+    if(machineGroupId){
+      var pathIds=findClientPathToGroup(machineGroupId);
+      var names=pathIds.map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
+      fullHierarchy=names.join(' › ');
+    }
     var wazeLink=machineGroupId?findNearestGroupWaze(machineGroupId):'';
     var contactGroupId=machineGroupId?findNearestGroupWithContact(machineGroupId):'';
     var firstContact=(contactGroupId?findNearestGroupContact(machineGroupId):null)||{};
@@ -6598,7 +6604,7 @@ function renderMyMissionsModule(){
       +'<div style="flex:1;min-width:0;padding-right:48px">'
       +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' à '+esc(ms.time)+'</div>'
       +'<div style="margin-top:4px;font-weight:700">🏭 '+machineLabel+'</div>'
-      +(groupLabel?'<div style="margin-top:2px;color:#1a7ad4;font-weight:700">📍 '+groupLabel+'</div>':'')
+      +(fullHierarchy?'<div style="margin-top:3px;color:#1a7ad4;font-weight:700;font-size:12px;line-height:1.4">📍 '+esc(fullHierarchy)+'</div>':'')
       +'<div style="display:flex;gap:6px;margin-top:8px">'
       +(wazeLink?'<a href="'+esc(wazeLink)+'" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;text-decoration:none"><img src="https://www.waze.com/favicon.ico" style="width:14px;height:14px" onerror="this.style.display=\'none\'">Waze</a>'
         :'<div style="flex:1"></div>')
@@ -6820,6 +6826,28 @@ function openClientServiceRequests(mid){
     div.className=getCardClass(r.status);
     var st=r.status||'open';
 
+    // Hiérarchie complète du groupe de la machine
+    var machineRes=findMachineById(r.machineId||mid);
+    var pathIds=machineRes?findClientPathToGroup(machineRes.node&&machineRes.node.id):[];
+    var hierarchy=pathIds.map(function(gid){
+      var g=findGroupById(gid); return g?g.name:'';
+    }).filter(Boolean).join(' › ');
+    var serialLine=machineRes?('<div style="font-size:12px;color:#555;margin-top:4px">🔢 S/N : <b>'+esc(machineRes.machine.serial||'-')+'</b></div>'):'';
+    var hierarchyLine=hierarchy?('<div style="font-size:12px;color:#1a7ad4;margin-top:2px">📍 '+esc(hierarchy)+'</div>'):'';
+
+    // Contact + Waze du groupe le plus proche
+    var groupId=machineRes&&machineRes.node?machineRes.node.id:'';
+    var nearestWaze=groupId?findNearestGroupWaze(groupId):'';
+    var nearestContactGid=groupId?findNearestGroupWithContact(groupId):'';
+    var nearestContact=nearestContactGid?findNearestGroupContact(groupId):null;
+    var contactHtml='';
+    if(nearestWaze||nearestContact){
+      contactHtml='<div style="display:flex;gap:6px;margin-top:8px">'
+        +(nearestWaze?'<a href="'+esc(nearestWaze)+'" target="_blank" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;text-decoration:none"><img src="https://www.waze.com/favicon.ico" style="width:14px;height:14px" onerror="this.style.display=\'none\'">Waze</a>':'')
+        +(nearestContactGid?'<button type="button" class="btn secondary mini" data-contact-gid="'+esc(nearestContactGid)+'" style="flex:1">📞 Contact</button>':'')
+        +'</div>';
+    }
+
     // Infos client ouvreur
     var openedByHtml='';
     if(r.openedBy){
@@ -6843,16 +6871,13 @@ function openClientServiceRequests(mid){
     div.innerHTML='<b>'+esc(r.faultLabel||'-')+'</b><br>'
       +'<span class="muted">'+esc(new Date(r.createdAt||Date.now()).toLocaleString())+'</span><br>'
       +'<span class="serviceStatusPill '+getStatusClass(r.status)+'">'+getStatusLabel(r.status)+'</span>'
+      +serialLine+hierarchyLine+contactHtml
       +openedByHtml
       +assignedInfo
       +buildAssignDropdown(r, mid)
       +planBtn
       +(isClientUser()?''
-        :'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px">'
-          +'<button type="button" class="btn secondary" data-st="open" style="min-height:40px;border-radius:14px">'+T('statusOpen')+'</button>'
-          +'<button type="button" class="btn ok" data-st="closed" style="min-height:40px;border-radius:14px">'+T('statusClosed')+'</button>'
-        +'</div>'
-        +'<button type="button" class="btn" data-st="in_progress" style="width:100%;min-height:40px;border-radius:14px;margin-top:7px;background:#fff9c4;color:#e65100;border:1.5px solid #fb8c00;font-weight:900">'+T('statusInProgress')+'</button>'
+        :'<button type="button" class="btn" data-st="in_progress" style="width:100%;min-height:40px;border-radius:14px;margin-top:7px;background:#fff9c4;color:#e65100;border:1.5px solid #fb8c00;font-weight:900">'+T('statusInProgress')+'</button>'
         +(st!=='in_progress'||!r.startTime
           ?'<button type="button" class="btn ok" data-intervention="start" style="width:100%;min-height:44px;border-radius:14px;margin-top:10px;font-size:15px;font-weight:900">▶ Début de dépannage</button>'
           :'')
@@ -6861,11 +6886,14 @@ function openClientServiceRequests(mid){
           :'')
        );
 
+    // Handler bouton Contact groupe
+    var cBtn=div.querySelector('[data-contact-gid]');
+    if(cBtn) cBtn.onclick=function(ev){ev.stopPropagation();openClientGroupContactsById(cBtn.dataset.contactGid);};
+
     // Bouton Planifier → ouvre le dialog assignMission pré-rempli avec la panne
     var planBtnEl=div.querySelector('[data-plan-req]');
     if(planBtnEl) planBtnEl.onclick=function(){
-      openAssignMissionDialog(r.machineId, null);
-      // Pré-remplir les notes avec le numéro de panne
+      openAssignMissionDialog(r.machineId||mid, null);
       setTimeout(function(){
         var notesInput=$('missionNotesInput');
         if(notesInput && r.faultLabel) notesInput.value='Panne: '+r.faultLabel+(r.serviceNumber?' | '+r.serviceNumber:'')+(r.openedBy?' | Client: '+r.openedBy:'');
