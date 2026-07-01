@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v20.18'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v20.19'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2552,6 +2552,13 @@ body.draggingMachine{
   <div id="machineClientPreview" class="preview hidden"></div>
   <input id="machinePhotoClient" type="file" accept="image/*" class="hidden" tabindex="-1" aria-hidden="true">
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
+</form></dialog>
+
+<dialog class="modal" id="machineMaintenanceDialog"><form method="dialog">
+  <h2 id="machineMaintenanceTitle">🔧 Maintenance</h2>
+  <p class="muted" id="machineMaintenanceSub" style="margin-top:-6px;margin-bottom:12px"></p>
+  <div id="machineMaintenanceList" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="formActions"><button class="btn secondary">Fermer</button></div>
 </form></dialog>
 
 <dialog class="modal" id="missionAssignDialog"><form id="missionAssignForm">
@@ -6154,25 +6161,28 @@ function renderClientMachineModule(){
     var _isEndo=_hasMaint;
     // Wrapper pour la languette
     var wrapper=document.createElement('div');
-    wrapper.style.cssText='position:relative;margin-top:'+ (_isEndo?'26px':'0');
+    wrapper.style.cssText='position:relative;margin-top:'+(_isEndo?'26px':'0');
     if(_isEndo){
-      var tab=document.createElement('div');
-      tab.textContent='Maintenance';
+      var _maintColor=getMachineMaintenanceColor(m, _faultMachine);
+      var _tabStyle=_maintColor==='red'
+        ?'background:#c62828;color:#fff'
+        :_maintColor==='orange'?'background:#e65100;color:#fff'
+        :'background:#1a7ad4;color:#fff';
+      var tab=document.createElement('button');
+      tab.type='button';
+      tab.textContent='🔧 Maintenance';
+      tab.dataset.machineId=m.id;
       tab.style.cssText=[
-        'position:absolute',
-        'top:-26px',
-        'left:14px',
-        'background:#1a7ad4',
-        'color:#ffffff',
-        'font-size:12px',
-        'font-weight:800',
+        'position:absolute','top:-26px','left:14px',
+        _tabStyle,
+        'font-size:12px','font-weight:800',
         'padding:5px 16px 7px 16px',
         'border-radius:8px 8px 0 0',
-        'letter-spacing:0.5px',
-        'font-family:inherit',
-        'line-height:1',
-        'pointer-events:none',
+        'letter-spacing:0.5px','font-family:inherit',
+        'line-height:1','border:none','cursor:pointer',
+        'touch-action:manipulation',
       ].join(';');
+      tab.onclick=function(e){e.stopPropagation();openMachineMaintenanceDialog(m.id);};
       wrapper.appendChild(tab);
     }
     wrapper.appendChild(card);
@@ -6470,7 +6480,102 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   if(typeof renderPlanningModule==='function') renderPlanningModule();
 };
 
-// ── Vue Gestion Planning (admin) ─────────────────────────────────────
+// ── Maintenance préventive machine ────────────────────────────────────
+function _maintColor(nextDateStr){
+  if(!nextDateStr) return 'blue';
+  var next=new Date(nextDateStr); var now=new Date();
+  var diffMs=next-now; var diffDays=diffMs/(1000*60*60*24);
+  if(diffDays<0) return 'red';        // dépassé
+  if(diffDays<=7) return 'red';       // ≤ 7 jours
+  if(diffDays<=30) return 'orange';   // ≤ 30 jours
+  return 'blue';                       // dans les temps
+}
+function _maintColorStyle(color){
+  if(color==='red') return 'background:#c62828;color:#fff';
+  if(color==='orange') return 'background:#e65100;color:#fff';
+  return 'background:#1a7ad4;color:#fff';
+}
+function _calcNextDate(lastDateStr, freqMonths){
+  if(!lastDateStr||!freqMonths) return null;
+  var d=new Date(lastDateStr);
+  d.setMonth(d.getMonth()+parseInt(freqMonths));
+  return d.toISOString().slice(0,10);
+}
+function getMachineMaintenanceColor(machine, faultMachine){
+  // Retourne la couleur la plus urgente parmi toutes les maintenances de la machine
+  var maints=(faultMachine&&faultMachine.maintenances)||[];
+  var worst='blue';
+  maints.forEach(function(maint){
+    if(maint.specificSerial && maint.specificSerial!==(machine.serial||machine.serialNumber||'')) return;
+    var history=(machine.maintenanceHistory||[]).find(function(h){return h.maintId===maint.id;});
+    var lastDate=history?history.date:null;
+    var nextDate=_calcNextDate(lastDate, maint.freqMonths);
+    var c=_maintColor(nextDate);
+    if(c==='red') worst='red';
+    else if(c==='orange'&&worst!=='red') worst='orange';
+  });
+  return worst;
+}
+function openMachineMaintenanceDialog(machineId){
+  var machineRes=findMachineById(machineId);
+  if(!machineRes) return;
+  var machine=machineRes.machine;
+  var faultMachine=(db.faultMachines||[]).find(function(fm){
+    return (fm.model||'').trim().toLowerCase()===(machine.model||'').trim().toLowerCase();
+  });
+  var maints=(faultMachine&&faultMachine.maintenances)||[];
+  maints=maints.filter(function(maint){
+    if(!maint.specificSerial) return true;
+    return maint.specificSerial.trim().toLowerCase()===(machine.serial||machine.serialNumber||'').trim().toLowerCase();
+  });
+  $('machineMaintenanceTitle').textContent='🔧 Maintenance — '+esc(machine.model);
+  $('machineMaintenanceSub').textContent='S/N : '+(machine.serial||'-');
+  var list=$('machineMaintenanceList'); list.innerHTML='';
+  if(!maints.length){
+    list.innerHTML='<p class="muted">Aucune maintenance définie pour ce modèle.</p>';
+  }
+  maints.forEach(function(maint){
+    var history=(machine.maintenanceHistory||[]).find(function(h){return h.maintId===maint.id;});
+    var lastDate=history?history.date:null;
+    var nextDate=_calcNextDate(lastDate, maint.freqMonths);
+    var color=_maintColor(nextDate);
+    var colorStyle=_maintColorStyle(color);
+    var card=document.createElement('div');
+    card.style.cssText='background:#f0f7ff;border-radius:14px;padding:12px 14px';
+    card.innerHTML=
+      '<div style="font-weight:900;font-size:14px;margin-bottom:6px">'+esc(maint.description||'Maintenance')+'</div>'
+      +'<div style="font-size:12px;color:#555;margin-bottom:4px">🔁 Fréquence : tous les <b>'+esc(String(maint.freqMonths||'?'))+'</b> mois</div>'
+      +'<div style="font-size:12px;color:#555;margin-bottom:4px">📅 Dernière effectuée : <b>'+(lastDate||'—')+'</b></div>'
+      +'<div style="display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:800;margin-bottom:10px;'+colorStyle+'">Prochaine : '+(nextDate||'Non planifiée')+'</div>'
+      +'<button type="button" data-maint-done="'+esc(maint.id)+'" data-machine-id="'+esc(machineId)+'" style="width:100%;padding:11px;border:none;border-radius:12px;background:#2e7d32;color:#fff;font-weight:900;font-size:14px;cursor:pointer;touch-action:manipulation">✅ Marquer effectuée aujourd\'hui</button>';
+    card.querySelector('[data-maint-done]').onclick=function(){
+      var today=new Date().toISOString().slice(0,10);
+      var liveMachine=findMachineInTree(machineId);
+      if(!liveMachine) return;
+      liveMachine.maintenanceHistory=liveMachine.maintenanceHistory||[];
+      var existing=liveMachine.maintenanceHistory.find(function(h){return h.maintId===maint.id;});
+      if(existing) existing.date=today;
+      else liveMachine.maintenanceHistory.push({maintId:maint.id,date:today});
+      save();
+      $('machineMaintenanceDialog').close();
+      setTimeout(function(){openMachineMaintenanceDialog(machineId);},50);
+      renderClientMachineModule();
+    };
+    list.appendChild(card);
+  });
+  $('machineMaintenanceDialog').showModal();
+}
+function findMachineInTree(machineId){
+  // Retourne la référence directe à la machine dans db pour modification
+  var result=null;
+  function scan(node){
+    (node.machines||[]).forEach(function(m){if(m.id===machineId) result=m;});
+    (node.groups||[]).forEach(function(g){scan(g);});
+  }
+  scan(db.clientRoot||{});
+  return result;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // GESTION PLANNING — Onglet 1: Assigner (copie navigation clientsView)
 // ══════════════════════════════════════════════════════════════════
