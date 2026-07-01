@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.2'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -248,20 +248,17 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 
 
 .moduleChoice{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;margin-top:24px}
-/* ── Scroll-snap carousel natif ──────────────────────────────── */
-/* Conteneur scroll horizontal (groupes) */
-.snapH{display:flex;flex-direction:row;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:0 13%;gap:12px;box-sizing:border-box;padding-bottom:6px}
+/* ── Tambour rotatif (drum carousel) ────────────────────────── */
+.drumOuter{position:relative;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:none}
+.drumTrack{position:relative;will-change:transform}
+.drumCell{box-sizing:border-box;overflow:hidden;transition:transform .25s ease,opacity .25s ease,box-shadow .25s ease;transform-origin:center}
+.drumCell.drumActive{box-shadow:0 6px 28px rgba(10,124,194,.20)}
+/* Horizontal snap pour les groupes */
+.snapH{display:flex;flex-direction:row;overflow-x:scroll;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:0 13%;gap:12px;box-sizing:border-box}
 .snapH::-webkit-scrollbar{display:none}
-/* Conteneur scroll vertical (menus, machines) */
-.snapV{display:flex;flex-direction:column;overflow-y:scroll;overflow-x:hidden;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;padding:11% 0;gap:12px;box-sizing:border-box;max-height:72vh}
-.snapV::-webkit-scrollbar{display:none}
-/* Cellule snap — inactive = réduite et atténuée */
-.snapCell{scroll-snap-align:center;flex-shrink:0;transition:transform .25s ease,opacity .25s ease,box-shadow .25s ease;transform:scale(0.86);opacity:0.5}
-.snapCell.snapActive{transform:scale(1)!important;opacity:1!important;box-shadow:0 8px 32px rgba(10,124,194,.20)}
-/* Horizontal : cellule = 76% de la largeur visible */
-.snapH>.snapCell{min-width:76%}
-/* Compteur */
-.snapCounter{text-align:center;font-size:12px;font-weight:800;color:#6f7b87;margin-top:6px;letter-spacing:.3px}
+.snapCell{scroll-snap-align:center;flex-shrink:0;min-width:76%;transition:transform .25s ease,opacity .25s ease}
+.snapCell.snapActive{box-shadow:0 6px 28px rgba(10,124,194,.18)}
+.snapCounter,.drumCounter{text-align:center;font-size:12px;font-weight:800;color:#6f7b87;margin-top:6px;letter-spacing:.3px}
 
 .clientHidden{display:none!important}
 .moduleIcon{font-size:54px;line-height:1}
@@ -6514,95 +6511,140 @@ function makeCarousel(container, slides, dir){
   container.innerHTML='';
   if(!slides||!slides.length) return;
   if(slides.length===1){container.appendChild(slides[0]);return;}
-
-  var isH=(dir==='h');
   var n=slides.length;
 
-  // Scroll container
-  var sc=document.createElement('div');
-  sc.className=isH?'snapH':'snapV';
-
-  // Cellules
-  var cells=[];
-  slides.forEach(function(s){
-    var cell=document.createElement('div');
-    cell.className='snapCell';
-    cell.appendChild(s);
-    sc.appendChild(cell);
-    cells.push(cell);
-  });
-
-  // Compteur
-  var ctr=document.createElement('div');
-  ctr.className='snapCounter';
-  ctr.textContent='1 / '+n;
-
-  // Activer la cellule la plus centrée
-  var _st=null;
-  function updateActive(){
-    var best=0, bestD=Infinity;
-    var viewMid=isH?(sc.scrollLeft+sc.offsetWidth/2):(sc.scrollTop+sc.offsetHeight/2);
-    cells.forEach(function(cell,i){
-      var cellMid=isH
-        ?(cell.offsetLeft+cell.offsetWidth/2)
-        :(cell.offsetTop+cell.offsetHeight/2);
-      var d=Math.abs(cellMid-viewMid);
-      if(d<bestD){bestD=d;best=i;}
+  // ── Horizontal : scroll-snap natif (groupes) ──────────────────
+  if(dir==='h'){
+    var sc=document.createElement('div'); sc.className='snapH';
+    var ctrH=document.createElement('div'); ctrH.className='snapCounter'; ctrH.textContent='1 / '+n;
+    var cellsH=[];
+    slides.forEach(function(s){
+      var cell=document.createElement('div'); cell.className='snapCell';
+      cell.style.cssText='transform:scale(0.86);opacity:.5';
+      cell.appendChild(s); sc.appendChild(cell); cellsH.push(cell);
     });
-    cells.forEach(function(c,i){c.classList.toggle('snapActive',i===best);});
-    ctr.textContent=(best+1)+' / '+n;
+    var _stH=null;
+    sc.addEventListener('scroll',function(){
+      clearTimeout(_stH);
+      _stH=setTimeout(function(){
+        var mid=sc.scrollLeft+sc.offsetWidth/2;
+        var best=0,bestD=Infinity;
+        cellsH.forEach(function(c,i){var d=Math.abs(c.offsetLeft+c.offsetWidth/2-mid);if(d<bestD){bestD=d;best=i;}});
+        cellsH.forEach(function(c,i){
+          c.classList.toggle('snapActive',i===best);
+          c.style.transform=i===best?'scale(1)':'scale(0.86)';
+          c.style.opacity=i===best?'1':'0.5';
+        });
+        ctrH.textContent=(best+1)+' / '+n;
+      },60);
+    },{passive:true});
+    container.appendChild(sc); container.appendChild(ctrH);
+    setTimeout(function(){if(cellsH[0]){cellsH[0].style.transform='scale(1)';cellsH[0].style.opacity='1';cellsH[0].classList.add('snapActive');}},40);
+    return;
   }
 
-  sc.addEventListener('scroll',function(){
-    clearTimeout(_st);
-    _st=setTimeout(updateActive,60);
+  // ── Vertical : tambour rotatif (menus, machines) ──────────────
+  var cur=0;
+  var slotH=0; // hauteur d'un slot, mesurée dynamiquement
+  var isDrag=false, startY=0, startOffset=0;
+
+  // Container outer (overflow:hidden = le tambour)
+  var outer=document.createElement('div'); outer.className='drumOuter';
+  // Track contient toutes les slides empilées
+  var track=document.createElement('div'); track.className='drumTrack';
+  var drumCells=[];
+  slides.forEach(function(s){
+    var cell=document.createElement('div'); cell.className='drumCell';
+    cell.appendChild(s); track.appendChild(cell); drumCells.push(cell);
+  });
+  outer.appendChild(track);
+
+  // Compteur
+  var ctr=document.createElement('div'); ctr.className='drumCounter';
+  ctr.textContent='1 / '+n;
+
+  // Y position du track pour centrer l'index i dans le slot du milieu
+  function targetY(i){ return slotH - i*slotH; }
+
+  // Mise à jour visuelle : scale + opacité proportionnels à la distance
+  function updateCells(rawIdx){
+    drumCells.forEach(function(cell,i){
+      var dist=Math.abs(i-rawIdx);
+      var sc=dist===0?1:dist<=1?0.84:0.72;
+      var op=dist===0?1:dist<=1?0.50:0.20;
+      cell.style.transform='scale('+sc+')';
+      cell.style.opacity=op;
+      cell.classList.toggle('drumActive',dist===0);
+    });
+    ctr.textContent=(Math.round(rawIdx)+1)+' / '+n;
+  }
+
+  function goTo(idx,animated){
+    cur=((Math.round(idx)%n)+n)%n;
+    track.style.transition=animated?'transform .28s ease':'none';
+    track.style.transform='translateY('+targetY(cur)+'px)';
+    updateCells(cur);
+  }
+
+  // Touch : bloquer le scroll de page, faire tourner le tambour
+  outer.addEventListener('touchstart',function(e){
+    isDrag=true;
+    startY=e.touches[0].clientY;
+    startOffset=targetY(cur);
+    track.style.transition='none';
   },{passive:true});
 
-  container.appendChild(sc);
+  outer.addEventListener('touchmove',function(e){
+    if(!isDrag) return;
+    e.preventDefault(); // bloque le scroll de page
+    var dy=e.touches[0].clientY-startY;
+    var newY=startOffset+dy;
+    track.style.transform='translateY('+newY+'px)';
+    // Opacité en temps réel
+    var rawIdx=(slotH-newY)/slotH;
+    updateCells(rawIdx);
+  },{passive:false}); // false obligatoire pour preventDefault
+
+  outer.addEventListener('touchend',function(e){
+    if(!isDrag) return; isDrag=false;
+    var dy=e.changedTouches[0].clientY-startY;
+    var steps=Math.round(-dy/slotH);
+    goTo(cur+steps,true);
+  },{passive:true});
+
+  container.appendChild(outer);
   container.appendChild(ctr);
 
-  // Activer le premier immédiatement
-  setTimeout(updateActive,40);
+  // Mesure et init après rendu (les cellules doivent être dans le DOM)
+  setTimeout(function(){
+    // Hauteur du slot = hauteur de la première cellule
+    slotH=drumCells[0]?drumCells[0].offsetHeight+10:220;
+    // Hauteur du tambour = 3 slots (haut+milieu+bas)
+    outer.style.height=(3*slotH)+'px';
+    // Track hauteur = n slots
+    track.style.height=(n*slotH)+'px';
+    drumCells.forEach(function(c){c.style.height=slotH+'px';});
+    goTo(0,false);
+  },60);
 }
 
-// ── Scroll-snap du menu principal (vertical) ──────────────────────
+// ── Tambour du menu principal ─────────────────────────────────────
 function buildModuleCarousel(){
   var mc=document.querySelector('#moduleView .moduleChoice');
-  if(!mc||mc._snapDone) return;
+  if(!mc) return;
   var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
     return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
   });
   if(!btns.length) return;
-
-  // Appliquer scroll-snap directement sur .moduleChoice
-  mc.className='snapV';
-  mc._snapDone=true;
-  btns.forEach(function(btn){
-    btn.classList.add('snapCell');
-  });
-  // Activer la première carte
-  if(btns[0]) btns[0].classList.add('snapActive');
-
-  // Compteur (inséré après le conteneur)
-  if(!mc.nextSibling||!mc.nextSibling.classList||!mc.nextSibling.classList.contains('snapCounter')){
-    var ctr=document.createElement('div');
-    ctr.className='snapCounter';
-    ctr.textContent='1 / '+btns.length;
-    mc.parentNode.insertBefore(ctr,mc.nextSibling);
-    mc.addEventListener('scroll',function(){
-      clearTimeout(mc._st);
-      mc._st=setTimeout(function(){
-        var best=0,bestD=Infinity;
-        var vMid=mc.scrollTop+mc.offsetHeight/2;
-        btns.forEach(function(btn,i){
-          var d=Math.abs(btn.offsetTop+btn.offsetHeight/2-vMid);
-          if(d<bestD){bestD=d;best=i;}
-        });
-        btns.forEach(function(b,i){b.classList.toggle('snapActive',i===best);});
-        ctr.textContent=(best+1)+' / '+btns.length;
-      },60);
-    },{passive:true});
+  // Conteneur séparé pour le tambour (évite de modifier .moduleChoice)
+  var cc=document.getElementById('moduleCarouselContainer');
+  if(!cc){
+    cc=document.createElement('div'); cc.id='moduleCarouselContainer';
+    mc.parentNode.insertBefore(cc,mc);
   }
+  mc.style.display='none';
+  cc.innerHTML=''; // reset avant reconstruction
+  makeCarousel(cc,btns,'v');
 }
 
 function _maintColor(nextDateStr){
