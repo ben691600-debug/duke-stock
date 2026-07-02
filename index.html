@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.14'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.15'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2923,11 +2923,13 @@ function initFirebaseSecurity(){
   try{
     if(firebaseConfigReady() && window.firebase && firebase.apps && !firebase.apps.length){
       firebase.initializeApp(FIREBASE_CONFIG);
-      // ── App Check — reCAPTCHA v3 (protège la base de données) ──────────
+      // ── App Check — reCAPTCHA v3 ────────────────────────────────────────
       if(window.firebase && firebase.appCheck){
         try{
           const appCheck=firebase.appCheck();
           appCheck.activate('6LfHVUEtAAAADg9k9_wAYpsCkm8QlLd8LL0mUlf', true);
+          // Pré-charger le jeton au démarrage pour éviter le délai au login
+          appCheck.getToken(true).catch(function(){});
         }catch(e){console.warn('App Check init error',e);}
       }
       // ────────────────────────────────────────────────────────────────────
