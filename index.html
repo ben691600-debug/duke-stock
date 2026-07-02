@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.10'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.11'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6579,17 +6579,23 @@ function buildModuleCarousel(){
   mc.after(wrap);
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
-    cells.forEach(function(cell){
-      var cm=cell.offsetTop+CARD_H/2;
+    // Trouver la cellule la plus proche du centre (mathématique, pas offsetTop)
+    var minDist=Infinity, centerIdx=0;
+    cells.forEach(function(cell,i){
+      var cm=PARTIAL+i*SLOT+CARD_H/2;
+      var d=Math.abs(cm-mid);
+      if(d<minDist){minDist=d;centerIdx=i;}
+    });
+    cells.forEach(function(cell,i){
+      var cm=PARTIAL+i*SLOT+CARD_H/2;
       var dist=Math.abs(cm-mid);
-      var isCenter=dist<SLOT*0.3;
-      if(isCenter){
+      if(i===centerIdx){
         cell.style.transform='scale(1)';
         cell.style.opacity='1';
         cell.style.borderColor='#0A7CC2';
         cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
       } else {
-        var t=Math.min((dist-SLOT*0.3)/(SLOT*0.7),1);
+        var t=Math.min(dist/SLOT,1);
         cell.style.transform='scale('+(1-t*0.08)+')';
         cell.style.opacity=''+(1-t*0.55);
         cell.style.borderColor='#d4e3ef';
