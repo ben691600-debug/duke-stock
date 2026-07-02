@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.16'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.17'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -50,8 +50,11 @@ if('serviceWorker' in navigator){
           }
         });
       });
+      // Vérification du SW toutes les 45 secondes
+      setInterval(function(){
+        if(!_updateReady) reg.update().catch(function(){});
+      }, 45000);
     }).catch(function(e){console.warn('SW error',e);});
-    // Rechargement manuel uniquement via le bouton "Mettre à jour" → applyAppUpdate()
   });
 }
 
@@ -62,10 +65,10 @@ function showUpdateBanner(){
   if(b) b.style.display = 'flex';
 }
 
-// Vérification directe de version sur GitHub — une seule fois au démarrage
-(function checkVersionOnServer(){
-  if(_updateReady) return; // déjà marqué (juste après un reload)
-  setTimeout(function(){
+// Vérification directe de version sur GitHub toutes les 45 secondes
+(function startVersionPolling(){
+  function check(){
+    if(_updateReady) return;
     fetch(location.origin+location.pathname+'?nocache='+Date.now(), {cache:'no-store'})
       .then(function(r){return r.text();})
       .then(function(html){
@@ -74,14 +77,20 @@ function showUpdateBanner(){
           showUpdateBanner();
         }
       }).catch(function(){});
-  }, 4000);
+  }
+  // Premier check après 5 secondes, puis toutes les 45 secondes
+  setTimeout(function(){
+    check();
+    setInterval(check, 45000);
+  }, 5000);
 })();
 
 function applyAppUpdate(){
+  sessionStorage.setItem('duke_just_updated','1');
   if(_swRegistration && _swRegistration.waiting){
     _swRegistration.waiting.postMessage({type:'SKIP_WAITING'});
+    setTimeout(function(){ window.location.reload(); }, 300);
   } else {
-    // Sécurité : si pas de waiting détecté, on force quand même un rechargement
     window.location.reload();
   }
   var b = document.getElementById('updateBanner');
