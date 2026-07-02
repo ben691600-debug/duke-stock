@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.11'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.12'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6075,6 +6075,8 @@ function renderClientMachineModule(){
     }, {passive:false});
     $('clientGroupsGrid').appendChild(card);
   });
+  // ── Carousel vertical pour les groupes ──────────────────────────────
+  buildGroupsCarousel($('clientGroupsGrid'));
 
   var ml=$('clientMachinesList');
   if(!ml) { window._clientTypeFilter=''; }
@@ -6618,6 +6620,83 @@ function buildModuleCarousel(){
     },110);
   },{passive:true});
   requestAnimationFrame(function(){sc.scrollTop=n*SLOT; updateVis();});
+}
+function buildGroupsCarousel(container){
+  if(!container) return;
+  var cards=Array.from(container.children);
+  if(!cards.length) return;
+  // Une seule carte : pleine largeur, pas de carousel
+  if(cards.length===1){
+    container.style.display='block';
+    cards[0].style.width='100%';
+    cards[0].style.boxSizing='border-box';
+    return;
+  }
+  // CSS scrollbar hiding
+  if(!document.getElementById('gcCss')){
+    var s=document.createElement('style'); s.id='gcCss';
+    s.textContent='#gcScroll::-webkit-scrollbar{display:none}';
+    document.head.appendChild(s);
+  }
+  var CARD_H=280, GAP=12, SLOT=CARD_H+GAP;
+  var PARTIAL=Math.round(CARD_H*0.48);
+  var CONT_H=CARD_H+PARTIAL*2+GAP;
+  var sc=document.createElement('div'); sc.id='gcScroll';
+  sc.style.cssText=[
+    'height:'+CONT_H+'px',
+    'overflow-y:scroll','overflow-x:hidden',
+    'scroll-snap-type:y mandatory',
+    '-webkit-overflow-scrolling:touch',
+    'scrollbar-width:none',
+    'display:flex','flex-direction:column',
+    'gap:'+GAP+'px',
+    'padding:'+PARTIAL+'px 0',
+    'box-sizing:border-box'
+  ].join(';');
+  var cells=[];
+  // Utiliser les vrais éléments DOM (handlers préservés naturellement)
+  cards.forEach(function(card){
+    var cell=document.createElement('div');
+    cell.style.cssText=[
+      'scroll-snap-align:center',
+      'height:'+CARD_H+'px',
+      'width:100%',
+      'box-sizing:border-box',
+      'flex-shrink:0',
+      'overflow:hidden',
+      'border-radius:28px',
+      'background:white',
+      'border:2px solid #d4e3ef',
+      'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
+    ].join(';');
+    card.style.cssText+='width:100%;height:100%;box-sizing:border-box;overflow:hidden;';
+    cell.appendChild(card);
+    sc.appendChild(cell);
+    cells.push(cell);
+  });
+  function updateVis(){
+    var mid=sc.scrollTop+CONT_H/2;
+    var minD=Infinity, ci=0;
+    cells.forEach(function(c,i){var d=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);if(d<minD){minD=d;ci=i;}});
+    cells.forEach(function(cell,i){
+      var dist=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);
+      if(i===ci){
+        cell.style.transform='scale(1)';cell.style.opacity='1';
+        cell.style.borderColor='#0A7CC2';
+        cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
+      } else {
+        var t=Math.min(dist/SLOT,1);
+        cell.style.transform='scale('+(1-t*0.08)+')';
+        cell.style.opacity=''+(1-t*0.55);
+        cell.style.borderColor='#d4e3ef';cell.style.boxShadow='none';
+      }
+    });
+  }
+  sc.addEventListener('scroll',updateVis,{passive:true});
+  container.innerHTML='';
+  container.style.display='block';
+  container.appendChild(sc);
+  requestAnimationFrame(updateVis);
 }
 function _maintColor(nextDateStr){
   if(!nextDateStr) return 'blue';
