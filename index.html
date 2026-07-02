@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.13'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.14'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2879,6 +2879,7 @@ body.draggingMachine{
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <script>
 const STORE='duke_stock_manager_auth_v1', LANG='duke_stock_lang_v1';
 /*
@@ -2922,6 +2923,14 @@ function initFirebaseSecurity(){
   try{
     if(firebaseConfigReady() && window.firebase && firebase.apps && !firebase.apps.length){
       firebase.initializeApp(FIREBASE_CONFIG);
+      // ── App Check — reCAPTCHA v3 (protège la base de données) ──────────
+      if(window.firebase && firebase.appCheck){
+        try{
+          const appCheck=firebase.appCheck();
+          appCheck.activate('6LfHVUEtAAAADg9k9_wAYpsCkm8QlLd8LL0mUlf', true);
+        }catch(e){console.warn('App Check init error',e);}
+      }
+      // ────────────────────────────────────────────────────────────────────
       firebaseAuth=firebase.auth();
       firebaseReady=true;
     } else if(firebaseConfigReady() && window.firebase && firebase.apps && firebase.apps.length){
