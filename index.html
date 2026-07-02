@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6488,7 +6488,7 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
 function buildModuleCarousel(){
   var mc=document.querySelector('#moduleView .moduleChoice');
   if(!mc) return;
-  var old=document.getElementById('mcScroll');
+  var old=document.getElementById('mcWrap');
   if(old) old.remove();
   var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
     return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
@@ -6497,19 +6497,26 @@ function buildModuleCarousel(){
   if(!btns.length){mc.style.display='';return;}
   if(btns.length===1){mc.style.display='';return;}
   var n=btns.length;
-  // Hauteur disponible : plein écran moins le header estimé
-  var headerH=mc.closest('section')?mc.closest('section').getBoundingClientRect().top:148;
-  var avail=Math.max(window.innerHeight-headerH-8, 380);
-  var PARTIAL=Math.round(avail*0.13); // ~13% de partiels visible haut+bas
+  // Hauteur disponible depuis le bas du header
+  var headerH=mc.closest('section')
+    ?Math.round(mc.closest('section').getBoundingClientRect().top)
+    :148;
+  var avail=Math.max(window.innerHeight-headerH-10, 400);
+  // CARD_H tel que PARTIAL = CARD_H/2 → on voit moitié haut + plein milieu + moitié bas
   var GAP=12;
-  var CARD_H=avail-2*PARTIAL-GAP;   // la carte centrale occupe le reste
+  var CARD_H=Math.round((avail-GAP)/2);
+  var PARTIAL=Math.round(CARD_H*0.50);
   var SLOT=CARD_H+GAP;
-  var CONT_H=avail;
+  var CONT_H=CARD_H+PARTIAL*2+GAP;
   if(!document.getElementById('mcCss')){
     var s=document.createElement('style'); s.id='mcCss';
     s.textContent='#mcScroll::-webkit-scrollbar{display:none}';
     document.head.appendChild(s);
   }
+  // Wrapper blanc : empêche le fond bleu de la page de traverser les cartes en opacité réduite
+  var wrap=document.createElement('div');
+  wrap.id='mcWrap';
+  wrap.style.cssText='background:white;border-radius:28px;overflow:hidden;height:'+CONT_H+'px;box-shadow:0 4px 24px rgba(10,124,194,.10)';
   var sc=document.createElement('div'); sc.id='mcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
@@ -6520,7 +6527,8 @@ function buildModuleCarousel(){
     'display:flex','flex-direction:column',
     'gap:'+GAP+'px',
     'padding:'+PARTIAL+'px 0',
-    'box-sizing:border-box'
+    'box-sizing:border-box',
+    'background:transparent'
   ].join(';');
   var cells=[];
   for(var copy=0;copy<3;copy++){
@@ -6532,13 +6540,13 @@ function buildModuleCarousel(){
         'flex-shrink:0',
         'overflow:hidden',
         'border-radius:28px',
+        'background:white',
         'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease'
       ].join(';');
       var el=btn.cloneNode(true);
       el.removeAttribute('id');
-      // Forcer la même hauteur pour chaque clone
       el.style.cssText+=[
-        'height:'+CARD_H+'px',
+        'height:'+CARD_H+'px!important',
         'min-height:0',
         'max-height:'+CARD_H+'px',
         'box-sizing:border-box',
@@ -6546,27 +6554,29 @@ function buildModuleCarousel(){
         'display:flex',
         'flex-direction:column',
         'align-items:center',
-        'justify-content:center'
+        'justify-content:center',
+        'background:white'
       ].join(';');
       el.onclick=(function(b){return function(){b.click();};})(btn);
       cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
     });
   }
-  mc.after(sc);
+  wrap.appendChild(sc);
+  mc.after(wrap);
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
     cells.forEach(function(cell){
       var cm=cell.offsetTop+CARD_H/2;
       var dist=Math.abs(cm-mid);
-      var isCenter=dist<SLOT*0.35;
+      var isCenter=dist<SLOT*0.3;
       if(isCenter){
         cell.style.transform='scale(1)';
         cell.style.opacity='1';
-        cell.style.boxShadow='0 8px 32px rgba(10,124,194,.18)';
+        cell.style.boxShadow='0 6px 24px rgba(10,124,194,.15)';
       } else {
-        var t=Math.min((dist-SLOT*0.35)/(SLOT*0.65),1);
-        cell.style.transform='scale('+(1-t*0.14)+')';
-        cell.style.opacity=''+(1-t*0.58);
+        var t=Math.min((dist-SLOT*0.3)/(SLOT*0.7),1);
+        cell.style.transform='scale('+(1-t*0.08)+')';
+        cell.style.opacity=''+(1-t*0.55);
         cell.style.boxShadow='none';
       }
     });
