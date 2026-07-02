@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.12'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.13'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2269,7 +2269,7 @@ body.draggingMachine{
   <div class="clientSectionTitle"><h3 data-i="groups">Groupes</h3></div>
   <div id="clientEmptyGroups" class="empty"></div>
   <div class="groupGrid" id="clientGroupsGrid"></div>
-  <div class="clientSectionTitle"><h3 data-i="machines">Machines</h3></div>
+  <div class="clientSectionTitle" id="machinesSectionTitle"><h3 data-i="machines">Machines</h3></div>
   <div id="clientEmptyMachines" class="empty"></div>
   <div class="items" id="clientMachinesList"></div>
 </section>
@@ -6326,6 +6326,10 @@ function renderClientMachineModule(){
     // Si endoscope, wrapper est déjà ajouté plus haut
   });
 
+  // Masquer le titre Machines si aucune machine dans ce niveau
+  var machTitle=$('machinesSectionTitle');
+  if(machTitle) machTitle.style.display=$('clientMachinesList').children.length?'':'none';
+
   if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
@@ -6625,21 +6629,20 @@ function buildGroupsCarousel(container){
   if(!container) return;
   var cards=Array.from(container.children);
   if(!cards.length) return;
-  // Une seule carte : pleine largeur, pas de carousel
+  container.style.marginTop='0';
   if(cards.length===1){
     container.style.display='block';
-    cards[0].style.width='100%';
-    cards[0].style.boxSizing='border-box';
+    cards[0].style.width='100%'; cards[0].style.boxSizing='border-box';
     return;
   }
-  // CSS scrollbar hiding
   if(!document.getElementById('gcCss')){
     var s=document.createElement('style'); s.id='gcCss';
     s.textContent='#gcScroll::-webkit-scrollbar{display:none}';
     document.head.appendChild(s);
   }
-  var CARD_H=280, GAP=12, SLOT=CARD_H+GAP;
-  var PARTIAL=Math.round(CARD_H*0.48);
+  var n=cards.length;
+  var CARD_H=270, GAP=10, SLOT=CARD_H+GAP;
+  var PARTIAL=Math.round(CARD_H*0.46);
   var CONT_H=CARD_H+PARTIAL*2+GAP;
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
@@ -6654,49 +6657,46 @@ function buildGroupsCarousel(container){
     'box-sizing:border-box'
   ].join(';');
   var cells=[];
-  // Utiliser les vrais éléments DOM (handlers préservés naturellement)
-  cards.forEach(function(card){
+  function makeCell(el,isClone){
     var cell=document.createElement('div');
     cell.style.cssText=[
-      'scroll-snap-align:center',
-      'height:'+CARD_H+'px',
-      'width:100%',
-      'box-sizing:border-box',
-      'flex-shrink:0',
-      'overflow:hidden',
-      'border-radius:28px',
-      'background:white',
-      'border:2px solid #d4e3ef',
+      'scroll-snap-align:center','height:'+CARD_H+'px','width:100%',
+      'box-sizing:border-box','flex-shrink:0','overflow:hidden',
+      'border-radius:28px','background:white','border:2px solid #d4e3ef',
       'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
     ].join(';');
-    card.style.cssText+='width:100%;height:100%;box-sizing:border-box;overflow:hidden;';
-    cell.appendChild(card);
-    sc.appendChild(cell);
-    cells.push(cell);
-  });
+    el.style.cssText+='width:100%;height:100%;box-sizing:border-box;overflow:hidden;';
+    if(isClone) cell.style.pointerEvents='none';
+    cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
+  }
+  makeCell(cards[n-1].cloneNode(true),true);
+  cards.forEach(function(card){ makeCell(card,false); });
+  makeCell(cards[0].cloneNode(true),true);
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
-    var minD=Infinity, ci=0;
+    var minD=Infinity,ci=0;
     cells.forEach(function(c,i){var d=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);if(d<minD){minD=d;ci=i;}});
     cells.forEach(function(cell,i){
       var dist=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);
-      if(i===ci){
-        cell.style.transform='scale(1)';cell.style.opacity='1';
-        cell.style.borderColor='#0A7CC2';
-        cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
-      } else {
-        var t=Math.min(dist/SLOT,1);
-        cell.style.transform='scale('+(1-t*0.08)+')';
-        cell.style.opacity=''+(1-t*0.55);
-        cell.style.borderColor='#d4e3ef';cell.style.boxShadow='none';
-      }
+      if(i===ci){cell.style.transform='scale(1)';cell.style.opacity='1';cell.style.borderColor='#0A7CC2';cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';}
+      else{var t=Math.min(dist/SLOT,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='#d4e3ef';cell.style.boxShadow='none';}
     });
   }
-  sc.addEventListener('scroll',updateVis,{passive:true});
+  var _lt=null;
+  sc.addEventListener('scroll',function(){
+    updateVis();
+    clearTimeout(_lt);
+    _lt=setTimeout(function(){
+      var st=sc.scrollTop;
+      if(st<SLOT-SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=n*SLOT-(SLOT-SLOT*0.5-st);sc.style.scrollBehavior='';updateVis();}
+      else if(st>(n)*SLOT+SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=SLOT+(st-(n)*SLOT-SLOT*0.5);sc.style.scrollBehavior='';updateVis();}
+    },100);
+  },{passive:true});
   container.innerHTML='';
   container.style.display='block';
+  container.style.marginTop='0';
   container.appendChild(sc);
-  requestAnimationFrame(updateVis);
+  requestAnimationFrame(function(){sc.scrollTop=SLOT;updateVis();});
 }
 function _maintColor(nextDateStr){
   if(!nextDateStr) return 'blue';
