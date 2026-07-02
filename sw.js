@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v115';
+const CACHE_NAME = 'duke-stock-v116';
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -13,12 +13,15 @@ self.addEventListener('install', event => {
   // clique sur "Mettre à jour", qui envoie le message SKIP_WAITING ci-dessous.
 });
 self.addEventListener('activate', event => {
+  // Purger les anciens caches
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
-  self.clients.claim();
+  // NE PAS appeler clients.claim() ici — cela forcerait le SW à prendre
+  // le contrôle des onglets existants automatiquement, contournant le bouton.
+  // La mise à jour est gérée exclusivement via le bouton "Mettre à jour".
 });
 self.addEventListener('message', event => {
   if(event.data && event.data.type === 'SKIP_WAITING'){
