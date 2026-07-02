@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.22'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.23'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6658,9 +6658,16 @@ function buildGroupsCarousel(container){
     document.head.appendChild(s);
   }
   var n=cards.length;
-  var CARD_H=270, GAP=10, SLOT=CARD_H+GAP;
-  var PARTIAL=Math.round(CARD_H*0.46);
-  var CONT_H=CARD_H+PARTIAL*2+GAP;
+  var GAP=10;
+  // Hauteur disponible = écran - éléments au-dessus (header+nav+boutons+search+h2) - bouton Retour
+  var ABOVE=container.getBoundingClientRect().top||290;
+  var BACK_BTN=76;
+  var availH=Math.max(window.innerHeight-ABOVE-BACK_BTN-8, 240);
+  // Carte centrale = 55% du dispo, partiels partagent le reste
+  var CARD_H=Math.round(availH*0.56);
+  var PARTIAL=Math.round((availH-CARD_H-GAP)/2);
+  var SLOT=CARD_H+GAP;
+  var CONT_H=availH; // remplit exactement l'espace disponible → zéro scroll page
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
@@ -6706,15 +6713,14 @@ function buildGroupsCarousel(container){
     _lt=setTimeout(function(){
       var st=sc.scrollTop;
       if(st<SLOT-SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=n*SLOT-(SLOT-SLOT*0.5-st);sc.style.scrollBehavior='';updateVis();}
-      else if(st>(n)*SLOT+SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=SLOT+(st-(n)*SLOT-SLOT*0.5);sc.style.scrollBehavior='';updateVis();}
+      else if(st>n*SLOT+SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=SLOT+(st-n*SLOT-SLOT*0.5);sc.style.scrollBehavior='';updateVis();}
     },100);
   },{passive:true});
   container.innerHTML='';
   container.style.display='block';
   container.style.marginTop='0';
-  container.style.paddingBottom='76px'; // espace pour le bouton Retour fixe (52+12+12px)
+  container.style.paddingBottom='0';
   container.appendChild(sc);
-  // Double requestAnimationFrame : garantit que le layout est calculé avant de positionner
   requestAnimationFrame(function(){
     requestAnimationFrame(function(){
       sc.scrollTop=SLOT;
