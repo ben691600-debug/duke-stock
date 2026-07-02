@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = "v1.20"; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.21'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -72,7 +72,7 @@ function showUpdateBanner(){
     fetch(location.origin+location.pathname+'?nocache='+Date.now(), {cache:'no-store'})
       .then(function(r){return r.text();})
       .then(function(html){
-        var match=html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+        var match=html.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
         if(match && match[1] && match[1] !== (window.APP_VERSION||'')){
           showUpdateBanner();
         }
