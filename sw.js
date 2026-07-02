@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v17';
+const CACHE_NAME = 'duke-stock-v18';
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',

@@ -14,10 +14,18 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.7'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
+  // Vibration haptique légère sur tous les boutons et liens bouton
+  if(navigator.vibrate){
+    document.addEventListener('touchstart', function(e){
+      if(e.target.closest('button,[role="button"],.btn,.moduleCard,.groupCard,.carouselArrow')){
+        navigator.vibrate(22);
+      }
+    }, {passive:true, capture:true});
+  }
 });
 let _swRegistration = null;
 let _updateReady = false;
@@ -164,6 +172,7 @@ setTimeout(function(){
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eaf6fc,#f7f8fa);color:var(--dark)}
 button,input,select{font:inherit} .hidden{display:none!important}
 button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+/* Vibration haptique gérée en JS */
 img{max-width:100%}
 .centerScreen{min-height:100vh;display:grid;place-items:center;padding:22px}
 #loginView:not(.hidden), #langView:not(.hidden){position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg, #eaf6fc);overflow-y:auto}
@@ -6572,7 +6581,7 @@ function buildModuleCarousel(){
       if(isCenter){
         cell.style.transform='scale(1)';
         cell.style.opacity='1';
-        cell.style.boxShadow='0 6px 24px rgba(10,124,194,.15)';
+        cell.style.boxShadow='0 6px 24px rgba(10,124,194,.15), inset 0 0 0 2.5px #0A7CC2';
       } else {
         var t=Math.min((dist-SLOT*0.3)/(SLOT*0.7),1);
         cell.style.transform='scale('+(1-t*0.08)+')';
