@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.8'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.9'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6546,6 +6546,8 @@ function buildModuleCarousel(){
       cell.style.cssText=[
         'scroll-snap-align:center',
         'height:'+CARD_H+'px',
+        'width:100%',
+        'box-sizing:border-box',
         'flex-shrink:0',
         'overflow:hidden',
         'border-radius:28px',
@@ -6556,6 +6558,7 @@ function buildModuleCarousel(){
       el.removeAttribute('id');
       el.style.cssText+=[
         'height:'+CARD_H+'px!important',
+        'width:100%',
         'min-height:0',
         'max-height:'+CARD_H+'px',
         'box-sizing:border-box',
@@ -6564,7 +6567,9 @@ function buildModuleCarousel(){
         'flex-direction:column',
         'align-items:center',
         'justify-content:center',
-        'background:white'
+        'background:white',
+        'margin:0',
+        'border:none'
       ].join(';');
       el.onclick=(function(b){return function(){b.click();};})(btn);
       cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
@@ -6581,7 +6586,7 @@ function buildModuleCarousel(){
       if(isCenter){
         cell.style.transform='scale(1)';
         cell.style.opacity='1';
-        cell.style.boxShadow='0 6px 24px rgba(10,124,194,.15), inset 0 0 0 2.5px #0A7CC2';
+        cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18), inset 0 0 0 3.5px #0A7CC2';
       } else {
         var t=Math.min((dist-SLOT*0.3)/(SLOT*0.7),1);
         cell.style.transform='scale('+(1-t*0.08)+')';
