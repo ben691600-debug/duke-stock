@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v118';
+const CACHE_NAME = 'duke-stock-v119';
 const urlsToCache = [
   '/duke-stock/',
   '/duke-stock/index.html',
@@ -7,21 +7,26 @@ const urlsToCache = [
 ];
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then(cache => {
+      // cache:'reload' bypass le cache HTTP — garantit les fichiers les plus récents
+      return Promise.all(urlsToCache.map(url =>
+        fetch(url, {cache:'reload'})
+          .then(resp => cache.put(url, resp))
+          .catch(() => cache.add(url))
+      ));
+    })
   );
-  // NE PAS appeler skipWaiting() ici — le nouveau SW attend que l'utilisateur
-  // clique sur "Mettre à jour", qui envoie le message SKIP_WAITING ci-dessous.
+  // skipWaiting() uniquement via le bouton "Mettre à jour"
 });
 self.addEventListener('activate', event => {
-  // Purger les anciens caches
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
-  // NE PAS appeler clients.claim() ici — cela forcerait le SW à prendre
-  // le contrôle des onglets existants automatiquement, contournant le bouton.
-  // La mise à jour est gérée exclusivement via le bouton "Mettre à jour".
+  // clients.claim() nécessaire : dès que le bouton active le nouveau SW,
+  // il prend le contrôle immédiatement → controllerchange → rechargement
+  self.clients.claim();
 });
 self.addEventListener('message', event => {
   if(event.data && event.data.type === 'SKIP_WAITING'){
