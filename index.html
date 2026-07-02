@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6484,6 +6484,89 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   if(typeof renderPlanningModule==='function') renderPlanningModule();
 };
 
+// ── Carousel vertical menu principal ─────────────────────────────────
+function buildModuleCarousel(){
+  var mc=document.querySelector('#moduleView .moduleChoice');
+  if(!mc) return;
+  // Supprimer un éventuel ancien carousel
+  var old=document.getElementById('mcScroll');
+  if(old) old.remove();
+  // Cartes visibles selon les permissions
+  var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
+    return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
+  });
+  mc.style.display='none';
+  if(!btns.length){mc.style.display='';return;}
+  if(btns.length===1){
+    // Pas de carousel pour une seule carte
+    mc.style.display='';
+    return;
+  }
+  var n=btns.length;
+  var CARD_H=220, GAP=12, SLOT=CARD_H+GAP, PARTIAL=68;
+  var CONT_H=CARD_H+PARTIAL*2;
+  // Injecter CSS scrollbar-hiding une seule fois
+  if(!document.getElementById('mcCss')){
+    var s=document.createElement('style'); s.id='mcCss';
+    s.textContent='#mcScroll::-webkit-scrollbar{display:none}';
+    document.head.appendChild(s);
+  }
+  // Conteneur scroll-snap
+  var sc=document.createElement('div'); sc.id='mcScroll';
+  sc.style.cssText=[
+    'height:'+CONT_H+'px',
+    'overflow-y:scroll','overflow-x:hidden',
+    'scroll-snap-type:y mandatory',
+    '-webkit-overflow-scrolling:touch',
+    'scrollbar-width:none',
+    'display:flex','flex-direction:column',
+    'gap:'+GAP+'px',
+    'padding:'+PARTIAL+'px 0',
+    'box-sizing:border-box'
+  ].join(';');
+  // 3 copies identiques pour la boucle infinie
+  var cells=[];
+  for(var copy=0;copy<3;copy++){
+    btns.forEach(function(btn){
+      var cell=document.createElement('div');
+      cell.style.cssText='scroll-snap-align:center;height:'+CARD_H+'px;flex-shrink:0;overflow:hidden;border-radius:28px;transition:transform .22s ease,opacity .22s ease';
+      var el=btn.cloneNode(true);
+      el.removeAttribute('id');
+      el.style.height='100%'; el.style.minHeight='0'; el.style.boxSizing='border-box';
+      el.onclick=(function(b){return function(){b.click();};})(btn);
+      cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
+    });
+  }
+  mc.after(sc);
+  // Mise à jour visuelle : carte centrale = 100%, voisines = réduites
+  function updateVis(){
+    var mid=sc.scrollTop+CONT_H/2;
+    cells.forEach(function(cell){
+      var cm=cell.offsetTop+CARD_H/2;
+      var dist=Math.abs(cm-mid);
+      var t=Math.min(dist/SLOT,1);
+      cell.style.transform='scale('+(1-t*0.13)+')';
+      cell.style.opacity=''+(1-t*0.52);
+    });
+  }
+  // Boucle infinie : quand on sort de la copie du milieu → jump silencieux
+  var _lt=null;
+  sc.addEventListener('scroll',function(){
+    updateVis();
+    clearTimeout(_lt);
+    _lt=setTimeout(function(){
+      var st=sc.scrollTop;
+      var lo=n*SLOT, hi=2*n*SLOT;
+      if(st<lo-SLOT*0.5){
+        sc.style.scrollBehavior='auto'; sc.scrollTop+=n*SLOT; sc.style.scrollBehavior=''; updateVis();
+      } else if(st>=hi-SLOT*0.5){
+        sc.style.scrollBehavior='auto'; sc.scrollTop-=n*SLOT; sc.style.scrollBehavior=''; updateVis();
+      }
+    },110);
+  },{passive:true});
+  // Position initiale : première carte de la copie du milieu
+  requestAnimationFrame(function(){sc.scrollTop=n*SLOT; updateVis();});
+}
 function _maintColor(nextDateStr){
   if(!nextDateStr) return 'blue';
   var next=new Date(nextDateStr); var now=new Date();
@@ -10287,6 +10370,8 @@ var _waitReady=setInterval(function(){
         _oldShow.call(this,view);
         // Appliquer UI seulement si non-admin
         if(cu&&cu.role&&cu.role!=='admin') setTimeout(window.applyPermissionUI,30);
+        // Carousel menu principal uniquement
+        if(view==='moduleView') setTimeout(buildModuleCarousel,90);
       };
       var _oldRender=renderAll;
       window.renderAll=function(){
@@ -10294,6 +10379,7 @@ var _waitReady=setInterval(function(){
         // Appliquer UI seulement si un utilisateur non-admin est connecté
         var cu=(typeof currentUser!=='undefined')?currentUser:null;
         if(cu&&!admin()) setTimeout(window.applyPermissionUI,30);
+        setTimeout(buildModuleCarousel,110);
       };
       // Bouton paramètres
       var sb=document.getElementById('settingsBtn');
