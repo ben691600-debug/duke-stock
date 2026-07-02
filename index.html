@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.5'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.6'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6488,30 +6488,28 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
 function buildModuleCarousel(){
   var mc=document.querySelector('#moduleView .moduleChoice');
   if(!mc) return;
-  // Supprimer un éventuel ancien carousel
   var old=document.getElementById('mcScroll');
   if(old) old.remove();
-  // Cartes visibles selon les permissions
   var btns=Array.from(mc.querySelectorAll('.moduleCard')).filter(function(b){
     return !b.classList.contains('hidden')&&getComputedStyle(b).display!=='none';
   });
   mc.style.display='none';
   if(!btns.length){mc.style.display='';return;}
-  if(btns.length===1){
-    // Pas de carousel pour une seule carte
-    mc.style.display='';
-    return;
-  }
+  if(btns.length===1){mc.style.display='';return;}
   var n=btns.length;
-  var CARD_H=220, GAP=12, SLOT=CARD_H+GAP, PARTIAL=68;
-  var CONT_H=CARD_H+PARTIAL*2;
-  // Injecter CSS scrollbar-hiding une seule fois
+  // Hauteur disponible : plein écran moins le header estimé
+  var headerH=mc.closest('section')?mc.closest('section').getBoundingClientRect().top:148;
+  var avail=Math.max(window.innerHeight-headerH-8, 380);
+  var PARTIAL=Math.round(avail*0.13); // ~13% de partiels visible haut+bas
+  var GAP=12;
+  var CARD_H=avail-2*PARTIAL-GAP;   // la carte centrale occupe le reste
+  var SLOT=CARD_H+GAP;
+  var CONT_H=avail;
   if(!document.getElementById('mcCss')){
     var s=document.createElement('style'); s.id='mcCss';
     s.textContent='#mcScroll::-webkit-scrollbar{display:none}';
     document.head.appendChild(s);
   }
-  // Conteneur scroll-snap
   var sc=document.createElement('div'); sc.id='mcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
@@ -6524,32 +6522,55 @@ function buildModuleCarousel(){
     'padding:'+PARTIAL+'px 0',
     'box-sizing:border-box'
   ].join(';');
-  // 3 copies identiques pour la boucle infinie
   var cells=[];
   for(var copy=0;copy<3;copy++){
     btns.forEach(function(btn){
       var cell=document.createElement('div');
-      cell.style.cssText='scroll-snap-align:center;height:'+CARD_H+'px;flex-shrink:0;overflow:hidden;border-radius:28px;transition:transform .22s ease,opacity .22s ease';
+      cell.style.cssText=[
+        'scroll-snap-align:center',
+        'height:'+CARD_H+'px',
+        'flex-shrink:0',
+        'overflow:hidden',
+        'border-radius:28px',
+        'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease'
+      ].join(';');
       var el=btn.cloneNode(true);
       el.removeAttribute('id');
-      el.style.height='100%'; el.style.minHeight='0'; el.style.boxSizing='border-box';
+      // Forcer la même hauteur pour chaque clone
+      el.style.cssText+=[
+        'height:'+CARD_H+'px',
+        'min-height:0',
+        'max-height:'+CARD_H+'px',
+        'box-sizing:border-box',
+        'overflow:hidden',
+        'display:flex',
+        'flex-direction:column',
+        'align-items:center',
+        'justify-content:center'
+      ].join(';');
       el.onclick=(function(b){return function(){b.click();};})(btn);
       cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
     });
   }
   mc.after(sc);
-  // Mise à jour visuelle : carte centrale = 100%, voisines = réduites
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
     cells.forEach(function(cell){
       var cm=cell.offsetTop+CARD_H/2;
       var dist=Math.abs(cm-mid);
-      var t=Math.min(dist/SLOT,1);
-      cell.style.transform='scale('+(1-t*0.13)+')';
-      cell.style.opacity=''+(1-t*0.52);
+      var isCenter=dist<SLOT*0.35;
+      if(isCenter){
+        cell.style.transform='scale(1)';
+        cell.style.opacity='1';
+        cell.style.boxShadow='0 8px 32px rgba(10,124,194,.18)';
+      } else {
+        var t=Math.min((dist-SLOT*0.35)/(SLOT*0.65),1);
+        cell.style.transform='scale('+(1-t*0.14)+')';
+        cell.style.opacity=''+(1-t*0.58);
+        cell.style.boxShadow='none';
+      }
     });
   }
-  // Boucle infinie : quand on sort de la copie du milieu → jump silencieux
   var _lt=null;
   sc.addEventListener('scroll',function(){
     updateVis();
@@ -6564,7 +6585,6 @@ function buildModuleCarousel(){
       }
     },110);
   },{passive:true});
-  // Position initiale : première carte de la copie du milieu
   requestAnimationFrame(function(){sc.scrollTop=n*SLOT; updateVis();});
 }
 function _maintColor(nextDateStr){
