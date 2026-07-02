@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.3'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.4'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2289,21 +2289,7 @@ body.draggingMachine{
 
 <section id="planningView" class="hidden">
 
-  <!-- Écran d'accueil du module : choix du sous-menu -->
-  <div id="planningMenuPanel">
-    <h2 style="margin:4px 0 14px">📅 Gestion planning</h2>
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="groupCard" id="planningMenuAssignCard" style="cursor:pointer;text-align:left;padding:18px;display:flex;align-items:center;gap:14px">
-        <div style="font-size:34px">📍</div>
-        <div>
-          <h3 style="margin:0 0 4px;color:#0A7CC2">Gestion opérateur à l'aide des machines</h3>
-          <p class="muted" style="margin:0">Parcourir les groupes et machines pour assigner un opérateur à une intervention.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Onglet 1 : Assigner — copie exacte de la structure clientsView -->
+  <!-- Onglet 1 : Assigner — accès direct -->
   <div id="planningAssignPanel" class="hidden">
     <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
       <span style="font-size:20px">📍</span> Gestion planning — Assigner un opérateur
@@ -6685,11 +6671,8 @@ function showPlanningTab(tab){
   }
 }
 function showPlanningMenu(){
-  var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
-  var menuPanel=$('planningMenuPanel');
-  if(assignPanel) assignPanel.classList.add('hidden');
-  if(globalPanel) globalPanel.classList.add('hidden');
-  if(menuPanel) menuPanel.classList.remove('hidden');
+  // conservé pour compatibilité — redirige directement vers l'assignation
+  showPlanningTab('assign');
 }
 if($('planningMenuAssignCard')) $('planningMenuAssignCard').onclick=()=>showPlanningTab('assign');
 if($('planningMenuMyMissionsCard')) $('planningMenuMyMissionsCard').onclick=()=>{
@@ -6752,7 +6735,7 @@ if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlann
 if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
 function renderPlanningModule(){
   planningPathIds=[];
-  showPlanningMenu();
+  showPlanningTab('assign');
 }
 if($('openPlanningModule')) $('openPlanningModule').onclick=function(){
   if(!isAdmin()) return;
