@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.27'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.28'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6652,8 +6652,8 @@ function buildGroupsCarousel(container){
   var ABOVE=container.getBoundingClientRect().top||290;
   var BACK_BTN=76;
   var availH=Math.max(window.innerHeight-ABOVE-BACK_BTN-8, 240);
-  // Carte centrale = 55% du dispo, partiels partagent le reste
-  var CARD_H=Math.round(availH*0.56);
+  // Carte centrale = 64% : assez pour image(140px)+nom+boutons
+  var CARD_H=Math.round(availH*0.64);
   var PARTIAL=Math.round((availH-CARD_H-GAP)/2);
   var SLOT=CARD_H+GAP;
   var CONT_H=availH; // remplit exactement l'espace disponible → zéro scroll page
@@ -6679,7 +6679,7 @@ function buildGroupsCarousel(container){
       'padding:6px',
       'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
     ].join(';');
-    el.style.cssText+='width:100%;height:100%;box-sizing:border-box;overflow:hidden;border-radius:22px;';
+    el.style.cssText=(el.style.cssText||'')+';width:100%!important;height:100%!important;box-sizing:border-box!important;overflow:hidden!important;border-radius:22px!important;display:flex!important;flex-direction:column!important;padding:0!important;';
     if(isClone) cell.style.pointerEvents='none';
     cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
   }
@@ -6860,9 +6860,11 @@ function renderPlanningAssignPanel(){
   groups.forEach(g=>{
     const card=document.createElement('div'); card.className='groupCard';
     card.innerHTML=`
-      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
-      <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
-      <p>${(g.groups||[]).length} groupes \u00b7 ${(g.machines||[]).length} machines</p>`;
+      <div class="groupImage" style="height:140px;flex-shrink:0">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;text-align:center;min-height:0;overflow:hidden">
+        <h3 title="${esc(g.name)}" style="margin:0 0 4px;font-size:15px;color:#0A7CC2;white-space:normal;text-align:center;line-height:1.2">${esc(g.name)}</h3>
+        <p style="margin:0;font-size:11px;color:#6f7b87">${(g.groups||[]).length} groupes · ${(g.machines||[]).length} machines</p>
+      </div>`;
     card.onclick=()=>{planningPathIds.push(g.id);renderPlanningAssignPanel();};
     grid.appendChild(card);
   });
