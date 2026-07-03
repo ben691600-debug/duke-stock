@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v128';
+const CACHE_NAME = 'duke-stock-v129';
 // index.html n'est JAMAIS mis en cache - toujours servi depuis le réseau
 // Seuls les assets statiques qui ne changent pas sont cachés
 const STATIC_ASSETS = [

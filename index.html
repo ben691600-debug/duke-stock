@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.28'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.29'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6648,15 +6648,13 @@ function buildGroupsCarousel(container){
   }
   var n=cards.length;
   var GAP=10;
-  // Hauteur disponible = écran - éléments au-dessus (header+nav+boutons+search+h2) - bouton Retour
-  var ABOVE=container.getBoundingClientRect().top||290;
-  var BACK_BTN=76;
-  var availH=Math.max(window.innerHeight-ABOVE-BACK_BTN-8, 240);
-  // Carte centrale = 64% : assez pour image(140px)+nom+boutons
-  var CARD_H=Math.round(availH*0.64);
-  var PARTIAL=Math.round((availH-CARD_H-GAP)/2);
+  // Dimensions FIXES — indépendantes du contexte (breadcrumb, banner, etc.)
+  // Contenu max d'une carte : image(140)+gaps(14)+nom(30)+boutons(40)+cell-pad(12) = 236px
+  // CARD_H=260 → 24px de marge → tout rentre partout, toujours identique
+  var CARD_H=260;
+  var PARTIAL=58;  // 58px visible haut/bas = indique qu'on peut scroller
   var SLOT=CARD_H+GAP;
-  var CONT_H=availH; // remplit exactement l'espace disponible → zéro scroll page
+  var CONT_H=CARD_H+PARTIAL*2+GAP;  // 386px — tient sur tout téléphone dans tous les contextes
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
