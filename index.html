@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.29'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.30'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6677,7 +6677,7 @@ function buildGroupsCarousel(container){
       'padding:6px',
       'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
     ].join(';');
-    el.style.cssText=(el.style.cssText||'')+';width:100%!important;height:100%!important;box-sizing:border-box!important;overflow:hidden!important;border-radius:22px!important;display:flex!important;flex-direction:column!important;padding:0!important;';
+    el.style.cssText=(el.style.cssText||'')+';width:100%!important;height:100%!important;box-sizing:border-box!important;overflow:hidden!important;border-radius:22px!important;display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;';
     if(isClone) cell.style.pointerEvents='none';
     cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
   }
@@ -6706,8 +6706,8 @@ function buildGroupsCarousel(container){
   },{passive:true});
   container.innerHTML='';
   container.style.display='block';
-  container.style.marginTop='0';
-  container.style.paddingBottom='0';
+  container.style.setProperty('margin-top','0','important');
+  container.style.setProperty('padding-bottom','0','important');
   container.appendChild(sc);
   requestAnimationFrame(function(){
     requestAnimationFrame(function(){
@@ -9460,22 +9460,24 @@ function faultMachineRender(){
     const faults = machine.faults || [];
 
     card.innerHTML = `
-      <div style="position:relative;height:100px;flex-shrink:0">
-        ${machine.image ? `<img class="faultMachineImage" src="${machine.image}" style="width:100%;height:100%;object-fit:contain">` : `<div class="faultMachineImage" style="height:100%">🛠️</div>`}
-        ${(typeof isAdmin==='function'&&(isAdmin()||isOperator()))?`<button type="button" data-fm="credentials" title="Acces / Codes" style="position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.92);border:none;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🔐</button>`:``}
+      <div style="position:relative;height:85px;flex-shrink:0;overflow:hidden">
+        ${machine.image
+          ? `<img src="${machine.image}" style="width:100%;height:85px;object-fit:contain;display:block">`
+          : `<div style="height:85px;display:flex;align-items:center;justify-content:center;font-size:36px">🛠️</div>`}
+        ${(typeof isAdmin==='function'&&(isAdmin()||isOperator()))?`<button type="button" data-fm="credentials" title="Accès / Codes" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.92);border:none;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🔐</button>`:''}
       </div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 6px;text-align:center;min-height:0;overflow:hidden">
-        <h3 style="margin:0 0 2px;font-size:13px;line-height:1.2;color:#0A7CC2">${esc(machine.model || '')}</h3>
-        <p style="margin:0 0 1px;font-size:11px;color:#6f7b87">${esc(machine.type || '')}</p>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;text-align:center;min-height:0;overflow:hidden;gap:2px">
+        <h3 style="margin:0;font-size:14px;font-weight:900;color:#0A7CC2;line-height:1.2;white-space:normal;text-align:center">${esc(machine.model||'')}</h3>
+        <p style="margin:0;font-size:11px;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(machine.type||'')}</p>
         <p style="margin:0;font-size:11px;color:#333">${faults.length} pannes</p>
       </div>
-      <div class="groupActions" style="display:flex;gap:5px;padding:0 4px 4px;flex-shrink:0">
+      <div style="display:flex;gap:5px;padding:0 6px 6px;flex-shrink:0">
         <button class="btn primary mini" type="button" data-fm="faults" style="flex:2;font-size:11px;white-space:nowrap">${T('pannesBtn')}</button>
         <button class="btn secondary mini" type="button" data-fm="edit" style="flex:1;font-size:11px">✏️</button>
         <button class="btn danger mini" type="button" data-fm="delete" style="flex:1;font-size:11px">🗑️</button>
       </div>
     `;
-    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;overflow:hidden!important;height:100%!important;box-sizing:border-box!important';
+    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;overflow:hidden!important;height:100%!important;box-sizing:border-box!important';
 
     card.onclick = (ev)=>{
       if(ev.target.closest('button,.embeddedMachineQr')) return;
