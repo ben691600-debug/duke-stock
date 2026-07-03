@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.23'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.24'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5970,29 +5970,21 @@ function renderClientMachineModule(){
     const firstContact=contacts[0]||{};
     const isNotRoot = (()=>{ const s=findGroupWithParent(g.id); return s && s.parent!==db.clientRoot; })();
     card.innerHTML=`
-      <div class="groupImage">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
-      <h3 title="${esc(g.name)}">${esc(g.name)}</h3>
-      ${g.floor?`<p style="font-size:12px;color:#1a7ad4;font-weight:700">🏢 ${esc(g.floor)}</p>`:''}
-      <p>${(g.groups||[]).length} ${T('groups')} · ${(g.machines||[]).length} ${T('machines')}</p>
-      <div class="contactBox">
-        <div class="contactPhoto">👤</div>
-        <div>
-          <p><b>${esc(firstContact.firstName || '-')}</b>${contacts.length>1?` <span class="muted">+${contacts.length-1}</span>`:''}</p>
-          <p>${esc(firstContact.phone||'-')}</p>
-        </div>
+      <div class="groupImage" style="height:55%;flex-shrink:0">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 8px;text-align:center;min-height:0;overflow:hidden">
+        <h3 title="${esc(g.name)}" style="margin:0 0 4px;font-size:15px;line-height:1.2;white-space:normal;text-align:center">${esc(g.name)}</h3>
+        ${g.floor?`<p style="margin:0 0 4px;font-size:12px;color:#1a7ad4;font-weight:700;text-align:center">🏢 ${esc(g.floor)}</p>`:''}
       </div>
-      ${!isClientUser()?`<div class="groupActions" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-        <div style="display:flex;gap:6px">
-          ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:14px;height:14px" onerror="this.style.display='none'">Waze</a>`:`<div style="flex:1"></div>`}
-          ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1">📞</button>`:`<div style="flex:1"></div>`}
-        </div>
-        ${isAdmin()?`<div style="display:flex;gap:6px">
-          <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
-          ${isNotRoot?`<button class="btn secondary mini" data-act="moveup" style="flex:1" title="Remonter">⬆️</button>`:`<div style="flex:1"></div>`}
-          <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
-        </div>`:''}
+      ${!isClientUser()?`<div style="display:flex;gap:8px;padding:0 8px 8px;flex-shrink:0">
+        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
+        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1;font-size:11px">📞</button>`:''}
+        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="flex:1;font-size:11px">✏️</button>`:''}
+        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="flex:1;font-size:11px">🗑️</button>`:''}
       </div>`:''}`;
-    const contactBtn=card.querySelector('[data-act=contact]');
+    card.style.display='flex';
+    card.style.flexDirection='column';
+    card.style.padding='0';
+    card.style.overflow='hidden';    const contactBtn=card.querySelector('[data-act=contact]');
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
     const groupEditBtn=card.querySelector('[data-act=edit]');
     if(groupEditBtn) groupEditBtn.onclick=(ev)=>{ev.stopPropagation();openEditClientGroup(g.id)};
