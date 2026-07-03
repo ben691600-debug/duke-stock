@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.24'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.25'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6339,6 +6339,11 @@ function renderClientMachineModule(){
   var machTitle=$('machinesSectionTitle');
   if(machTitle) machTitle.style.display=$('clientMachinesList').children.length?'':'none';
 
+  // ── Carousel vertical pour les machines ───────────────────────────
+  if($('clientMachinesList') && $('clientMachinesList').children.length > 1){
+    buildGroupsCarousel($('clientMachinesList'));
+  }
+
   if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
 
@@ -8728,6 +8733,8 @@ function renderSuppliersModule(){
     },{passive:false});
     $('supplierGrid').appendChild(card);
   });
+  // ── Carousel vertical gestion fournisseurs ────────────────────────
+  buildGroupsCarousel($('supplierGrid'));
 }
 
 // ── Niveau 1 — drag COPIE EXACTE du client machine ─────────
@@ -8899,6 +8906,8 @@ function renderSupplierParts(){
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=()=>deletePart(p.id,false);
     $('partGrid').appendChild(card);
   });
+  // ── Carousel vertical gestion pièces ──────────────────────────────
+  buildGroupsCarousel($('partGrid'));
 }
 
 function _findSgGroupById(id, node){
@@ -9507,6 +9516,8 @@ function faultMachineRender(){
 
     grid.appendChild(card);
   });
+  // ── Carousel vertical gestion machines/pannes ─────────────────────
+  buildGroupsCarousel(grid);
 }
 
 function faultMachineAddFaultRow(number='', text=''){
