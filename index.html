@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.38'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.39'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6702,13 +6702,16 @@ function buildGroupsCarousel(container){
   }
   var n=cards.length;
   var GAP=10;
-  // Dimensions FIXES — indépendantes du contexte (breadcrumb, banner, etc.)
-  // Contenu max d'une carte : image(140)+gaps(14)+nom(30)+boutons(40)+cell-pad(12) = 236px
-  // CARD_H=260 → 24px de marge → tout rentre partout, toujours identique
-  var CARD_H=260;
+  var CELL_PAD=6; // même marge visuelle recherchée sur les 4 côtés de l'étiquette
+  // Hauteur calculée dynamiquement sur le contenu réel de chaque carte (mesuré avant tout habillage),
+  // pour que la marge basse soit toujours identique aux marges haute/gauche/droite,
+  // quel que soit le nombre de boutons (2 ou 4) ou le type d'étiquette (fournisseur, groupe, machine).
+  var maxContentH=0;
+  cards.forEach(function(c){ maxContentH=Math.max(maxContentH, c.offsetHeight); });
+  var CARD_H=Math.max(maxContentH+CELL_PAD*2, 120);
   var PARTIAL=58;  // 58px visible haut/bas = indique qu'on peut scroller
   var SLOT=CARD_H+GAP;
-  var CONT_H=CARD_H+PARTIAL*2+GAP;  // 386px — tient sur tout téléphone dans tous les contextes
+  var CONT_H=CARD_H+PARTIAL*2+GAP;
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
@@ -6728,7 +6731,7 @@ function buildGroupsCarousel(container){
       'scroll-snap-align:center','height:'+CARD_H+'px','width:100%',
       'box-sizing:border-box','flex-shrink:0','overflow:hidden',
       'border-radius:28px','background:white','border:2px solid #d4e3ef',
-      'padding:6px',
+      'padding:'+CELL_PAD+'px',
       'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
     ].join(';');
     el.style.cssText=(el.style.cssText||'')+';width:100%!important;height:100%!important;box-sizing:border-box!important;overflow:hidden!important;border-radius:22px!important;display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;';
