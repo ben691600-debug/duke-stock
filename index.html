@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.36'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.37'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8733,7 +8733,7 @@ function renderSuppliersModule(){
         ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:10px"><img src="https://www.waze.com/favicon.ico" style="width:11px;height:11px" onerror="this.style.display='none'">Waze</a>`:''}
         <button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>
       </div>`:''}`;
-    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;min-height:100%!important;box-sizing:border-box!important';    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
+    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
     const mc=card.querySelector('[data-act=mail]'); if(mc) mc.onclick=ev=>{ev.stopPropagation();window.location.href='mailto:'+s.email;};
     const dc=card.querySelector('[data-act=delete]'); if(dc) dc.onclick=ev=>{ev.stopPropagation();deleteSupplier(s.id);};
