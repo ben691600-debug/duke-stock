@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.34'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.35'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2676,6 +2676,7 @@ body.draggingMachine{
   <label><span data-i="contactFirstName">Prénom</span><input id="supplierFirstNameInput" data-i-placeholder="contactFirstName"></label>
   <label><span data-i="contactLastName">Nom</span><input id="supplierLastNameInput" data-i-placeholder="contactLastName"></label>
   <label><span data-i="contactPhone">Téléphone</span><input id="supplierPhoneInput" data-i-placeholder="phone"></label>
+  <label><span>📍 Lien Waze (navigation)</span><input id="supplierWaze" type="url" placeholder="https://waze.com/ul?ll=..."></label>
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
 </form></dialog>
 <dialog class="modal" id="partDialog"><form id="partForm">
@@ -4959,22 +4960,30 @@ document.querySelectorAll('.lang').forEach(b=>b.onclick=()=>{lang=b.dataset.lang
 (function(){
   var track=document.getElementById('langsCarouselTrack');
   var wrap=document.getElementById('langsCarousel');
+  var langView=document.getElementById('langView');
   if(track&&wrap){
     var setWidth=0;
     function computeSetWidth(){
       // 12 boutons = 3 jeux de 4 langues -> largeur d'un jeu = scrollWidth / 3
-      setWidth=track.scrollWidth/3;
+      if(track.scrollWidth>0) setWidth=track.scrollWidth/3;
     }
     function centerOnMiddleSet(){
       computeSetWidth();
       if(setWidth>0) wrap.scrollLeft=setWidth;
     }
-    // Centrage initial sur le 2e jeu (dès que les tailles sont connues)
+    // langView démarre en display:none -> scrollWidth vaut 0 au chargement.
+    // On recalcule donc dès que la classe "hidden" est retirée (vue affichée).
+    if(langView && 'MutationObserver' in window){
+      new MutationObserver(function(){
+        if(!langView.classList.contains('hidden')) centerOnMiddleSet();
+      }).observe(langView,{attributes:true,attributeFilter:['class']});
+    }
     if(document.readyState==='complete') setTimeout(centerOnMiddleSet,0);
     else window.addEventListener('load',()=>setTimeout(centerOnMiddleSet,0));
-    window.addEventListener('resize',centerOnMiddleSet);
+    window.addEventListener('resize',computeSetWidth);
     wrap.addEventListener('scroll',function(){
-      if(setWidth<=0) return;
+      // Filet de sécurité : si la largeur n'a jamais pu être calculée, on réessaie ici
+      if(setWidth<=0){ computeSetWidth(); if(setWidth<=0) return; }
       if(wrap.scrollLeft<setWidth*0.5){
         wrap.scrollLeft+=setWidth;
       }else if(wrap.scrollLeft>setWidth*1.5){
@@ -8717,11 +8726,12 @@ function renderSuppliersModule(){
         <h3 title="${esc(s.name)}" style="margin:0;font-size:15px;color:#0A7CC2;white-space:normal;text-align:center;line-height:1.2">${esc(s.name)}</h3>
         <p style="margin:0;font-size:11px;color:#6f7b87">${sgC} sous-groupe${sgC!==1?'s':''}${pC0>0?' · '+pC0+' pièce'+(pC0!==1?'s':''):''}</p>
       </div>
-      ${isAdmin()?`<div style="display:flex;gap:5px;padding:0 9px 9px;margin-top:8px;flex-shrink:0;width:100%;box-sizing:border-box">
-        <button class="btn secondary mini" data-act="edit" style="flex:1">✏️</button>
-        ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1">📞</button>`:''}
-        ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1">✉️</button>`:''}
-        <button class="btn danger mini" data-act="delete" style="flex:1">🗑️</button>
+      ${isAdmin()?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 9px 9px;margin-top:8px;flex-shrink:0;width:100%;box-sizing:border-box">
+        <button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0">✏️</button>
+        ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1 1 40%;min-width:0">📞</button>`:''}
+        ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1 1 40%;min-width:0">✉️</button>`:''}
+        ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="flex:1 1 40%;min-width:0;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
+        <button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0">🗑️</button>
       </div>`:''}`;
     card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;overflow:hidden!important;height:100%!important;box-sizing:border-box!important';    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
@@ -9062,8 +9072,8 @@ if($('openSuppliersModule')) $('openSuppliersModule').onclick=()=>{
 function readSupplierImage(input,callback,previewId){ const file=input.files[0]; if(!file){callback('');return;} const r=new FileReader(); r.onload=()=>{compressImageSquare(r.result,400,IMG_QUALITY,function(c){callback(c);if(previewId){const p=$(previewId);p.style.backgroundImage=`url(${c})`;p.classList.remove('hidden');}});}; r.readAsDataURL(file); }
 if($('addSupplierBtn')) $('addSupplierBtn').onclick=()=>{ if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(typeof T==='function'?T('actionDenied'):'Action non autorisée.');return;} editingSupplierId=null; supplierImageData=''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent=T('addSupplier'); $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); };
 if($('supplierImageInput')) $('supplierImageInput').onchange=e=>readSupplierImage(e.target,v=>supplierImageData=v,'supplierPreview');
-if($('supplierForm')) $('supplierForm').onsubmit=e=>{ e.preventDefault(); db.suppliers=db.suppliers||[]; if(editingSupplierId){const s=db.suppliers.find(x=>x.id===editingSupplierId);if(s){s.name=$('supplierNameInput').value.trim();s.image=supplierImageData;s.email=$('supplierEmailInput').value.trim();s.firstName=$('supplierFirstNameInput').value.trim();s.lastName=$('supplierLastNameInput').value.trim();s.phone=$('supplierPhoneInput').value.trim();log('EDIT_SUPPLIER',s.name);}}else{const s={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),parts:[],subgroups:[]};db.suppliers.push(s);log('ADD_SUPPLIER',s.name);}editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule(); };
-function openEditSupplier(id){ const s=(db.suppliers||[]).find(x=>x.id===id); if(!s)return; editingSupplierId=id; supplierImageData=s.image||''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent='✏️ '+T('supplier'); $('supplierNameInput').value=s.name||''; $('supplierEmailInput').value=s.email||''; $('supplierFirstNameInput').value=s.firstName||''; $('supplierLastNameInput').value=s.lastName||''; $('supplierPhoneInput').value=s.phone||''; if(supplierImageData){$('supplierPreview').style.backgroundImage=`url(${supplierImageData})`;$('supplierPreview').classList.remove('hidden');}else $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); }
+if($('supplierForm')) $('supplierForm').onsubmit=e=>{ e.preventDefault(); db.suppliers=db.suppliers||[]; if(editingSupplierId){const s=db.suppliers.find(x=>x.id===editingSupplierId);if(s){s.name=$('supplierNameInput').value.trim();s.image=supplierImageData;s.email=$('supplierEmailInput').value.trim();s.firstName=$('supplierFirstNameInput').value.trim();s.lastName=$('supplierLastNameInput').value.trim();s.phone=$('supplierPhoneInput').value.trim();s.waze=$('supplierWaze').value.trim();log('EDIT_SUPPLIER',s.name);}}else{const s={id:uid(),name:$('supplierNameInput').value.trim(),image:supplierImageData,email:$('supplierEmailInput').value.trim(),firstName:$('supplierFirstNameInput').value.trim(),lastName:$('supplierLastNameInput').value.trim(),phone:$('supplierPhoneInput').value.trim(),waze:$('supplierWaze').value.trim(),parts:[],subgroups:[]};db.suppliers.push(s);log('ADD_SUPPLIER',s.name);}editingSupplierId=null;save();$('supplierDialog').close();renderSuppliersModule(); };
+function openEditSupplier(id){ const s=(db.suppliers||[]).find(x=>x.id===id); if(!s)return; editingSupplierId=id; supplierImageData=s.image||''; $('supplierForm').reset(); $('supplierDialog').querySelector('h2').textContent='✏️ '+T('supplier'); $('supplierNameInput').value=s.name||''; $('supplierEmailInput').value=s.email||''; $('supplierFirstNameInput').value=s.firstName||''; $('supplierLastNameInput').value=s.lastName||''; $('supplierPhoneInput').value=s.phone||''; $('supplierWaze').value=s.waze||''; if(supplierImageData){$('supplierPreview').style.backgroundImage=`url(${supplierImageData})`;$('supplierPreview').classList.remove('hidden');}else $('supplierPreview').classList.add('hidden'); $('supplierDialog').showModal(); }
 function deleteSupplier(id){ if(!isAdmin())return; if(!confirm(T('deleteSupplierConfirm')))return; const s=(db.suppliers||[]).find(x=>x.id===id); db.suppliers=(db.suppliers||[]).filter(x=>x.id!==id); if(s)moveToTrash('supplier',s,{}); log('DELETE_SUPPLIER',s?s.name:id); save(); renderSuppliersModule(); }
 
 // ── CRUD Sous-groupe ────────────────────────────────────────
