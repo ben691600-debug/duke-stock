@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.37'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.38'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6024,18 +6024,18 @@ function renderClientMachineModule(){
     const firstContact=contacts[0]||{};
     const isNotRoot = (()=>{ const s=findGroupWithParent(g.id); return s && s.parent!==db.clientRoot; })();
     card.innerHTML=`
-      <div class="groupImage" style="height:140px;flex-shrink:0">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 8px;text-align:center;min-height:0;overflow:hidden">
+      <div class="groupImage" style="height:110px;flex-shrink:0">${g.image?`<div class="groupImageInner" style="background-image:url('${g.image}')"></div>`:'🏥'}</div>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:6px 8px 4px;text-align:center">
         <h3 title="${esc(g.name)}" style="margin:0 0 4px;font-size:15px;line-height:1.2;white-space:normal;text-align:center">${esc(g.name)}</h3>
         ${g.floor?`<p style="margin:0 0 4px;font-size:12px;color:#1a7ad4;font-weight:700;text-align:center">🏢 ${esc(g.floor)}</p>`:''}
       </div>
-      ${!isClientUser()?`<div style="display:flex;gap:8px;padding:0 8px 8px;flex-shrink:0">
-        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
-        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1;font-size:11px">📞</button>`:''}
-        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="flex:1;font-size:11px">✏️</button>`:''}
-        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="flex:1;font-size:11px">🗑️</button>`:''}
+      ${!isClientUser()?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 8px 8px;flex-shrink:0">
+        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
+        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">📞</button>`:''}
+        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✏️</button>`:''}
+        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>`:''}
       </div>`:''}`;
-    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;overflow:hidden!important;height:100%!important;box-sizing:border-box!important';    const contactBtn=card.querySelector('[data-act=contact]');
+    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const contactBtn=card.querySelector('[data-act=contact]');
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
     const groupEditBtn=card.querySelector('[data-act=edit]');
     if(groupEditBtn) groupEditBtn.onclick=(ev)=>{ev.stopPropagation();openEditClientGroup(g.id)};
@@ -9553,7 +9553,7 @@ function faultMachineRender(){
           : `<div style="height:85px;display:flex;align-items:center;justify-content:center;font-size:36px">🛠️</div>`}
         ${(typeof isAdmin==='function'&&(isAdmin()||isOperator()))?`<button type="button" data-fm="credentials" title="Accès / Codes" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.92);border:none;font-size:13px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center">🔐</button>`:''}
       </div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;text-align:center;min-height:0;overflow:hidden;gap:2px">
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 8px;text-align:center;gap:2px">
         <h3 style="margin:0;font-size:14px;font-weight:900;color:#0A7CC2;line-height:1.2;white-space:normal;text-align:center">${esc(machine.model||'')}</h3>
         <p style="margin:0;font-size:11px;color:#6f7b87;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(machine.type||'')}</p>
         <p style="margin:0;font-size:11px;color:#333">${faults.length} pannes</p>
@@ -9564,7 +9564,7 @@ function faultMachineRender(){
         <button class="btn danger mini" type="button" data-fm="delete" style="flex:1;font-size:11px">🗑️</button>
       </div>
     `;
-    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;overflow:hidden!important;height:100%!important;box-sizing:border-box!important';
+    card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';
 
     card.onclick = (ev)=>{
       if(ev.target.closest('button,.embeddedMachineQr')) return;
