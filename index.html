@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.41'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.42'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6029,11 +6029,11 @@ function renderClientMachineModule(){
         <h3 title="${esc(g.name)}" style="margin:0 0 4px;font-size:15px;line-height:1.2;white-space:normal;text-align:center">${esc(g.name)}</h3>
         ${g.floor?`<p style="margin:0 0 4px;font-size:12px;color:#1a7ad4;font-weight:700;text-align:center">🏢 ${esc(g.floor)}</p>`:''}
       </div>
-      ${!isClientUser()?`<div style="flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:5px;padding:0 8px 8px;box-sizing:border-box;min-height:0">
-        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="min-width:0;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
-        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="min-width:0;font-size:11px">📞</button>`:''}
-        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="min-width:0;font-size:11px">✏️</button>`:''}
-        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="min-width:0;font-size:11px">🗑️</button>`:''}
+      ${!isClientUser()?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 8px 8px;flex-shrink:0">
+        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
+        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">📞</button>`:''}
+        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✏️</button>`:''}
+        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>`:''}
       </div>`:''}`;
     card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const contactBtn=card.querySelector('[data-act=contact]');
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
@@ -6702,19 +6702,17 @@ function buildGroupsCarousel(container){
   }
   var n=cards.length;
   var GAP=10;
-  var CELL_PAD=6; // même marge visuelle recherchée sur les 4 côtés de l'étiquette
-  // Étiquette STANDARD : toutes les cartes du même carrousel partagent la même hauteur,
-  // calculée sur le contenu le plus grand du groupe. C'est la zone des boutons (flex:1 + grille)
-  // qui s'adapte à l'intérieur pour remplir l'espace, que ce soit 2 ou 4 boutons.
-  var maxContentH=0;
-  cards.forEach(function(c){ maxContentH=Math.max(maxContentH, c.offsetHeight); });
-  var CARD_H=Math.max(maxContentH+CELL_PAD*2, 120);
-  var heights=cards.map(function(){ return CARD_H; });
-  var maxH=CARD_H;
+  var CELL_PAD=6; // même marge visuelle sur les 4 côtés de l'étiquette
+  // Chaque étiquette garde SA PROPRE hauteur, calculée sur son contenu réel :
+  // 4 boutons -> étiquette plus haute, 2 boutons -> étiquette plus courte.
+  // Les boutons eux-mêmes gardent une taille normale (pas étirés).
+  var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 120); });
+  var maxH=Math.max.apply(null,heights);
   var PARTIAL=58;  // 58px visible haut/bas = indique qu'on peut scroller
   var CONT_H=maxH+PARTIAL*2+GAP;
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
+    'position:relative', // nécessaire pour que offsetTop des cellules soit fiable (corrige le cadre bleu)
     'height:'+CONT_H+'px',
     'overflow-y:scroll','overflow-x:hidden',
     'scroll-snap-type:y mandatory',
@@ -8750,12 +8748,12 @@ function renderSuppliersModule(){
         <h3 title="${esc(s.name)}" style="margin:0;font-size:14px;color:#0A7CC2;white-space:normal;text-align:center;line-height:1.2">${esc(s.name)}</h3>
         <p style="margin:0;font-size:11px;color:#6f7b87">${sgC} sous-groupe${sgC!==1?'s':''}${pC0>0?' · '+pC0+' pièce'+(pC0!==1?'s':''):''}</p>
       </div>
-      ${isAdmin()?`<div style="flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:4px;padding:0 8px 8px;box-sizing:border-box;min-height:0">
-        <button class="btn secondary mini" data-act="edit" style="min-width:0;font-size:11px">✏️</button>
-        ${s.phone?`<button class="btn ok mini" data-act="call" style="min-width:0;font-size:11px">📞</button>`:''}
-        ${s.email?`<button class="btn secondary mini" data-act="mail" style="min-width:0;font-size:11px">✉️</button>`:''}
-        ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="min-width:0;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:10px"><img src="https://www.waze.com/favicon.ico" style="width:11px;height:11px" onerror="this.style.display='none'">Waze</a>`:''}
-        <button class="btn danger mini" data-act="delete" style="min-width:0;font-size:11px">🗑️</button>
+      ${isAdmin()?`<div style="display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 8px;margin-top:6px;flex-shrink:0;width:100%;box-sizing:border-box">
+        <button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✏️</button>
+        ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">📞</button>`:''}
+        ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✉️</button>`:''}
+        ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:10px"><img src="https://www.waze.com/favicon.ico" style="width:11px;height:11px" onerror="this.style.display='none'">Waze</a>`:''}
+        <button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>
       </div>`:''}`;
     card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
