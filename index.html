@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.42'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.43'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6741,6 +6741,7 @@ function buildGroupsCarousel(container){
   makeCell(cards[n-1].cloneNode(true),true,heights[n-1]);
   cards.forEach(function(card,i){ makeCell(card,false,heights[i]); });
   makeCell(cards[0].cloneNode(true),true,heights[0]);
+  var lastCi=1;
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
     var minD=Infinity,ci=0;
@@ -6748,6 +6749,7 @@ function buildGroupsCarousel(container){
       var d=Math.abs((c.offsetTop+c.offsetHeight/2)-mid);
       if(d<minD){minD=d;ci=i;}
     });
+    lastCi=ci;
     cells.forEach(function(cell,i){
       var dist=Math.abs((cell.offsetTop+cell.offsetHeight/2)-mid);
       var refSlot=cell.offsetHeight+GAP;
@@ -6760,21 +6762,18 @@ function buildGroupsCarousel(container){
     updateVis();
     clearTimeout(_lt);
     _lt=setTimeout(function(){
-      var st=sc.scrollTop;
-      var firstRealTop=cells[1].offsetTop;
-      var lastRealTop=cells[n].offsetTop;
-      var cloneStartTop=cells[0].offsetTop;
-      var cloneEndTop=cells[n+1].offsetTop;
-      // Cellules clonées ayant exactement la même hauteur que leur vraie carte,
-      // le décalage à appliquer est constant, quelle que soit la taille de chaque étiquette.
-      if(st < firstRealTop-GAP/2){
+      // On réutilise EXACTEMENT la même détection de carte centrée que l'effet visuel
+      // (lastCi), au lieu de comparer des positions brutes qui devenaient incohérentes
+      // dès que les étiquettes ont des hauteurs différentes — c'était la cause du
+      // défilement automatique en boucle sans aucune interaction.
+      if(lastCi===0){
         sc.style.scrollBehavior='auto';
-        sc.scrollTop = st + (lastRealTop-cloneStartTop);
+        sc.scrollTop += (cells[n].offsetTop-cells[0].offsetTop);
         sc.style.scrollBehavior='';
         updateVis();
-      }else if(st > lastRealTop+GAP/2){
+      }else if(lastCi===n+1){
         sc.style.scrollBehavior='auto';
-        sc.scrollTop = st - (cloneEndTop-firstRealTop);
+        sc.scrollTop -= (cells[n+1].offsetTop-cells[1].offsetTop);
         sc.style.scrollBehavior='';
         updateVis();
       }
