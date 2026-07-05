@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.39'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.41'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6029,11 +6029,11 @@ function renderClientMachineModule(){
         <h3 title="${esc(g.name)}" style="margin:0 0 4px;font-size:15px;line-height:1.2;white-space:normal;text-align:center">${esc(g.name)}</h3>
         ${g.floor?`<p style="margin:0 0 4px;font-size:12px;color:#1a7ad4;font-weight:700;text-align:center">🏢 ${esc(g.floor)}</p>`:''}
       </div>
-      ${!isClientUser()?`<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 8px 8px;flex-shrink:0">
-        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
-        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">📞</button>`:''}
-        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✏️</button>`:''}
-        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>`:''}
+      ${!isClientUser()?`<div style="flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:5px;padding:0 8px 8px;box-sizing:border-box;min-height:0">
+        ${g.waze?`<a href="${esc(g.waze)}" target="_blank" class="btn secondary mini" style="min-width:0;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;font-size:11px" onclick="event.stopPropagation()"><img src="https://www.waze.com/favicon.ico" style="width:12px;height:12px" onerror="this.style.display='none'">Waze</a>`:''}
+        ${contacts.length?`<button class="btn secondary mini" data-act="contact" style="min-width:0;font-size:11px">📞</button>`:''}
+        ${isAdmin()?`<button class="btn secondary mini" data-act="edit" style="min-width:0;font-size:11px">✏️</button>`:''}
+        ${isAdmin()?`<button class="btn danger mini" data-act="delete" style="min-width:0;font-size:11px">🗑️</button>`:''}
       </div>`:''}`;
     card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const contactBtn=card.querySelector('[data-act=contact]');
     if(contactBtn) contactBtn.onclick=(ev)=>{ev.stopPropagation();openClientGroupContacts(g.id)};
@@ -6703,15 +6703,16 @@ function buildGroupsCarousel(container){
   var n=cards.length;
   var GAP=10;
   var CELL_PAD=6; // même marge visuelle recherchée sur les 4 côtés de l'étiquette
-  // Hauteur calculée dynamiquement sur le contenu réel de chaque carte (mesuré avant tout habillage),
-  // pour que la marge basse soit toujours identique aux marges haute/gauche/droite,
-  // quel que soit le nombre de boutons (2 ou 4) ou le type d'étiquette (fournisseur, groupe, machine).
+  // Étiquette STANDARD : toutes les cartes du même carrousel partagent la même hauteur,
+  // calculée sur le contenu le plus grand du groupe. C'est la zone des boutons (flex:1 + grille)
+  // qui s'adapte à l'intérieur pour remplir l'espace, que ce soit 2 ou 4 boutons.
   var maxContentH=0;
   cards.forEach(function(c){ maxContentH=Math.max(maxContentH, c.offsetHeight); });
   var CARD_H=Math.max(maxContentH+CELL_PAD*2, 120);
+  var heights=cards.map(function(){ return CARD_H; });
+  var maxH=CARD_H;
   var PARTIAL=58;  // 58px visible haut/bas = indique qu'on peut scroller
-  var SLOT=CARD_H+GAP;
-  var CONT_H=CARD_H+PARTIAL*2+GAP;
+  var CONT_H=maxH+PARTIAL*2+GAP;
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
     'height:'+CONT_H+'px',
@@ -6725,10 +6726,10 @@ function buildGroupsCarousel(container){
     'box-sizing:border-box'
   ].join(';');
   var cells=[];
-  function makeCell(el,isClone){
+  function makeCell(el,isClone,h){
     var cell=document.createElement('div');
     cell.style.cssText=[
-      'scroll-snap-align:center','height:'+CARD_H+'px','width:100%',
+      'scroll-snap-align:center','height:'+h+'px','width:100%',
       'box-sizing:border-box','flex-shrink:0','overflow:hidden',
       'border-radius:28px','background:white','border:2px solid #d4e3ef',
       'padding:'+CELL_PAD+'px',
@@ -6738,17 +6739,22 @@ function buildGroupsCarousel(container){
     if(isClone) cell.style.pointerEvents='none';
     cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
   }
-  makeCell(cards[n-1].cloneNode(true),true);
-  cards.forEach(function(card){ makeCell(card,false); });
-  makeCell(cards[0].cloneNode(true),true);
+  // index 0 = clone de la dernière carte, 1..n = vraies cartes, n+1 = clone de la première
+  makeCell(cards[n-1].cloneNode(true),true,heights[n-1]);
+  cards.forEach(function(card,i){ makeCell(card,false,heights[i]); });
+  makeCell(cards[0].cloneNode(true),true,heights[0]);
   function updateVis(){
     var mid=sc.scrollTop+CONT_H/2;
     var minD=Infinity,ci=0;
-    cells.forEach(function(c,i){var d=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);if(d<minD){minD=d;ci=i;}});
+    cells.forEach(function(c,i){
+      var d=Math.abs((c.offsetTop+c.offsetHeight/2)-mid);
+      if(d<minD){minD=d;ci=i;}
+    });
     cells.forEach(function(cell,i){
-      var dist=Math.abs(PARTIAL+i*SLOT+CARD_H/2-mid);
+      var dist=Math.abs((cell.offsetTop+cell.offsetHeight/2)-mid);
+      var refSlot=cell.offsetHeight+GAP;
       if(i===ci){cell.style.transform='scale(1)';cell.style.opacity='1';cell.style.borderColor='#0A7CC2';cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';}
-      else{var t=Math.min(dist/SLOT,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='#d4e3ef';cell.style.boxShadow='none';}
+      else{var t=Math.min(dist/refSlot,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='#d4e3ef';cell.style.boxShadow='none';}
     });
   }
   var _lt=null;
@@ -6757,8 +6763,23 @@ function buildGroupsCarousel(container){
     clearTimeout(_lt);
     _lt=setTimeout(function(){
       var st=sc.scrollTop;
-      if(st<SLOT-SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=n*SLOT-(SLOT-SLOT*0.5-st);sc.style.scrollBehavior='';updateVis();}
-      else if(st>n*SLOT+SLOT*0.5){sc.style.scrollBehavior='auto';sc.scrollTop=SLOT+(st-n*SLOT-SLOT*0.5);sc.style.scrollBehavior='';updateVis();}
+      var firstRealTop=cells[1].offsetTop;
+      var lastRealTop=cells[n].offsetTop;
+      var cloneStartTop=cells[0].offsetTop;
+      var cloneEndTop=cells[n+1].offsetTop;
+      // Cellules clonées ayant exactement la même hauteur que leur vraie carte,
+      // le décalage à appliquer est constant, quelle que soit la taille de chaque étiquette.
+      if(st < firstRealTop-GAP/2){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop = st + (lastRealTop-cloneStartTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }else if(st > lastRealTop+GAP/2){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop = st - (cloneEndTop-firstRealTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }
     },100);
   },{passive:true});
   container.innerHTML='';
@@ -6768,7 +6789,7 @@ function buildGroupsCarousel(container){
   container.appendChild(sc);
   requestAnimationFrame(function(){
     requestAnimationFrame(function(){
-      sc.scrollTop=SLOT;
+      sc.scrollTop = cells[1].offsetTop - (CONT_H-cells[1].offsetHeight)/2;
       updateVis();
     });
   });
@@ -8729,12 +8750,12 @@ function renderSuppliersModule(){
         <h3 title="${esc(s.name)}" style="margin:0;font-size:14px;color:#0A7CC2;white-space:normal;text-align:center;line-height:1.2">${esc(s.name)}</h3>
         <p style="margin:0;font-size:11px;color:#6f7b87">${sgC} sous-groupe${sgC!==1?'s':''}${pC0>0?' · '+pC0+' pièce'+(pC0!==1?'s':''):''}</p>
       </div>
-      ${isAdmin()?`<div style="display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 8px;margin-top:6px;flex-shrink:0;width:100%;box-sizing:border-box">
-        <button class="btn secondary mini" data-act="edit" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✏️</button>
-        ${s.phone?`<button class="btn ok mini" data-act="call" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">📞</button>`:''}
-        ${s.email?`<button class="btn secondary mini" data-act="mail" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">✉️</button>`:''}
-        ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="flex:1 1 40%;min-width:0;padding:5px 4px;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:10px"><img src="https://www.waze.com/favicon.ico" style="width:11px;height:11px" onerror="this.style.display='none'">Waze</a>`:''}
-        <button class="btn danger mini" data-act="delete" style="flex:1 1 40%;min-width:0;padding:5px 4px;font-size:11px">🗑️</button>
+      ${isAdmin()?`<div style="flex:1;display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:4px;padding:0 8px 8px;box-sizing:border-box;min-height:0">
+        <button class="btn secondary mini" data-act="edit" style="min-width:0;font-size:11px">✏️</button>
+        ${s.phone?`<button class="btn ok mini" data-act="call" style="min-width:0;font-size:11px">📞</button>`:''}
+        ${s.email?`<button class="btn secondary mini" data-act="mail" style="min-width:0;font-size:11px">✉️</button>`:''}
+        ${s.waze?`<a href="${esc(s.waze)}" target="_blank" onclick="event.stopPropagation()" class="btn secondary mini" style="min-width:0;background:#00d4b1;color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:3px;text-decoration:none;font-size:10px"><img src="https://www.waze.com/favicon.ico" style="width:11px;height:11px" onerror="this.style.display='none'">Waze</a>`:''}
+        <button class="btn danger mini" data-act="delete" style="min-width:0;font-size:11px">🗑️</button>
       </div>`:''}`;
     card.style.cssText=(card.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;height:auto!important;align-self:start!important;box-sizing:border-box!important';    const eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=ev=>{ev.stopPropagation();openEditSupplier(s.id);};
     const cc=card.querySelector('[data-act=call]'); if(cc) cc.onclick=ev=>{ev.stopPropagation();window.location.href='tel:'+s.phone;};
