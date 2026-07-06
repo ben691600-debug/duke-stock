@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.51'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.52'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4099,6 +4099,11 @@ function show(view){
   }
   ['moduleView','carsView','stockView','usersView','historyView','clientsView','suppliersView','faultMachineView','planningView','myMissionsView'].forEach(id=>{if($(id)) $(id).classList.add('hidden')});
   $(view).classList.remove('hidden');
+  // Empêche le glissement/scroll de la page UNIQUEMENT sur les vues qui utilisent
+  // le carrousel vertical (elles gèrent déjà leur propre défilement en interne).
+  // Les autres vues (formulaires, listes longues, etc.) gardent leur défilement normal.
+  var CAROUSEL_VIEWS=['clientsView','suppliersView','faultMachineView','planningView'];
+  document.body.classList.toggle('noPageDrag', CAROUSEL_VIEWS.includes(view));
   // Calcule dynamiquement le top du header fixe des machines pour qu'il colle
   // exactement sous le header principal (.top), quelle que soit la hauteur réelle.
   if(view==='faultMachineView'){
@@ -10728,6 +10733,16 @@ var _waitReady=setInterval(function(){
 html { scroll-behavior: smooth; }
 body { -webkit-overflow-scrolling: touch; overscroll-behavior-y: none; overscroll-behavior-x: none; }
 html { overscroll-behavior: none; }
+/* Verrouillage total du défilement de page — activé seulement sur les vues à
+   carrousel (voir show() en JS). Le carrousel garde son propre défilement interne,
+   indépendant de ce verrou. */
+body.noPageDrag{
+  position:fixed!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  overflow:hidden!important;
+}
 
 /* ══════════════════════════════════════════
    HEADER (top bar)
