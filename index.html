@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.46'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.47'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6708,8 +6708,16 @@ function buildGroupsCarousel(container){
   // Les boutons eux-mêmes gardent une taille normale (pas étirés).
   var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 120); });
   var maxH=Math.max.apply(null,heights);
-  var PARTIAL=Math.round(maxH/2);  // exactement une moitié d'étiquette visible en haut et en bas
-  var CONT_H=maxH+PARTIAL*2+GAP;
+  // Hauteur du carrousel calculée sur l'espace RÉELLEMENT disponible à l'écran,
+  // et non plus sur une formule de pic fixe. Objectif : la page entière ne doit
+  // jamais dépasser la hauteur de l'écran, pour qu'elle ne soit plus déplaçable
+  // (seul le carrousel doit défiler).
+  var viewportH=window.innerHeight||document.documentElement.clientHeight;
+  var topPos=container.getBoundingClientRect().top;
+  var RESERVED_BOTTOM=78; // place réservée pour le bouton "Retour" fixe + marge de sécurité
+  var available=Math.floor(viewportH-topPos-RESERVED_BOTTOM);
+  var CONT_H=Math.max(available, maxH+GAP+24); // si l'espace manque vraiment, on garde un minimum lisible
+  var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
     'position:relative', // nécessaire pour que offsetTop des cellules soit fiable (corrige le cadre bleu)
