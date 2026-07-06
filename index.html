@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.48'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.49'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6709,17 +6709,21 @@ function buildGroupsCarousel(container){
   var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 120); });
   var maxH=Math.max.apply(null,heights);
   // Hauteur du carrousel calculée sur l'espace RÉELLEMENT disponible à l'écran,
-  // mesuré directement à partir de la position réelle du bouton "Retour" fixe
-  // (au lieu de deviner une marge fixe, qui ne tenait pas compte du padding-bottom
-  // supplémentaire ajouté au contenu quand ce bouton est visible).
+  // mesuré directement à partir de la position réelle du bouton "Retour" fixe.
+  // On tient aussi compte du padding-bottom réel appliqué à <main> (ajouté
+  // automatiquement par ailleurs quand le bouton Retour est visible) : sans ça,
+  // ce padding s'ajoutait APRÈS notre carrousel et créait une marge glissable
+  // entre la dernière étiquette et le bouton.
   var viewportH=window.innerHeight||document.documentElement.clientHeight;
   var topPos=container.getBoundingClientRect().top;
   var backBtn=document.getElementById('universalBackBtn');
-  var SAFETY_GAP=10; // petit espace de respiration au-dessus du bouton Retour
+  var SAFETY_GAP=0; // aucune marge : le carrousel touche exactement le bouton Retour
   var bottomLimit=(backBtn&&backBtn.classList.contains('visible'))
     ? backBtn.getBoundingClientRect().top
     : viewportH;
-  var available=Math.floor(bottomLimit-topPos-SAFETY_GAP);
+  var mainEl=document.querySelector('main');
+  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
+  var available=Math.floor(bottomLimit-topPos-SAFETY_GAP-mainPadBottom);
   var CONT_H=Math.max(available, maxH+GAP+24); // si l'espace manque vraiment, on garde un minimum lisible
   var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='gcScroll';
