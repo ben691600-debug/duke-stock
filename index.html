@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.44'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.45'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6708,7 +6708,7 @@ function buildGroupsCarousel(container){
   // Les boutons eux-mêmes gardent une taille normale (pas étirés).
   var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 120); });
   var maxH=Math.max.apply(null,heights);
-  var PARTIAL=58;  // 58px visible haut/bas = indique qu'on peut scroller
+  var PARTIAL=0;  // plus de tranche de carte voisine visible en haut/bas : uniquement la carte active
   var CONT_H=maxH+PARTIAL*2+GAP;
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
