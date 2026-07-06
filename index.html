@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.43'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.44'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8651,7 +8651,7 @@ function _supplierShowLevel(level){
   } else if(level===1){
     bar.innerHTML='<div class="actions moduleActionButtons twoButtons"><button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button><button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button></div>';
     var b1=$('addSubgroupBtn');
-    if(b1) b1.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSubgroupId=null;$('subgroupForm').reset();$('subgroupDialog').querySelector('h2').textContent=T('addSubgroup');$('subgroupPreview').classList.add('hidden');$('subgroupDialog').showModal();};
+    if(b1) b1.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSubgroupId=null;subgroupImageData='';$('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='+ Sous-groupe';$('subgroupPreview').classList.add('hidden');$('supplierSubgroupDialog').showModal();};
     var b2=$('addPartBtn');
     if(b2) b2.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='false';renderPartOtherSuppliersBox('',null);$('partDialog').showModal();};
   } else if(level===2){
