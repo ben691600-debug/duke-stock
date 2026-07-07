@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.55'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.56'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6389,14 +6389,16 @@ function renderClientMachineModule(){
       }
       if(!isClientUser()) openMachineService(m.id);
     };
-    // Ajouter le wrapper (avec ou sans languette) dans la liste
-    if(!_isEndo) $('clientMachinesList').appendChild(card);
-    // Si endoscope, wrapper est déjà ajouté plus haut
+    // Le wrapper (avec ou sans languette Maintenance) a déjà été ajouté plus haut,
+    // avec la carte à l'intérieur — un seul élément par machine dans la liste.
   });
 
   // Masquer le titre Machines si aucune machine dans ce niveau
   var machTitle=$('machinesSectionTitle');
   if(machTitle) machTitle.style.display=$('clientMachinesList').children.length?'':'none';
+
+  // ── Carrousel vertical pour les machines ────────────────────────────
+  buildMachinesCarousel($('clientMachinesList'));
 
   if(typeof _applyNonAdminHide==='function') _applyNonAdminHide();
 }
@@ -6813,6 +6815,142 @@ function buildGroupsCarousel(container){
       // (lastCi), au lieu de comparer des positions brutes qui devenaient incohérentes
       // dès que les étiquettes ont des hauteurs différentes — c'était la cause du
       // défilement automatique en boucle sans aucune interaction.
+      if(lastCi===0){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop += (cells[n].offsetTop-cells[0].offsetTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }else if(lastCi===n+1){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop -= (cells[n+1].offsetTop-cells[1].offsetTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }
+    },100);
+  },{passive:true});
+  container.innerHTML='';
+  container.style.display='block';
+  container.style.setProperty('margin-top','0','important');
+  container.style.setProperty('padding-bottom','0','important');
+  container.appendChild(sc);
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      sc.scrollTop = cells[1].offsetTop - (CONT_H-cells[1].offsetHeight)/2;
+      updateVis();
+    });
+  });
+}
+// ── Carrousel vertical pour les machines (même effet que buildGroupsCarousel) ──
+// Chaque enfant de #clientMachinesList est un "wrapper" (position:relative) qui
+// contient soit juste la carte machine, soit la languette "🔧 Maintenance"
+// (position:absolute, top:-26px) + la carte. On mesure marginTop + offsetHeight
+// du wrapper (et non de la carte seule) pour que la hauteur de cellule réserve
+// bien la place de la languette, et on NE force PAS overflow:hidden ni height:100%
+// sur le wrapper lui-même (seulement sur la cellule englobante), sinon la
+// languette qui dépasse au-dessus de la carte serait coupée.
+function buildMachinesCarousel(container){
+  if(!container) return;
+  container.style.display='';
+  container.style.flexDirection='';
+  container.style.justifyContent='';
+  container.style.minHeight='';
+  container.style.width='';
+  container.style.boxSizing='';
+  container.style.marginTop='';
+  container.style.removeProperty('padding-bottom');
+  var cards=Array.from(container.children);
+  if(!cards.length) return;
+  container.style.marginTop='0';
+  if(cards.length===1){
+    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
+    var topPos1=container.getBoundingClientRect().top;
+    var mainEl1=document.querySelector('main');
+    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
+    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
+    container.style.display='flex';
+    container.style.flexDirection='column';
+    container.style.justifyContent='center';
+    container.style.minHeight=available1+'px';
+    container.style.width='100%';
+    container.style.boxSizing='border-box';
+    cards[0].style.width='100%';
+    cards[0].style.boxSizing='border-box';
+    var soloItem=cards[0].querySelector('.item')||cards[0];
+    soloItem.style.border='2px solid #0A7CC2';
+    soloItem.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
+    return;
+  }
+  if(!document.getElementById('mcCss')){
+    var s=document.createElement('style'); s.id='mcCss';
+    s.textContent='#mcScroll::-webkit-scrollbar{display:none}';
+    document.head.appendChild(s);
+  }
+  var n=cards.length;
+  var GAP=10;
+  var CELL_PAD=6;
+  var heights=cards.map(function(w){
+    var mt=parseFloat(w.style.marginTop)||0;
+    return Math.max(mt+w.offsetHeight+CELL_PAD*2, 160);
+  });
+  var maxH=Math.max.apply(null,heights);
+  var viewportH=window.innerHeight||document.documentElement.clientHeight;
+  var topPos=container.getBoundingClientRect().top;
+  var mainEl=document.querySelector('main');
+  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
+  var available=Math.floor(viewportH-topPos-mainPadBottom);
+  var CONT_H=Math.max(available, maxH+GAP+24);
+  var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
+  var sc=document.createElement('div'); sc.id='mcScroll';
+  sc.style.cssText=[
+    'position:relative',
+    'height:'+CONT_H+'px',
+    'overflow-y:scroll','overflow-x:hidden',
+    'scroll-snap-type:y mandatory',
+    '-webkit-overflow-scrolling:touch',
+    'scrollbar-width:none',
+    'display:flex','flex-direction:column',
+    'gap:'+GAP+'px',
+    'padding:'+PARTIAL+'px 0',
+    'box-sizing:border-box'
+  ].join(';');
+  var cells=[];
+  function makeCell(el,isClone,h){
+    var cell=document.createElement('div');
+    cell.style.cssText=[
+      'scroll-snap-align:center','height:'+h+'px','width:100%',
+      'box-sizing:border-box','flex-shrink:0','overflow:hidden',
+      'border-radius:28px','background:transparent','border:2px solid transparent',
+      'padding:'+CELL_PAD+'px',
+      'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
+    ].join(';');
+    el.style.cssText=(el.style.cssText||'')+';width:100%!important;box-sizing:border-box!important;';
+    if(isClone) cell.style.pointerEvents='none';
+    cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
+  }
+  makeCell(cards[n-1].cloneNode(true),true,heights[n-1]);
+  cards.forEach(function(card,i){ makeCell(card,false,heights[i]); });
+  makeCell(cards[0].cloneNode(true),true,heights[0]);
+  var lastCi=1;
+  function updateVis(){
+    var mid=sc.scrollTop+CONT_H/2;
+    var minD=Infinity,ci=0;
+    cells.forEach(function(c,i){
+      var d=Math.abs((c.offsetTop+c.offsetHeight/2)-mid);
+      if(d<minD){minD=d;ci=i;}
+    });
+    lastCi=ci;
+    cells.forEach(function(cell,i){
+      var dist=Math.abs((cell.offsetTop+cell.offsetHeight/2)-mid);
+      var refSlot=cell.offsetHeight+GAP;
+      if(i===ci){cell.style.transform='scale(1)';cell.style.opacity='1';cell.style.borderColor='#0A7CC2';cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';}
+      else{var t=Math.min(dist/refSlot,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='transparent';cell.style.boxShadow='none';}
+    });
+  }
+  var _lt=null;
+  sc.addEventListener('scroll',function(){
+    updateVis();
+    clearTimeout(_lt);
+    _lt=setTimeout(function(){
       if(lastCi===0){
         sc.style.scrollBehavior='auto';
         sc.scrollTop += (cells[n].offsetTop-cells[0].offsetTop);
