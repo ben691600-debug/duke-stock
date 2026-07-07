@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.54'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.55'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2285,7 +2285,7 @@ body.draggingMachine{
   <button class="btn secondary floatingBackBtn hidden" id="clientUpBtn" title="Retour">&#8617;</button>
   <div class="clientPath" id="clientPath"></div>
   <div id="groupMoveHelp" class="groupMoveHelp hidden"></div>
-  <div class="clientSectionTitle"><h3 data-i="groups">Groupes</h3></div>
+  <div class="clientSectionTitle" id="groupsSectionTitle"><h3 data-i="groups">Groupes</h3></div>
   <div id="clientEmptyGroups" class="empty"></div>
   <div class="groupGrid" id="clientGroupsGrid"></div>
   <div class="clientSectionTitle" id="machinesSectionTitle"><h3 data-i="machines">Machines</h3></div>
@@ -6140,6 +6140,9 @@ function renderClientMachineModule(){
     }, {passive:false});
     $('clientGroupsGrid').appendChild(card);
   });
+  // Masquer le titre "Groupes" si aucun groupe à ce niveau (même logique que pour "Machines")
+  var grpTitle=$('groupsSectionTitle');
+  if(grpTitle) grpTitle.style.display=$('clientGroupsGrid').children.length?'':'none';
   // ── Carousel vertical pour les groupes ──────────────────────────────
   buildGroupsCarousel($('clientGroupsGrid'));
 
@@ -6692,6 +6695,19 @@ function buildModuleCarousel(){
 }
 function buildGroupsCarousel(container){
   if(!container) return;
+  // Réinitialise les styles inline laissés par un rendu précédent (ex: un groupe
+  // unique qui forçait un minHeight plein écran pour se centrer) AVANT de vérifier
+  // le nombre de cartes. Sans ça, un niveau sans aucun groupe hérite du minHeight
+  // du niveau précédent et affiche une zone vide géante qui pousse le bloc
+  // "Machines" hors de l'écran, derrière le bouton Retour.
+  container.style.display='';
+  container.style.flexDirection='';
+  container.style.justifyContent='';
+  container.style.minHeight='';
+  container.style.width='';
+  container.style.boxSizing='';
+  container.style.marginTop='';
+  container.style.removeProperty('padding-bottom');
   var cards=Array.from(container.children);
   if(!cards.length) return;
   container.style.marginTop='0';
