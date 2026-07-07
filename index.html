@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.53'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.54'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6696,12 +6696,24 @@ function buildGroupsCarousel(container){
   if(!cards.length) return;
   container.style.marginTop='0';
   if(cards.length===1){
+    // Dimensions de l'étiquette inchangées (largeur 100%, comme avant) :
+    // on centre uniquement verticalement dans l'espace disponible, avec le
+    // cadre bleu habituel de la carte active du carrousel.
+    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
+    var topPos1=container.getBoundingClientRect().top;
+    var mainEl1=document.querySelector('main');
+    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
+    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
     container.style.display='flex';
+    container.style.flexDirection='column';
     container.style.justifyContent='center';
+    container.style.minHeight=available1+'px';
     container.style.width='100%';
-    cards[0].style.width='calc(50% - 5px)';
-    cards[0].style.minWidth='150px';
+    container.style.boxSizing='border-box';
+    cards[0].style.width='100%';
     cards[0].style.boxSizing='border-box';
+    cards[0].style.border='2px solid #0A7CC2';
+    cards[0].style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
     return;
   }
   if(!document.getElementById('gcCss')){
