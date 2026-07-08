@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.58'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.59'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6695,6 +6695,22 @@ function buildModuleCarousel(){
   },{passive:true});
   requestAnimationFrame(function(){sc.scrollTop=n*SLOT; updateVis();});
 }
+// Calcule la limite verticale réellement visible (juste au-dessus du bouton "Retour"
+// flottant) au lieu de se fier au padding-bottom générique de <main>, qui ne
+// correspond pas toujours exactement à la hauteur réservée pour ce bouton —
+// ce décalage était la cause d'une marge du bas différente de la marge du haut
+// lors du centrage d'une étiquette unique.
+function _carouselBottomLimit(){
+  var viewportH=window.innerHeight||document.documentElement.clientHeight;
+  var backBtn=document.querySelector('.floatingBackBtn:not(.hidden)');
+  if(backBtn){
+    var r=backBtn.getBoundingClientRect();
+    if(r.height>0) return r.top;
+  }
+  var mainEl=document.querySelector('main');
+  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
+  return viewportH-mainPadBottom;
+}
 function buildGroupsCarousel(container){
   if(!container) return;
   // Réinitialise les styles inline laissés par un rendu précédent (ex: un groupe
@@ -6717,11 +6733,8 @@ function buildGroupsCarousel(container){
     // Dimensions de l'étiquette inchangées (largeur 100%, comme avant) :
     // on centre uniquement verticalement dans l'espace disponible, avec le
     // cadre bleu habituel de la carte active du carrousel.
-    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
     var topPos1=container.getBoundingClientRect().top;
-    var mainEl1=document.querySelector('main');
-    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
-    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
+    var available1=Math.max(Math.floor(_carouselBottomLimit()-topPos1),0);
     container.style.display='flex';
     container.style.flexDirection='column';
     container.style.justifyContent='center';
@@ -6752,11 +6765,8 @@ function buildGroupsCarousel(container){
   // Retour fixe (ajouté automatiquement quand ce bouton est visible) : il ne faut
   // le soustraire qu'UNE SEULE FOIS, sinon le carrousel s'arrête trop court et
   // laisse une marge vide avant le bouton.
-  var viewportH=window.innerHeight||document.documentElement.clientHeight;
   var topPos=container.getBoundingClientRect().top;
-  var mainEl=document.querySelector('main');
-  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
-  var available=Math.floor(viewportH-topPos-mainPadBottom);
+  var available=Math.floor(_carouselBottomLimit()-topPos);
   var CONT_H=Math.max(available, maxH+GAP+24); // si l'espace manque vraiment, on garde un minimum lisible
   var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='gcScroll';
@@ -6862,11 +6872,8 @@ function buildMachinesCarousel(container){
   if(!cards.length) return;
   container.style.marginTop='0';
   if(cards.length===1){
-    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
     var topPos1=container.getBoundingClientRect().top;
-    var mainEl1=document.querySelector('main');
-    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
-    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
+    var available1=Math.max(Math.floor(_carouselBottomLimit()-topPos1),0);
     container.style.display='flex';
     container.style.flexDirection='column';
     container.style.justifyContent='center';
@@ -6893,11 +6900,8 @@ function buildMachinesCarousel(container){
     return Math.max(mt+w.offsetHeight+CELL_PAD*2, 160);
   });
   var maxH=Math.max.apply(null,heights);
-  var viewportH=window.innerHeight||document.documentElement.clientHeight;
   var topPos=container.getBoundingClientRect().top;
-  var mainEl=document.querySelector('main');
-  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
-  var available=Math.floor(viewportH-topPos-mainPadBottom);
+  var available=Math.floor(_carouselBottomLimit()-topPos);
   var CONT_H=Math.max(available, maxH+GAP+24);
   var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='mcScroll';
@@ -6996,11 +7000,8 @@ function buildPartsCarousel(container){
   if(!cards.length) return;
   container.style.marginTop='0';
   if(cards.length===1){
-    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
     var topPos1=container.getBoundingClientRect().top;
-    var mainEl1=document.querySelector('main');
-    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
-    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
+    var available1=Math.max(Math.floor(_carouselBottomLimit()-topPos1),0);
     container.style.display='flex';
     container.style.flexDirection='column';
     container.style.justifyContent='center';
@@ -7023,11 +7024,8 @@ function buildPartsCarousel(container){
   var CELL_PAD=6;
   var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 100); });
   var maxH=Math.max.apply(null,heights);
-  var viewportH=window.innerHeight||document.documentElement.clientHeight;
   var topPos=container.getBoundingClientRect().top;
-  var mainEl=document.querySelector('main');
-  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
-  var available=Math.floor(viewportH-topPos-mainPadBottom);
+  var available=Math.floor(_carouselBottomLimit()-topPos);
   var CONT_H=Math.max(available, maxH+GAP+24);
   var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='pcScroll';
