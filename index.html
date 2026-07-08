@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.57'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.58'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6976,6 +6976,136 @@ function buildMachinesCarousel(container){
     });
   });
 }
+// ── Carrousel vertical pour les pièces (fournisseurs) ──────────────────────
+// #partGrid et #subgroupPartGrid peuvent contenir un mélange de .groupCard
+// (sous-groupes) et .partCard (pièces, mise en page 2 colonnes photo+texte).
+// Contrairement à buildGroupsCarousel, on NE force PAS display:flex/padding:0
+// sur la carte elle-même, sinon la mise en page interne "photo à gauche,
+// texte à droite" de .partCard serait cassée (transformée en colonne verticale).
+function buildPartsCarousel(container){
+  if(!container) return;
+  container.style.display='';
+  container.style.flexDirection='';
+  container.style.justifyContent='';
+  container.style.minHeight='';
+  container.style.width='';
+  container.style.boxSizing='';
+  container.style.marginTop='';
+  container.style.removeProperty('padding-bottom');
+  var cards=Array.from(container.children);
+  if(!cards.length) return;
+  container.style.marginTop='0';
+  if(cards.length===1){
+    var viewportH1=window.innerHeight||document.documentElement.clientHeight;
+    var topPos1=container.getBoundingClientRect().top;
+    var mainEl1=document.querySelector('main');
+    var mainPadBottom1=mainEl1?(parseFloat(window.getComputedStyle(mainEl1).paddingBottom)||0):0;
+    var available1=Math.max(Math.floor(viewportH1-topPos1-mainPadBottom1),0);
+    container.style.display='flex';
+    container.style.flexDirection='column';
+    container.style.justifyContent='center';
+    container.style.minHeight=available1+'px';
+    container.style.width='100%';
+    container.style.boxSizing='border-box';
+    cards[0].style.width='100%';
+    cards[0].style.boxSizing='border-box';
+    cards[0].style.border=cards[0].classList.contains('partCard')?'2px solid #0A7CC2':cards[0].style.border;
+    cards[0].style.boxShadow=cards[0].classList.contains('partCard')?'0 6px 28px rgba(10,124,194,.18)':cards[0].style.boxShadow;
+    return;
+  }
+  if(!document.getElementById('pcCss')){
+    var s=document.createElement('style'); s.id='pcCss';
+    s.textContent='#pcScroll::-webkit-scrollbar{display:none}';
+    document.head.appendChild(s);
+  }
+  var n=cards.length;
+  var GAP=10;
+  var CELL_PAD=6;
+  var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 100); });
+  var maxH=Math.max.apply(null,heights);
+  var viewportH=window.innerHeight||document.documentElement.clientHeight;
+  var topPos=container.getBoundingClientRect().top;
+  var mainEl=document.querySelector('main');
+  var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
+  var available=Math.floor(viewportH-topPos-mainPadBottom);
+  var CONT_H=Math.max(available, maxH+GAP+24);
+  var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
+  var sc=document.createElement('div'); sc.id='pcScroll';
+  sc.style.cssText=[
+    'position:relative',
+    'height:'+CONT_H+'px',
+    'overflow-y:scroll','overflow-x:hidden',
+    'scroll-snap-type:y mandatory',
+    '-webkit-overflow-scrolling:touch',
+    'scrollbar-width:none',
+    'display:flex','flex-direction:column',
+    'gap:'+GAP+'px',
+    'padding:'+PARTIAL+'px 0',
+    'box-sizing:border-box'
+  ].join(';');
+  var cells=[];
+  function makeCell(el,isClone,h){
+    var cell=document.createElement('div');
+    cell.style.cssText=[
+      'scroll-snap-align:center','height:'+h+'px','width:100%',
+      'box-sizing:border-box','flex-shrink:0','overflow:hidden',
+      'border-radius:24px','background:transparent','border:2px solid transparent',
+      'padding:'+CELL_PAD+'px',
+      'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
+    ].join(';');
+    el.style.cssText=(el.style.cssText||'')+';width:100%!important;box-sizing:border-box!important;';
+    if(isClone) cell.style.pointerEvents='none';
+    cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
+  }
+  makeCell(cards[n-1].cloneNode(true),true,heights[n-1]);
+  cards.forEach(function(card,i){ makeCell(card,false,heights[i]); });
+  makeCell(cards[0].cloneNode(true),true,heights[0]);
+  var lastCi=1;
+  function updateVis(){
+    var mid=sc.scrollTop+CONT_H/2;
+    var minD=Infinity,ci=0;
+    cells.forEach(function(c,i){
+      var d=Math.abs((c.offsetTop+c.offsetHeight/2)-mid);
+      if(d<minD){minD=d;ci=i;}
+    });
+    lastCi=ci;
+    cells.forEach(function(cell,i){
+      var dist=Math.abs((cell.offsetTop+cell.offsetHeight/2)-mid);
+      var refSlot=cell.offsetHeight+GAP;
+      if(i===ci){cell.style.transform='scale(1)';cell.style.opacity='1';cell.style.borderColor='#0A7CC2';cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';}
+      else{var t=Math.min(dist/refSlot,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='transparent';cell.style.boxShadow='none';}
+    });
+  }
+  var _lt=null;
+  sc.addEventListener('scroll',function(){
+    updateVis();
+    clearTimeout(_lt);
+    _lt=setTimeout(function(){
+      if(lastCi===0){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop += (cells[n].offsetTop-cells[0].offsetTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }else if(lastCi===n+1){
+        sc.style.scrollBehavior='auto';
+        sc.scrollTop -= (cells[n+1].offsetTop-cells[1].offsetTop);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }
+    },100);
+  },{passive:true});
+  container.innerHTML='';
+  container.style.display='block';
+  container.style.setProperty('margin-top','0','important');
+  container.style.setProperty('padding-bottom','0','important');
+  container.appendChild(sc);
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      sc.scrollTop = cells[1].offsetTop - (CONT_H-cells[1].offsetHeight)/2;
+      updateVis();
+    });
+  });
+}
 function _maintColor(nextDateStr){
   if(!nextDateStr) return 'blue';
   var next=new Date(nextDateStr); var now=new Date();
@@ -9160,6 +9290,8 @@ function renderSupplierParts(){
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=()=>deletePart(p.id,false);
     $('partGrid').appendChild(card);
   });
+  // ── Carrousel vertical pour les pièces ──────────────────────────────
+  buildPartsCarousel($('partGrid'));
 }
 
 function _findSgGroupById(id, node){
@@ -9259,6 +9391,8 @@ function renderSubgroupParts(){
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=()=>deletePart(p.id,true);
     grid.appendChild(card);
   });
+  // ── Carrousel vertical pour ce niveau (sous-sous-groupes + pièces) ──
+  buildPartsCarousel(grid);
 }
 
 // ── Navigation ─────────────────────────────────────────────
@@ -11457,6 +11591,10 @@ body.noPageDrag{
 }
 .groupCard, .supplierCard, .machineCard, .vehicleCard,
 .operatorCard, .partCard, .stockCard { align-items: stretch !important; }
+/* .partCard : mise en page 2 colonnes (photo + texte) qui ne doit jamais
+   s'étirer plus que son contenu, sinon une marge vide apparaît sous les
+   boutons, en bas de l'étiquette. */
+.partCard { align-items: start !important; height: auto !important; }
 
 /* ══════════════════════════════════════════
    GESTION UTILISATEURS — CARDS MOBILES
