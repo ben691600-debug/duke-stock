@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.60'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.61'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6754,7 +6754,7 @@ function buildGroupsCarousel(container){
   }
   var n=cards.length;
   var GAP=10;
-  var CELL_PAD=6; // même marge visuelle sur les 4 côtés de l'étiquette
+  var CELL_PAD=9; // identique au padding natif de .groupCard (9px), pour que la marge soit la même qu'une étiquette seule (ex: BACCARA)
   // Chaque étiquette garde SA PROPRE hauteur, calculée sur son contenu réel :
   // 4 boutons -> étiquette plus haute, 2 boutons -> étiquette plus courte.
   // Les boutons eux-mêmes gardent une taille normale (pas étirés).
