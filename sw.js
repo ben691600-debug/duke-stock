@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duke-stock-v159';
+const CACHE_NAME = 'duke-stock-v160';
 // index.html n'est JAMAIS mis en cache - toujours servi depuis le réseau
 // Seuls les assets statiques qui ne changent pas sont cachés
 const STATIC_ASSETS = [
@@ -46,4 +46,4 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// Cache busted: 20260708192000
+// Cache busted: 20260708194500

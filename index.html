@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.59'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.60'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6758,6 +6758,21 @@ function buildGroupsCarousel(container){
   // Chaque étiquette garde SA PROPRE hauteur, calculée sur son contenu réel :
   // 4 boutons -> étiquette plus haute, 2 boutons -> étiquette plus courte.
   // Les boutons eux-mêmes gardent une taille normale (pas étirés).
+  // IMPORTANT : tant que les cartes sont encore dans la grille CSS d'origine
+  // (souvent 2 colonnes même sur mobile), "align-items:stretch" les étire à
+  // la hauteur de leur voisine de ligne AVANT qu'on les mesure — ce qui fige
+  // une hauteur trop grande dans le carrousel (marge vide sous les boutons).
+  // On neutralise cet étirement le temps de la mesure.
+  // IMPORTANT : la carte est actuellement en display:grid;gap:7px (son CSS
+  // d'origine), mais une fois dans le carrousel elle passe en display:flex;
+  // gap:0 (ci-dessous, dans makeCell). Si on mesure AVANT ce changement, on
+  // capture une hauteur qui inclut les espacements "gap", puis on l'applique
+  // à une carte qui n'a PLUS ces espacements une fois en flex — d'où un vide
+  // qui apparaissait sous les boutons. On applique donc le style final AVANT
+  // de mesurer, pour que la mesure corresponde exactement au rendu réel.
+  cards.forEach(function(c){
+    c.style.cssText=(c.style.cssText||'')+';display:flex!important;flex-direction:column!important;padding:0!important;gap:0!important;box-sizing:border-box!important;';
+  });
   var heights=cards.map(function(c){ return Math.max(c.offsetHeight+CELL_PAD*2, 120); });
   var maxH=Math.max.apply(null,heights);
   // Hauteur du carrousel calculée sur l'espace RÉELLEMENT disponible à l'écran.
