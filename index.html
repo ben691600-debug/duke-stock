@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.67'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.68'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4318,6 +4318,7 @@ function buildExpenseXlsx(car, monthKey, callback){
     var monthLabel=monthDate.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
 
     var wb=XLSX.utils.book_new();
+    wb.Workbook={Views:[{RTL:true}]};
     var ws={};
     var cells={};
 
@@ -4339,7 +4340,7 @@ function buildExpenseXlsx(car, monthKey, callback){
     var arialBold={name:'Arial',sz:12,bold:true};
     var ctr={horizontal:'center',vertical:'center',readingOrder:2};
     var rgt={horizontal:'right',readingOrder:2};
-    var grayFill={patternType:'solid',fgColor:{rgb:'D9D9D9'}};
+    var grayFill={patternType:'solid',fgColor:{rgb:'B4C6E7'}};
     var yellowFill={patternType:'solid',fgColor:{rgb:'FFFF00'}};
 
     // Ligne 1 : titre fusionné A1:D1
