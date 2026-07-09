@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.63'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.64'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -9147,6 +9147,7 @@ function _supplierShowLevel(level){
     bar.innerHTML='<div class="actions moduleActionButtons '+(orderBtnHtml2?'twoButtons':'oneButton')+'"><button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>'+orderBtnHtml2+'</div>';
     var b3=$('addPartInSubgroupBtn');
     if(b3) b3.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='true';renderPartOtherSuppliersBox('',null);$('partDialog').showModal();};
+    var bo2=$('orderBtnSub'); if(bo2) bo2.onclick=function(){openOrderDialog();};
   } else {
     bar.innerHTML='';
   }
