@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.69'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.70'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4308,109 +4308,213 @@ function downloadExpenseFile(fileObj){
   a.download=fileObj.name||'document';
   document.body.appendChild(a);a.click();a.remove();
 }
-function buildExpenseXlsx(car, monthKey, callback){
-  function build(){
-    var XLSX=window.XLSX;
-    var expenses=vehicleMonthlyExpenses(car.id, monthKey);
-    var operatorName=car.driver||'';
-    var monthKey2=monthKey||currentMonthKey();
-    var monthDate=new Date(monthKey2+'-01');
-    var monthLabel=monthDate.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+// ── Générateur Excel (dépenses véhicule) en OOXML "brut" ────────────────────
+// Remplace l'ancienne version basée sur SheetJS : la version gratuite de cette
+// librairie ne sait pas écrire les couleurs/bordures dans le fichier, seulement
+// les valeurs. On construit donc ici le fichier .xlsx directement (c'est un ZIP
+// contenant du XML), sans dépendance externe — ce qui garantit aussi que ça
+// fonctionne même hors-ligne, sans avoir à charger une librairie depuis internet.
+(function(){
+  function crc32(buf){
+    var table = crc32._t || (crc32._t = (function(){
+      var t=[], c;
+      for(var n=0;n<256;n++){ c=n; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; }
+      return t;
+    })());
+    var crc=0xFFFFFFFF;
+    for(var i=0;i<buf.length;i++) crc=(crc>>>8)^table[(crc^buf[i])&0xFF];
+    return (crc^0xFFFFFFFF)>>>0;
+  }
+  function strToBytes(str){ return new TextEncoder().encode(str); }
+  function u16(n){ return [n&0xFF,(n>>>8)&0xFF]; }
+  function u32(n){ return [n&0xFF,(n>>>8)&0xFF,(n>>>16)&0xFF,(n>>>24)&0xFF]; }
+  function makeZip(files){
+    var localParts=[], central=[], offset=0, dosTime=0, dosDate=0x21;
+    files.forEach(function(f){
+      var nameBytes=strToBytes(f.name), data=f.data, crc=crc32(data);
+      var localHeader=new Uint8Array([].concat(
+        u32(0x04034b50),u16(20),u16(0),u16(0),u16(dosTime),u16(dosDate),
+        u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0)
+      ));
+      localParts.push(localHeader,nameBytes,data);
+      var centralHeader=new Uint8Array([].concat(
+        u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(dosTime),u16(dosDate),
+        u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0),u16(0),u16(0),u16(0),
+        u32(0),u32(offset)
+      ));
+      central.push(centralHeader,nameBytes);
+      offset+=localHeader.length+nameBytes.length+data.length;
+    });
+    var centralStart=offset, centralSize=0;
+    central.forEach(function(p){centralSize+=p.length;});
+    var eocd=new Uint8Array([].concat(
+      u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),
+      u32(centralSize),u32(centralStart),u16(0)
+    ));
+    var allParts=localParts.concat(central,[eocd]);
+    var totalLen=0; allParts.forEach(function(p){totalLen+=p.length;});
+    var out=new Uint8Array(totalLen), pos=0;
+    allParts.forEach(function(p){out.set(p,pos);pos+=p.length;});
+    return out;
+  }
+  function xmlEsc(s){
+    return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+  }
+  function colName(c){ var s='',n=c; while(n>0){ var m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+  function cellRef(r,c){ return colName(c)+r; }
 
-    var wb=XLSX.utils.book_new();
-    wb.Workbook={Views:[{RTL:true}]};
-    var ws={};
-    var cells={};
+  function buildExpenseSheetXml(operatorName,monthLabel,expenses){
+    var rows={};
+    function addCell(r,c,xml){ if(!rows[r]) rows[r]=[]; rows[r].push({c:c,xml:xml}); }
+    function textCell(r,c,val,style){ addCell(r,c,'<c r="'+cellRef(r,c)+'" s="'+style+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(val)+'</t></is></c>'); }
+    function numCell(r,c,val,style){ addCell(r,c,'<c r="'+cellRef(r,c)+'" s="'+style+'"><v>'+(Number(val)||0)+'</v></c>'); }
+    function formulaCell(r,c,formula,cachedVal,style){ addCell(r,c,'<c r="'+cellRef(r,c)+'" s="'+style+'"><f>'+xmlEsc(formula)+'</f><v>'+(Number(cachedVal)||0)+'</v></c>'); }
+    function blankCell(r,c,style){ addCell(r,c,'<c r="'+cellRef(r,c)+'" s="'+style+'"/>'); }
 
-    function S(r,c,v,s){
-      var addr=XLSX.utils.encode_cell({r:r-1,c:c-1});
-      var t=typeof v==='number'?'n':(typeof v==='string'?'s':'s');
-      ws[addr]={t:t,v:v,s:s};
-    }
-    function F(r,c,f,s){ // formule
-      var addr=XLSX.utils.encode_cell({r:r-1,c:c-1});
-      ws[addr]={t:'n',f:f,v:0,s:s};
-    }
+    // Styles (voir buildExpenseStylesXml) :
+    // 0=defaut 1=titre 2=label-droite 3=valeur-soulignee 4=en-tete(bleu+bordure epaisse)
+    // 5=donnee-centree 6=donnee-montant 7=donnee-note 8=total-montant 9=total-label
+    // 10=total-case-vide 11=texte-simple
+    textCell(1,1,'דוח הוצאות',1);
+    textCell(2,1,'שם עובד:',2);
+    textCell(2,2,operatorName||'',11);
+    textCell(3,1,'חודש:',2);
+    textCell(3,2,monthLabel||'',3);
+    textCell(4,1,'מקום',4); blankCell(4,2,4); textCell(4,3,'סכום',4); textCell(4,4,'הערות',4);
 
-    var thin={style:'thin',color:{rgb:'000000'}};
-    var medium={style:'medium',color:{rgb:'000000'}};
-    var brd={top:thin,bottom:thin,left:thin,right:thin};
-    var brdTop={top:thin,bottom:thin,left:thin,right:thin};
-    var brdThick={top:medium,bottom:medium,left:medium,right:medium};
-    var arialSm={name:'Arial',sz:12};
-    var arialBig={name:'Arial',sz:22,bold:true};
-    var arialBold={name:'Arial',sz:12,bold:true};
-    var ctr={horizontal:'center',vertical:'center',readingOrder:2};
-    var rgt={horizontal:'right',readingOrder:2};
-    // fgColor ET bgColor renseignés ensemble : certains lecteurs Excel/Sheets
-    // n'affichent le remplissage "solid" correctement que si les deux sont présents.
-    var grayFill={patternType:'solid',fgColor:{rgb:'B4C6E7'},bgColor:{rgb:'B4C6E7'}};
-    var yellowFill={patternType:'solid',fgColor:{rgb:'FFFF00'},bgColor:{rgb:'FFFF00'}};
-
-    // Ligne 1 : titre fusionné A1:D1
-    S(1,1,'דוח הוצאות',{font:arialBig,alignment:{horizontal:'center',readingOrder:2}});
-    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];
-
-    // Ligne 2 : שם עובד
-    S(2,1,'שם עובד:',{font:arialSm,alignment:rgt});
-    S(2,2,operatorName,{font:arialSm});
-
-    // Ligne 3 : חודש
-    S(3,1,'חודש:',{font:arialSm,alignment:rgt});
-    S(3,2,monthLabel,{font:arialSm,border:{bottom:thin}});
-
-    // Ligne 4 : en-têtes, fond bleu-gris + bordure épaisse
-    S(4,1,'מקום',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
-    S(4,2,'',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
-    S(4,3,'סכום',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
-    S(4,4,'הערות',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
-
-    // Lignes de données dynamiques
     var dataStart=5;
-    for(var i=0;i<expenses.length;i++){
-      var exp=expenses[i];
+    expenses.forEach(function(exp,i){
       var r=dataStart+i;
-      S(r,1,exp.reason||'',{font:arialSm,alignment:ctr,border:brdTop});
-      S(r,2,'',{border:brdTop});
-      S(r,3,Number(exp.amount||0),{font:arialSm,alignment:ctr,border:brdTop,numFmt:'#,##0'});
-      S(r,4,exp.note||'',{font:arialSm,alignment:rgt,border:brdTop});
-    }
+      textCell(r,1,exp.reason||'',5);
+      blankCell(r,2,5);
+      numCell(r,3,Number(exp.amount||0),6);
+      textCell(r,4,exp.note||'',7);
+    });
+    var dataEnd=Math.max(dataStart+expenses.length-1,dataStart);
+    var totalRow=dataEnd+1; // total juste sous la dernière ligne, sans ligne sautée
+    var sum=expenses.reduce(function(s,e){return s+Number(e.amount||0);},0);
+    blankCell(totalRow,1,10); blankCell(totalRow,2,10);
+    formulaCell(totalRow,3,'SUM(C'+dataStart+':C'+dataEnd+')',sum,8);
+    textCell(totalRow,4,'סה"כ',9);
 
-    var dataEnd=Math.max(dataStart+expenses.length-1, dataStart);
-    // Total : directement sous la dernière ligne de données, sans ligne sautée
-    // (ex: 2 dépenses -> lignes 5-6, total en ligne 7 ; 10 dépenses -> total en ligne 15)
-    var totalRow=dataEnd+1;
-    var sumRef='SUM(C'+dataStart+':C'+dataEnd+')';
-    S(totalRow,1,'',{border:brdThick});
-    S(totalRow,2,'',{border:brdThick});
-    F(totalRow,3,sumRef,{font:{name:'Arial',sz:12,bold:true},fill:yellowFill,alignment:rgt,border:brdThick,numFmt:'#,##0'});
-    S(totalRow,4,'סה"כ',{font:arialBold,fill:yellowFill,alignment:rgt,border:brdThick});
-
-    // Signatures
     var sigRow=totalRow+3;
-    S(sigRow,1,'חתימת העובד',{font:arialSm});
-    S(sigRow,2,operatorName,{font:arialSm,border:{bottom:thin}});
-    S(sigRow+2,1,'שם וחתימת המאשר',{font:arialSm});
-    ws[XLSX.utils.encode_cell({r:sigRow+1,c:1})]={t:'s',v:'',s:{border:{bottom:thin}}};
+    textCell(sigRow,1,'חתימת העובד',11);
+    textCell(sigRow,2,operatorName||'',3);
+    textCell(sigRow+2,1,'שם וחתימת המאשר',11);
+    blankCell(sigRow+2,2,3);
+    var maxRow=sigRow+2;
 
-    // Dimensions
-    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:sigRow+2,c:3}});
-    ws['!cols']=[{wch:28},{wch:35},{wch:27},{wch:27}];
-    ws['!rows']=[{hpt:20},{},{},{hpt:59}];
-    ws['!sheetViews']=[{rightToLeft:true}];
+    var rowNums=Object.keys(rows).map(Number).sort(function(a,b){return a-b;});
+    var rowsXml=rowNums.map(function(r){
+      var cells=rows[r].sort(function(a,b){return a.c-b.c;}).map(function(x){return x.xml;}).join('');
+      var extra = r===1?' ht="30" customHeight="1"':(r===4?' ht="20" customHeight="1"':'');
+      return '<row r="'+r+'"'+extra+'>'+cells+'</row>';
+    }).join('');
 
-    XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    var out=XLSX.write(wb,{type:'array',bookType:'xlsx',cellStyles:true});
-    var blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    if(callback) callback(blob,'depenses_'+operatorName+'_'+monthKey2+'.xlsx');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      +'<dimension ref="A1:D'+maxRow+'"/>'
+      +'<sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews>'
+      +'<sheetFormatPr defaultRowHeight="15"/>'
+      +'<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="35" customWidth="1"/><col min="3" max="3" width="27" customWidth="1"/><col min="4" max="4" width="27" customWidth="1"/></cols>'
+      +'<sheetData>'+rowsXml+'</sheetData>'
+      +'<mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>'
+      +'</worksheet>';
   }
-  if(window.XLSX){build();}
-  else{
-    var s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload=build;
-    document.head.appendChild(s);
+
+  function buildExpenseStylesXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    +'<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts>'
+    +'<fonts count="3">'
+      +'<font><sz val="12"/><name val="Arial"/></font>'
+      +'<font><b/><sz val="22"/><name val="Arial"/></font>'
+      +'<font><b/><sz val="12"/><name val="Arial"/></font>'
+    +'</fonts>'
+    +'<fills count="4">'
+      +'<fill><patternFill patternType="none"/></fill>'
+      +'<fill><patternFill patternType="gray125"/></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFB4C6E7"/><bgColor rgb="FFB4C6E7"/></patternFill></fill>'
+      +'<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor rgb="FFFFFF00"/></patternFill></fill>'
+    +'</fills>'
+    +'<borders count="4">'
+      +'<border><left/><right/><top/><bottom/><diagonal/></border>'
+      +'<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom></border>'
+      +'<border><left style="medium"><color rgb="FF000000"/></left><right style="medium"><color rgb="FF000000"/></right><top style="medium"><color rgb="FF000000"/></top><bottom style="medium"><color rgb="FF000000"/></bottom></border>'
+      +'<border><left/><right/><top/><bottom style="thin"><color rgb="FF000000"/></bottom></border>'
+    +'</borders>'
+    +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    +'<cellXfs count="12">'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      +'<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="3" xfId="0" applyBorder="1"/>'
+      +'<xf numFmtId="0" fontId="2" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      +'<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+      +'<xf numFmtId="164" fontId="2" fillId="3" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+      +'<xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1"/>'
+      +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    +'</cellXfs>'
+    +'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    +'</styleSheet>';
   }
+
+  function buildExpenseContentTypesXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    +'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    +'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    +'<Default Extension="xml" ContentType="application/xml"/>'
+    +'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    +'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    +'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+    +'</Types>';
+  }
+  function buildExpenseRootRelsXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+    +'</Relationships>';
+  }
+  function buildExpenseWorkbookXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    +'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    +'<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>'
+    +'</workbook>';
+  }
+  function buildExpenseWorkbookRelsXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+    +'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    +'</Relationships>';
+  }
+
+  window._buildExpenseXlsxBytes=function(operatorName,monthLabel,expenses){
+    var sheetXml=buildExpenseSheetXml(operatorName,monthLabel,expenses);
+    var files=[
+      {name:'[Content_Types].xml',data:strToBytes(buildExpenseContentTypesXml())},
+      {name:'_rels/.rels',data:strToBytes(buildExpenseRootRelsXml())},
+      {name:'xl/workbook.xml',data:strToBytes(buildExpenseWorkbookXml())},
+      {name:'xl/_rels/workbook.xml.rels',data:strToBytes(buildExpenseWorkbookRelsXml())},
+      {name:'xl/styles.xml',data:strToBytes(buildExpenseStylesXml())},
+      {name:'xl/worksheets/sheet1.xml',data:strToBytes(sheetXml)}
+    ];
+    return makeZip(files);
+  };
+})();
+
+function buildExpenseXlsx(car, monthKey, callback){
+  var expenses=vehicleMonthlyExpenses(car.id, monthKey);
+  var operatorName=car.driver||'';
+  var monthKey2=monthKey||currentMonthKey();
+  var monthDate=new Date(monthKey2+'-01');
+  var monthLabel=monthDate.toLocaleDateString('he-IL',{month:'long',year:'numeric'});
+  var bytes=window._buildExpenseXlsxBytes(operatorName, monthLabel, expenses);
+  var blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  if(callback) callback(blob,'depenses_'+operatorName+'_'+monthKey2+'.xlsx');
 }
 
 
