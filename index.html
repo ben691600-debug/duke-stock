@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.65'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.66'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4255,7 +4255,7 @@ function openVehicleExpenseDialog(carId,expenseId=null){
   $('vehicleExpenseAmount').value=exp?Number(exp.amount||0):'';
   $('vehicleExpenseDate').value=exp?(exp.date||todayISO()):todayISO();
   $('vehicleExpenseReason').value=exp?(exp.reason||'Parking'):'Parking';
-  $('vehicleExpenseNote').value=exp?(exp.note||''):'';
+  if($('vehicleExpenseNote')) $('vehicleExpenseNote').value=exp?(exp.note||''):'';
   $('vehicleExpenseSub').textContent=(exp?'Modifier dépense - ':'Nouvelle dépense - ')+(c.plate||'')+' / '+(c.driver||'');
   $('vehicleExpenseFileList').innerHTML='';
   const docs=(exp&&exp.files&&exp.files.length)?exp.files:[];
@@ -5106,33 +5106,37 @@ function generateExpenseExcel(carId){
 if($('vehicleExpenseHistorySend')) $('vehicleExpenseHistorySend').onclick=()=>{if(vehicleExpenseHistoryCarId) sendVehicleExpenses(vehicleExpenseHistoryCarId,$('vehicleExpenseHistoryMonth').value||currentMonthKey())};
 if($('vehicleExpenseForm')) $('vehicleExpenseForm').onsubmit=async e=>{
   e.preventDefault();
-  const car=db.cars.find(x=>x.id===vehicleExpenseCarId);
-  if(!car) return;
-  const newFiles=await readExpenseFiles(($('vehicleExpenseFiles')&&$('vehicleExpenseFiles').files)||[]);
-  ensureVehicleExpenses();
-  if(!db.vehicleExpenses[car.id]) db.vehicleExpenses[car.id]=[];
-  const editId=$('vehicleExpenseEditId').value;
-  if(editId){
-    const exp=db.vehicleExpenses[car.id].find(x=>x.id===editId);
-    if(exp){
-      exp.amount=Number($('vehicleExpenseAmount').value||0);
-      exp.date=$('vehicleExpenseDate').value;
-      exp.reason=$('vehicleExpenseReason').value;
-      exp.note=($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'';
-      exp.files=(exp.files||[]).concat(newFiles);
-      exp.updatedAt=new Date().toISOString();
-      exp.updatedBy=(currentUser&&currentUser.username)||'';
-      log('EDIT_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
+  try{
+    const car=db.cars.find(x=>x.id===vehicleExpenseCarId);
+    if(!car){ alert('Erreur : véhicule introuvable. Ferme ce formulaire et réessaie depuis la fiche du véhicule.'); return; }
+    const newFiles=await readExpenseFiles(($('vehicleExpenseFiles')&&$('vehicleExpenseFiles').files)||[]);
+    ensureVehicleExpenses();
+    if(!db.vehicleExpenses[car.id]) db.vehicleExpenses[car.id]=[];
+    const editId=$('vehicleExpenseEditId').value;
+    if(editId){
+      const exp=db.vehicleExpenses[car.id].find(x=>x.id===editId);
+      if(exp){
+        exp.amount=Number($('vehicleExpenseAmount').value||0);
+        exp.date=$('vehicleExpenseDate').value;
+        exp.reason=$('vehicleExpenseReason').value;
+        exp.note=($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'';
+        exp.files=(exp.files||[]).concat(newFiles);
+        exp.updatedAt=new Date().toISOString();
+        exp.updatedBy=(currentUser&&currentUser.username)||'';
+        log('EDIT_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
+      }
+    }else{
+      const exp={id:uid(),amount:Number($('vehicleExpenseAmount').value||0),date:$('vehicleExpenseDate').value,reason:$('vehicleExpenseReason').value,note:($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'',files:newFiles,createdAt:new Date().toISOString(),user:(currentUser&&currentUser.username)||''};
+      db.vehicleExpenses[car.id].push(exp);
+      log('ADD_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
     }
-  }else{
-    const exp={id:uid(),amount:Number($('vehicleExpenseAmount').value||0),date:$('vehicleExpenseDate').value,reason:$('vehicleExpenseReason').value,note:($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'',files:newFiles,createdAt:new Date().toISOString(),user:(currentUser&&currentUser.username)||''};
-    db.vehicleExpenses[car.id].push(exp);
-    log('ADD_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
+    save();
+    $('vehicleExpenseDialog').close();
+    if($('vehicleExpenseHistoryDialog') && $('vehicleExpenseHistoryDialog').open) renderVehicleExpenseHistory();
+    renderCars();
+  }catch(err){
+    alert("Erreur lors de l'enregistrement de la dépense : "+(err&&err.message?err.message:err));
   }
-  save();
-  $('vehicleExpenseDialog').close();
-  if($('vehicleExpenseHistoryDialog') && $('vehicleExpenseHistoryDialog').open) renderVehicleExpenseHistory();
-  renderCars();
 };
 
 if($('addCar')) $('addCar').onclick=()=>{if(!isAdmin())return;editingCarId=null;populateDriverDropdown();$('carForm').reset();$('carDialog').querySelector('h2').textContent=T('addVehicle');$('carDialog').showModal()};
