@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.66'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.67'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -3800,7 +3800,20 @@ function save(){
   if(!Array.isArray(db.missions)) db.missions=db.missions?Object.values(db.missions):[];
   // Normaliser suppliers (Firebase peut retourner des objets indexés)
   _normalizeSuppliersInPlace();
-  db._ts=Date.now();localStorage.setItem(STORE,JSON.stringify(db));syncToRTDB();
+  db._ts=Date.now();
+  try{
+    localStorage.setItem(STORE,JSON.stringify(db));
+  }catch(err){
+    // Quota localStorage dépassé (souvent à cause de pièces jointes/photos trop nombreuses).
+    // On ne bloque pas : la synchro Firebase juste en dessous garde quand même la donnée.
+    if(err && (err.name==='QuotaExceededError' || err.code===22 || /quota/i.test(err.message||''))){
+      if(!window.__quotaWarnShown){
+        window.__quotaWarnShown=true;
+        alert('⚠️ Stockage local plein. Tes dernières données ont bien été envoyées en ligne, mais ne sont pas encore sauvegardées sur cet appareil.\n\nPour libérer de la place : supprime d\'anciennes dépenses véhicule avec photos/documents (Historique des dépenses > 🗑️), surtout des mois précédents.');
+      }
+    }
+  }
+  syncToRTDB();
 }
 let db=load();
 // ── Système de corbeille ────────────────────────────────────────
@@ -4240,7 +4253,19 @@ let vehicleExpenseHistoryCarId=null;
 function readExpenseFiles(files){
   return Promise.all(Array.from(files||[]).map(f=>new Promise(resolve=>{
     const r=new FileReader();
-    r.onload=()=>resolve({id:uid(),name:f.name,type:f.type||'application/octet-stream',data:r.result,size:f.size||0});
+    r.onload=()=>{
+      const rawData=r.result;
+      const isImage=(f.type||'').startsWith('image/');
+      if(isImage){
+        // Compresse les photos de reçus comme toutes les autres images de l'appli
+        // (sinon une simple photo de ticket peut faire 3-5 Mo et saturer le stockage local).
+        compressImage(rawData, IMG_MAX, IMG_MAX, IMG_QUALITY, function(compressed){
+          resolve({id:uid(),name:f.name,type:f.type||'application/octet-stream',data:compressed,size:f.size||0});
+        });
+      }else{
+        resolve({id:uid(),name:f.name,type:f.type||'application/octet-stream',data:rawData,size:f.size||0});
+      }
+    };
     r.onerror=()=>resolve(null);
     r.readAsDataURL(f);
   }))).then(arr=>arr.filter(Boolean));
