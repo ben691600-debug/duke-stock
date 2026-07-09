@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.64'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.65'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2423,6 +2423,7 @@ body.draggingMachine{
   <label><span>Document / photo / PDF</span><input id="vehicleExpenseFiles" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"></label>
   <div class="expenseAttachmentList" id="vehicleExpenseCurrentFiles"></div>
   <div class="expenseAttachmentList" id="vehicleExpenseFileList"></div>
+  <label><span>Note (optionnel)</span><input id="vehicleExpenseNote" type="text" placeholder="Remarque, précision..."></label>
   <div class="formActions"><button type="button" class="btn secondary close" data-i="cancel">Annuler</button><button class="btn primary" data-i="save">Enregistrer</button></div>
 </form></dialog>
 <dialog class="modal" id="vehicleExpenseHistoryDialog">
@@ -4254,6 +4255,7 @@ function openVehicleExpenseDialog(carId,expenseId=null){
   $('vehicleExpenseAmount').value=exp?Number(exp.amount||0):'';
   $('vehicleExpenseDate').value=exp?(exp.date||todayISO()):todayISO();
   $('vehicleExpenseReason').value=exp?(exp.reason||'Parking'):'Parking';
+  $('vehicleExpenseNote').value=exp?(exp.note||''):'';
   $('vehicleExpenseSub').textContent=(exp?'Modifier dépense - ':'Nouvelle dépense - ')+(c.plate||'')+' / '+(c.driver||'');
   $('vehicleExpenseFileList').innerHTML='';
   const docs=(exp&&exp.files&&exp.files.length)?exp.files:[];
@@ -4344,9 +4346,10 @@ function buildExpenseXlsx(car, monthKey, callback){
       S(r,4,exp.note||'',{font:arialSm,alignment:rgt,border:brdTop});
     }
 
-    var dataEnd=dataStart+expenses.length-1;
-    // Total : 9 lignes après les données (comme l'original)
-    var totalRow=dataEnd+9;
+    var dataEnd=Math.max(dataStart+expenses.length-1, dataStart);
+    // Total dynamique : 1 ligne vide d'espacement puis le total juste après
+    // (ex: 10 dépenses -> données lignes 5-14, ligne 15 vide, total ligne 16)
+    var totalRow=dataEnd+2;
     var sumRef='SUM(C'+dataStart+':C'+dataEnd+')';
     F(totalRow,3,sumRef,{font:arialSm,fill:yellowFill,alignment:rgt,border:brdTop,numFmt:'#,##0'});
     S(totalRow,4,'סה"כ',{font:arialBold,alignment:rgt});
@@ -5090,107 +5093,15 @@ function generateExpenseExcel(carId){
   var car=(db.cars||[]).find(function(c){return c.id===carId;});
   if(!car){alert('Véhicule introuvable');return;}
   var monthKey=($('vehicleExpenseHistoryMonth')||{}).value||new Date().toISOString().slice(0,7);
-  var expenses=vehicleMonthlyExpenses(carId,monthKey);
-  var operatorName=car.driver||'';
-  // Format mois lisible
-  var monthDate=new Date(monthKey+'-01');
-  var monthLabel=monthDate.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
-
-  // Charger SheetJS si pas encore chargé
-  function buildExcel(){
-    var XLSX=window.XLSX;
-    var wb=XLSX.utils.book_new();
-    var wsData=[];
-
-    // Ligne 1 : titre centré
-    wsData.push(['דוח הוצאות','','','','','','','','','']);
-    // Ligne 2 : nom opérateur
-    wsData.push([operatorName,'שם עובד:','','','','','','','','']);
-    // Ligne 3 : mois
-    wsData.push([monthLabel,'חודש:','','','','','','','','']);
-    // Ligne 4 : vide
-    wsData.push(['','','','','','','','','','']);
-    // Ligne 5 : en-têtes (colonne A à J) — de droite à gauche dans le fichier
-    wsData.push([
-      'תאריך',           // A
-      'פרטים והערות',    // B
-      'חנייה',           // C
-      'הוצ. אישיות\nרכב שנות', // D
-      'הוצאות\nדלק',    // E
-      'ארוחות אנשי HCP', // F
-      'ארוח ח"ול',       // G
-      'ארוחות אישיות',   // H
-      'סה"כ',            // I
-      'הערות',           // J
-    ]);
-
-    // Lignes de données 6-24
-    var PARKING_KEYWORDS=['parking','חנייה','park'];
-    for(var i=0;i<19;i++){
-      var exp=expenses[i];
-      if(exp){
-        var reason=(exp.reason||'').toLowerCase();
-        var isParking=PARKING_KEYWORDS.some(function(k){return reason.indexOf(k)!==-1;});
-        var amount=Number(exp.amount||0);
-        wsData.push([
-          exp.date||'',    // A - date
-          exp.reason||'',  // B - détails
-          isParking?amount:'',  // C - parking
-          '',              // D
-          '',              // E
-          '',              // F
-          '',              // G
-          '',              // H
-          !isParking?amount:'', // I - autre
-          '',              // J - notes
-        ]);
-      } else {
-        wsData.push(['','','','','','','','','','']);
-      }
-    }
-
-    // Ligne totaux (25)
-    wsData.push(['סה"כ','',0,'','',' ','','',0,'']);
-
-    // Lignes vides 26-27
-    wsData.push(['','','','','','','','','','']);
-    wsData.push(['','','','','','','','','','']);
-
-    // Ligne 28 : signature opérateur
-    wsData.push([operatorName,'חתימת העובד','','','','','','','','']);
-    // Ligne 29 vide
-    wsData.push(['','','','','','','','','','']);
-    // Ligne 30 : signature patron
-    wsData.push(['','שם וחתימת המאשר','','','','','','','','']);
-
-    var ws=XLSX.utils.aoa_to_sheet(wsData);
-
-    // Largeurs colonnes
-    ws['!cols']=[
-      {wch:12},{wch:28},{wch:10},{wch:14},{wch:10},{wch:16},{wch:14},{wch:14},{wch:10},{wch:12}
-    ];
-
-    // Hauteur en-tête
-    ws['!rows']=[{hpt:20},{hpt:18},{hpt:18},{hpt:10},{hpt:40}];
-
-    // Totaux via formule
-    var dataStart=6; var dataEnd=24;
-    ws['C25']={t:'n', f:'SUM(C6:C24)', v:0};
-    ws['I25']={t:'n', f:'SUM(I6:I24)', v:0};
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    var fileName='depenses_'+operatorName+'_'+monthKey+'.xlsx';
-    XLSX.writeFile(wb, fileName);
-  }
-
-  if(window.XLSX){
-    buildExcel();
-  } else {
-    var script=document.createElement('script');
-    script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    script.onload=buildExcel;
-    document.head.appendChild(script);
-  }
+  // Délègue à buildExpenseXlsx : c'est la fonction qui produit le format exact
+  // demandé (שם עובד / חודש / מקום・סכום・הערות, total dynamique).
+  buildExpenseXlsx(car, monthKey, function(blob, fname){
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download=fname; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },600);
+  });
 }
 if($('vehicleExpenseHistorySend')) $('vehicleExpenseHistorySend').onclick=()=>{if(vehicleExpenseHistoryCarId) sendVehicleExpenses(vehicleExpenseHistoryCarId,$('vehicleExpenseHistoryMonth').value||currentMonthKey())};
 if($('vehicleExpenseForm')) $('vehicleExpenseForm').onsubmit=async e=>{
@@ -5207,13 +5118,14 @@ if($('vehicleExpenseForm')) $('vehicleExpenseForm').onsubmit=async e=>{
       exp.amount=Number($('vehicleExpenseAmount').value||0);
       exp.date=$('vehicleExpenseDate').value;
       exp.reason=$('vehicleExpenseReason').value;
+      exp.note=($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'';
       exp.files=(exp.files||[]).concat(newFiles);
       exp.updatedAt=new Date().toISOString();
       exp.updatedBy=(currentUser&&currentUser.username)||'';
       log('EDIT_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
     }
   }else{
-    const exp={id:uid(),amount:Number($('vehicleExpenseAmount').value||0),date:$('vehicleExpenseDate').value,reason:$('vehicleExpenseReason').value,files:newFiles,createdAt:new Date().toISOString(),user:(currentUser&&currentUser.username)||''};
+    const exp={id:uid(),amount:Number($('vehicleExpenseAmount').value||0),date:$('vehicleExpenseDate').value,reason:$('vehicleExpenseReason').value,note:($('vehicleExpenseNote')?$('vehicleExpenseNote').value:'')||'',files:newFiles,createdAt:new Date().toISOString(),user:(currentUser&&currentUser.username)||''};
     db.vehicleExpenses[car.id].push(exp);
     log('ADD_VEHICLE_EXPENSE', `${car.plate} | ${exp.reason} | ${exp.amount} ₪`);
   }
