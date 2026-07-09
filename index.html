@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.62'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.63'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -382,6 +382,8 @@ body.draggingSupplierGroup{overflow:hidden;touch-action:none;}
 .supplierActions .mini{font-size:11px;padding:6px 8px;border-radius:10px}
 .partGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:10px}
 .partCard{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:9px;display:grid;grid-template-columns:64px 1fr;gap:9px;align-items:center}
+.partCardLow{background:#fdecea!important;border:1px solid #e57373!important}
+.partCardLow h3{color:#b71c1c!important}
 .partPhoto{width:64px;height:64px;border-radius:14px;background:#eef7fc;display:grid;place-items:center;overflow:hidden;font-size:24px}
 .partPhoto img{width:100%;height:100%;object-fit:cover}
 .partCard h3{font-size:15px;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -437,6 +439,9 @@ html[dir="rtl"] #stockView .toolbar .actions{
 .moduleActionButtons.twoButtons{
   grid-template-columns:1fr 1fr;
 }
+.moduleActionButtons.threeButtons{
+  grid-template-columns:1fr 1fr 1fr;
+}
 .moduleActionButtons.oneButton{
   grid-template-columns:1fr;
 }
@@ -482,6 +487,9 @@ html[dir="rtl"] #stockView .toolbar .actions{
 @media(max-width:650px){
   .moduleActionButtons.twoButtons{
     grid-template-columns:1fr 1fr!important;
+  }
+  .moduleActionButtons.threeButtons{
+    grid-template-columns:1fr 1fr 1fr!important;
   }
   .moduleActionButtons .btn{
     min-height:48px;
@@ -2705,6 +2713,19 @@ body.draggingMachine{
     <button class="btn primary" data-i="save">Enregistrer</button>
   </div>
 </form></dialog>
+
+<dialog class="modal" id="orderDialog" style="max-width:480px;width:96vw;padding:18px">
+  <h2>🛒 Commande de pièces</h2>
+  <p class="muted" id="orderDialogSub" style="margin:0 0 10px"></p>
+  <div id="orderDialogList" style="display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow-y:auto"></div>
+  <label style="margin-top:10px"><span>Adresse mail du destinataire</span>
+    <input type="email" id="orderEmailInput" placeholder="nom@exemple.com" inputmode="email" autocomplete="email">
+  </label>
+  <div class="formActions" style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button type="button" class="btn secondary" id="orderCancelBtn">Annuler</button>
+    <button type="button" class="btn primary" id="orderSendBtn">📧 Envoyer</button>
+  </div>
+</dialog>
 
 
 <dialog class="modal" id="transferDialog"><form id="transferForm">
@@ -8967,6 +8988,136 @@ let supplierImageData='', partImageData='', subgroupImageData='';
 let editingSupplierId=null, editingPartId=null, editingSubgroupId=null;
 // Variables drag sous-groupes — gérées par _startSgTouchDrag etc.
 
+// ── Gestion des quantités & commandes — UNIQUEMENT pour le fournisseur "כללית" ──
+// Fonctionnalité demandée pour un seul fournisseur précis, sans toucher aux autres.
+function _orderEnabledSupplier(){
+  return (db.suppliers||[]).find(function(x){return (x.name||'').trim()==='כללית';})||null;
+}
+function _isOrderEnabledSupplierId(supplierId){
+  var s=_orderEnabledSupplier();
+  return !!(s && s.id===supplierId);
+}
+function _isPartLow(p){
+  var min=parseFloat(p.qtyMin);
+  var cur=parseFloat(p.qtyActuelle);
+  if(isNaN(min)||isNaN(cur)) return false;
+  return cur<=min;
+}
+// Récupère récursivement toutes les pièces marquées "à commander" (orderSelected)
+// dans TOUT l'arbre du fournisseur (racine + tous les sous-groupes imbriqués).
+function _collectOrderSelectedParts(supplier){
+  var out=[];
+  (supplier.parts||[]).forEach(function(p){ if(p&&p.orderSelected) out.push({part:p, path:supplier.name}); });
+  function walk(sg,path){
+    (sg.parts||[]).forEach(function(p){ if(p&&p.orderSelected) out.push({part:p, path:path+' › '+sg.name}); });
+    (sg.subgroups||[]).forEach(function(child){ walk(child,path+' › '+sg.name); });
+  }
+  (supplier.subgroups||[]).forEach(function(sg){ walk(sg,supplier.name); });
+  return out;
+}
+function _togglePartOrderSelected(partId,inSubgroup){
+  var target=_getPartTarget(inSubgroup);
+  if(!target) return;
+  var p=(target.container.parts||[]).find(function(x){return x.id===partId;});
+  if(!p) return;
+  p.orderSelected=!p.orderSelected;
+  save();
+  if(inSubgroup) renderSubgroupParts(); else renderSupplierParts();
+}
+function _updatePartQty(partId,inSubgroup,field,value){
+  var target=_getPartTarget(inSubgroup);
+  if(!target) return;
+  var p=(target.container.parts||[]).find(function(x){return x.id===partId;});
+  if(!p) return;
+  var n=parseFloat(value);
+  p[field]=isNaN(n)?'':n;
+  save();
+  if(inSubgroup) renderSubgroupParts(); else renderSupplierParts();
+}
+function _orderQtyRowHtml(p){
+  var curVal=(p.qtyActuelle!==undefined&&p.qtyActuelle!==null&&p.qtyActuelle!=='')?esc(String(p.qtyActuelle)):'';
+  var minVal=(p.qtyMin!==undefined&&p.qtyMin!==null&&p.qtyMin!=='')?esc(String(p.qtyMin)):'';
+  return '<div class="partQtyOrderRow" style="display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap" onclick="event.stopPropagation()">'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#6f7b87">Qté<input type="number" inputmode="numeric" class="partQtyInput" data-field="qtyActuelle" value="'+curVal+'" style="width:54px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-size:12px"></label>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#6f7b87">Min<input type="number" inputmode="numeric" class="partQtyInput" data-field="qtyMin" value="'+minVal+'" style="width:54px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-size:12px"></label>'
+    +'</div>';
+}
+function _orderToggleBtnHtml(p){
+  var active=!!p.orderSelected;
+  return '<button class="btn mini" data-act="order" style="'+(active?'background:#ffd54f;color:#5c4400;border:1px solid #e0b93a':'')+'" title="Ajouter à la commande">🛒</button>';
+}
+// Branche les inputs qté + le bouton commande sur une carte pièce donnée.
+// card = élément .partCard déjà créé et inséré dans le DOM ; p = objet pièce ; inSubgroup = booléen.
+function _wireOrderExtras(card,p,inSubgroup){
+  card.querySelectorAll('.partQtyInput').forEach(function(inp){
+    inp.oninput=function(){
+      // Retour visuel immédiat (rouge) sans attendre la sauvegarde
+      var cur=parseFloat(inp.dataset.field==='qtyActuelle'?inp.value:card.querySelector('[data-field=qtyActuelle]').value);
+      var min=parseFloat(inp.dataset.field==='qtyMin'?inp.value:card.querySelector('[data-field=qtyMin]').value);
+      var low=!isNaN(cur)&&!isNaN(min)&&cur<=min;
+      card.classList.toggle('partCardLow',low);
+    };
+    inp.onchange=function(){ _updatePartQty(p.id,inSubgroup,inp.dataset.field,inp.value); };
+  });
+  var ob=card.querySelector('[data-act=order]');
+  if(ob) ob.onclick=function(ev){ ev.stopPropagation(); _togglePartOrderSelected(p.id,inSubgroup); };
+  if(_isPartLow(p)) card.classList.add('partCardLow');
+}
+function openOrderDialog(){
+  var supplier=_orderEnabledSupplier();
+  if(!supplier) return;
+  var entries=_collectOrderSelectedParts(supplier);
+  var dlg=$('orderDialog');
+  var list=$('orderDialogList');
+  var sub=$('orderDialogSub');
+  if(!dlg||!list) return;
+  if(!entries.length){
+    sub.textContent="Aucune pièce sélectionnée. Appuie sur 🛒 sur les pièces voulues avant d'ouvrir la commande.";
+    list.innerHTML='';
+    $('orderSendBtn').disabled=true;
+  }else{
+    sub.textContent=entries.length+' pièce(s) sélectionnée(s) — indique la quantité à commander pour chacune.';
+    $('orderSendBtn').disabled=false;
+    list.innerHTML=entries.map(function(en,i){
+      var p=en.part;
+      var suggested=(function(){
+        var cur=parseFloat(p.qtyActuelle), min=parseFloat(p.qtyMin);
+        if(!isNaN(min)&&!isNaN(cur)&&min>cur) return (min-cur);
+        return 1;
+      })();
+      return '<div style="background:#f5f8fb;border-radius:12px;padding:8px 10px;display:flex;align-items:center;gap:8px">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name||p.partNumber||'')+'</div>'
+        +'<div style="font-size:11px;color:#6f7b87">'+esc(p.partNumber||'')+' · '+esc(en.path)+'</div>'
+        +'</div>'
+        +'<input type="number" min="1" step="1" value="'+suggested+'" data-order-qty-id="'+p.id+'" style="width:60px;padding:6px;border:1px solid var(--line);border-radius:8px;font-size:13px;text-align:center">'
+        +'</div>';
+    }).join('');
+  }
+  dlg.showModal();
+}
+if($('orderCancelBtn')) $('orderCancelBtn').onclick=function(){$('orderDialog').close();};
+if($('orderSendBtn')) $('orderSendBtn').onclick=function(){
+  var supplier=_orderEnabledSupplier();
+  if(!supplier) return;
+  var entries=_collectOrderSelectedParts(supplier);
+  if(!entries.length) return;
+  var email=($('orderEmailInput').value||'').trim();
+  var lines=entries.map(function(en){
+    var p=en.part;
+    var inp=document.querySelector('[data-order-qty-id="'+p.id+'"]');
+    var qty=inp?(parseInt(inp.value,10)||1):1;
+    return '- '+(p.name||p.partNumber||'')+' (Réf: '+(p.partNumber||'-')+') — '+en.path+' — Quantité demandée: '+qty;
+  });
+  var subject='Commande de pièces - '+supplier.name;
+  var body='Bonjour,\n\nVoici la liste des pièces à commander pour '+supplier.name+' :\n\n'+lines.join('\n')+'\n\nMerci.';
+  window.location.href='mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  // Réinitialiser la sélection après envoi
+  entries.forEach(function(en){ en.part.orderSelected=false; });
+  save();
+  $('orderDialog').close();
+  if(selectedSupplierSubgroupId) renderSubgroupParts(); else renderSupplierParts();
+};
 function _supplierShowLevel(level){
   // Contenu
   $('suppliersRoot').classList.toggle('hidden', level!==0);
@@ -8983,13 +9134,17 @@ function _supplierShowLevel(level){
     var b0=$('addSupplierBtn');
     if(b0) b0.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSupplierId=null;supplierImageData='';$('supplierForm').reset();$('supplierDialog').querySelector('h2').textContent=T('addSupplier');$('supplierPreview').classList.add('hidden');$('supplierDialog').showModal();};
   } else if(level===1){
-    bar.innerHTML='<div class="actions moduleActionButtons twoButtons"><button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button><button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button></div>';
+    var orderBtnHtml1=_isOrderEnabledSupplierId(selectedSupplierId)?'<button class="btn" id="orderBtn" style="flex:1;background:#fff3cd;color:#8a6d00;border:1px solid #f0d78a">🛒 Commande</button>':'';
+    bar.innerHTML='<div class="actions moduleActionButtons '+(orderBtnHtml1?'threeButtons':'twoButtons')+'"><button class="btn primary" id="addSubgroupBtn" style="flex:1">+ Sous-groupe</button><button class="btn secondary" id="addPartBtn" style="flex:1">+ Pièce</button>'+orderBtnHtml1+'</div>';
     var b1=$('addSubgroupBtn');
     if(b1) b1.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addSupplier')){alert(T('actionDenied'));return;} editingSubgroupId=null;subgroupImageData='';$('supplierSubgroupForm').reset();$('supplierSubgroupDialogTitle').textContent='+ Sous-groupe';$('subgroupPreview').classList.add('hidden');$('supplierSubgroupDialog').showModal();};
     var b2=$('addPartBtn');
     if(b2) b2.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='false';renderPartOtherSuppliersBox('',null);$('partDialog').showModal();};
+    var bo1=$('orderBtn'); if(bo1) bo1.onclick=function(){openOrderDialog();};
   } else if(level===2){
-    bar.innerHTML='<div class="actions moduleActionButtons oneButton"><button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button></div>';
+    var s2=(db.suppliers||[]).find(function(x){return x.id===selectedSupplierId;});
+    var orderBtnHtml2=(s2&&_isOrderEnabledSupplierId(s2.id))?'<button class="btn" id="orderBtnSub" style="flex:1;background:#fff3cd;color:#8a6d00;border:1px solid #f0d78a">🛒 Commande</button>':'';
+    bar.innerHTML='<div class="actions moduleActionButtons '+(orderBtnHtml2?'twoButtons':'oneButton')+'"><button class="btn primary" id="addPartInSubgroupBtn">+ Pièce</button>'+orderBtnHtml2+'</div>';
     var b3=$('addPartInSubgroupBtn');
     if(b3) b3.onclick=function(){if(typeof window.hasPermission==='function'&&!window.hasPermission('addPart')){alert(T('actionDenied'));return;} editingPartId=null;partImageData='';$('partForm').reset();populatePartModelsSelect([]);$('partDialog').querySelector('h2').textContent=T('addPart');$('partPreview').classList.add('hidden');$('partDialog').dataset.inSubgroup='true';renderPartOtherSuppliersBox('',null);$('partDialog').showModal();};
   } else {
@@ -9146,6 +9301,7 @@ function renderSupplierParts(){
   _supplierShowLevel(1); // Toujours niveau 1 quand on affiche les parties d'un fournisseur
   if(!$('partGrid')) return;
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
+  var orderMode=_isOrderEnabledSupplierId(s.id);
   if($('supplierDetailTitle')) $('supplierDetailTitle').textContent=s.name;
   if($('supplierDetailSub')) $('supplierDetailSub').textContent=`${T('email')}: ${s.email||'-'} | ${T('contactPhone')}: ${s.phone||'-'}`;
   const sgGrid=$('supplierSubgroupGrid');
@@ -9304,9 +9460,10 @@ function renderSupplierParts(){
   }).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     var _otherCount=_findOtherSuppliersForPartNumber(p.partNumber,p.id).length;
-    card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}${_otherCount>0?` <span class="samePartBadge" title="${T('samePartTooltip')}" style="display:inline-block;background:#fff3cd;color:#8a6d00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">🔗 +${_otherCount}</span>`:''}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
+    card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}${_otherCount>0?` <span class="samePartBadge" title="${T('samePartTooltip')}" style="display:inline-block;background:#fff3cd;color:#8a6d00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">🔗 +${_otherCount}</span>`:''}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div>${orderMode?_orderQtyRowHtml(p):''}<div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${orderMode?_orderToggleBtnHtml(p):''}${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,false);
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=()=>deletePart(p.id,false);
+    if(orderMode) _wireOrderExtras(card,p,false);
     $('partGrid').appendChild(card);
   });
   // ── Carrousel vertical pour les pièces ──────────────────────────────
@@ -9376,6 +9533,7 @@ function renderSubgroupParts(){
   _normalizeSuppliersInPlace();
   _supplierShowLevel(2);
   const s=(db.suppliers||[]).find(x=>x.id===selectedSupplierId); if(!s) return;
+  var orderMode=_isOrderEnabledSupplierId(s.id);
   const sg=_findSgById(selectedSupplierSubgroupId, s.subgroups||[]); if(!sg) return;
   if($('supplierSubgroupDetailTitle')) $('supplierSubgroupDetailTitle').textContent=s.name+' › '+sg.name;
   if($('supplierSubgroupDetailSub')) $('supplierSubgroupDetailSub').textContent=(sg.parts||[]).length+' pièce(s)';
@@ -9405,9 +9563,10 @@ function renderSubgroupParts(){
   (sg.parts||[]).slice().sort((a,b)=>(a.name||a.partNumber||'').localeCompare(b.name||b.partNumber||'')).filter(p=>p&&p.id&&!_removedIds2[p.id]&&(!q||[p.name,p.partNumber,p.partNumber2,p.price].join(' ').toLowerCase().includes(q))).forEach(p=>{
     const models=p.models||[]; const card=document.createElement('div'); card.className='partCard';
     var _otherCount=_findOtherSuppliersForPartNumber(p.partNumber,p.id).length;
-    card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}${_otherCount>0?` <span class="samePartBadge" title="${T('samePartTooltip')}" style="display:inline-block;background:#fff3cd;color:#8a6d00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">🔗 +${_otherCount}</span>`:''}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div><div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
+    card.innerHTML=`<div class="partPhoto">${p.image?`<img src="${p.image}">`:'⚙️'}</div><div><h3 title="${esc(p.name||p.partNumber)}">${esc(p.name||p.partNumber)}${_otherCount>0?` <span class="samePartBadge" title="${T('samePartTooltip')}" style="display:inline-block;background:#fff3cd;color:#8a6d00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">🔗 +${_otherCount}</span>`:''}</h3><p>${T('partNo')}: ${esc(p.partNumber||'')}</p><p>${T('price')}: ${esc(p.price||'0')}</p><div class="modelTags">${models.slice(0,4).map(m=>`<span class="modelTag">${esc(m)}</span>`).join('')}${models.length>4?`<span class="modelTag">+${models.length-4}</span>`:''}</div>${orderMode?_orderQtyRowHtml(p):''}<div class="qtyLine"><button class="btn secondary mini" data-act="edit">✏️</button>${orderMode?_orderToggleBtnHtml(p):''}${isAdmin()?`<button class="btn danger mini" data-act="delete">🗑️</button>`:''}</div></div>`;
     card.querySelector('[data-act=edit]').onclick=()=>openEditPart(p.id,true);
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=()=>deletePart(p.id,true);
+    if(orderMode) _wireOrderExtras(card,p,true);
     grid.appendChild(card);
   });
   // ── Carrousel vertical pour ce niveau (sous-sous-groupes + pièces) ──
