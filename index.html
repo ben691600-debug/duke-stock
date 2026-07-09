@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.68'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.69'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -4333,15 +4333,19 @@ function buildExpenseXlsx(car, monthKey, callback){
     }
 
     var thin={style:'thin',color:{rgb:'000000'}};
+    var medium={style:'medium',color:{rgb:'000000'}};
     var brd={top:thin,bottom:thin,left:thin,right:thin};
-    var brdTop={top:thin};
+    var brdTop={top:thin,bottom:thin,left:thin,right:thin};
+    var brdThick={top:medium,bottom:medium,left:medium,right:medium};
     var arialSm={name:'Arial',sz:12};
     var arialBig={name:'Arial',sz:22,bold:true};
     var arialBold={name:'Arial',sz:12,bold:true};
     var ctr={horizontal:'center',vertical:'center',readingOrder:2};
     var rgt={horizontal:'right',readingOrder:2};
-    var grayFill={patternType:'solid',fgColor:{rgb:'B4C6E7'}};
-    var yellowFill={patternType:'solid',fgColor:{rgb:'FFFF00'}};
+    // fgColor ET bgColor renseignés ensemble : certains lecteurs Excel/Sheets
+    // n'affichent le remplissage "solid" correctement que si les deux sont présents.
+    var grayFill={patternType:'solid',fgColor:{rgb:'B4C6E7'},bgColor:{rgb:'B4C6E7'}};
+    var yellowFill={patternType:'solid',fgColor:{rgb:'FFFF00'},bgColor:{rgb:'FFFF00'}};
 
     // Ligne 1 : titre fusionné A1:D1
     S(1,1,'דוח הוצאות',{font:arialBig,alignment:{horizontal:'center',readingOrder:2}});
@@ -4355,11 +4359,11 @@ function buildExpenseXlsx(car, monthKey, callback){
     S(3,1,'חודש:',{font:arialSm,alignment:rgt});
     S(3,2,monthLabel,{font:arialSm,border:{bottom:thin}});
 
-    // Ligne 4 : en-têtes avec fond gris
-    S(4,1,'מקום',{font:arialBold,fill:grayFill,border:brd,alignment:ctr});
-    S(4,2,'',{font:arialBold,fill:grayFill,border:brd,alignment:ctr});
-    S(4,3,'סכום',{font:arialBold,fill:grayFill,border:brd,alignment:ctr});
-    S(4,4,'הערות',{font:arialBold,fill:grayFill,border:brd,alignment:ctr});
+    // Ligne 4 : en-têtes, fond bleu-gris + bordure épaisse
+    S(4,1,'מקום',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
+    S(4,2,'',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
+    S(4,3,'סכום',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
+    S(4,4,'הערות',{font:arialBold,fill:grayFill,border:brdThick,alignment:ctr});
 
     // Lignes de données dynamiques
     var dataStart=5;
@@ -4373,12 +4377,14 @@ function buildExpenseXlsx(car, monthKey, callback){
     }
 
     var dataEnd=Math.max(dataStart+expenses.length-1, dataStart);
-    // Total dynamique : 1 ligne vide d'espacement puis le total juste après
-    // (ex: 10 dépenses -> données lignes 5-14, ligne 15 vide, total ligne 16)
-    var totalRow=dataEnd+2;
+    // Total : directement sous la dernière ligne de données, sans ligne sautée
+    // (ex: 2 dépenses -> lignes 5-6, total en ligne 7 ; 10 dépenses -> total en ligne 15)
+    var totalRow=dataEnd+1;
     var sumRef='SUM(C'+dataStart+':C'+dataEnd+')';
-    F(totalRow,3,sumRef,{font:arialSm,fill:yellowFill,alignment:rgt,border:brdTop,numFmt:'#,##0'});
-    S(totalRow,4,'סה"כ',{font:arialBold,alignment:rgt});
+    S(totalRow,1,'',{border:brdThick});
+    S(totalRow,2,'',{border:brdThick});
+    F(totalRow,3,sumRef,{font:{name:'Arial',sz:12,bold:true},fill:yellowFill,alignment:rgt,border:brdThick,numFmt:'#,##0'});
+    S(totalRow,4,'סה"כ',{font:arialBold,fill:yellowFill,alignment:rgt,border:brdThick});
 
     // Signatures
     var sigRow=totalRow+3;
