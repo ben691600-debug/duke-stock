@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.75'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.76'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2286,7 +2286,7 @@ body.draggingMachine{
   
     
 <section id="clientsView" class="hidden">
-  <div class="toolbar moduleActionToolbar">
+  <div class="toolbar moduleActionToolbar" id="clientsToolbar">
     <div class="actions moduleActionButtons twoButtons">
       <button class="btn primary" id="addClientGroupBtn" data-i="addGroup">+ Groupe</button>
       <button class="btn ok" id="addMachineBtn" data-i="addMachine">+ Machine</button>
@@ -2784,14 +2784,6 @@ body.draggingMachine{
     <p id="docBooksDialogModel" style="margin:0 0 28px;text-align:center;color:#5a6b78;font-size:15px"></p>
     <div id="docBooksDialogButtons" style="display:flex;flex-direction:column;gap:16px;flex:1"></div>
     <button type="button" class="btn secondary" id="docBooksDialogCancel" style="width:100%;margin-top:20px;min-height:54px;font-size:16px">✕ Fermer</button>
-  </div>
-</dialog>
-
-<dialog id="missionMachineDialog" style="border:0;padding:0;margin:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;background:#eef7fc">
-  <div style="display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))">
-    <h2 style="margin:0 0 20px;text-align:center;font-size:20px">📅 Mission assignée</h2>
-    <div id="missionMachineCard" style="background:white;border:2px solid #b9d7ea;border-radius:20px;padding:16px;flex:1;overflow-y:auto"></div>
-    <button type="button" class="btn secondary" id="missionMachineDialogCancel" style="width:100%;margin-top:16px;min-height:54px;font-size:16px">✕ Fermer</button>
   </div>
 </dialog>
 
@@ -5646,7 +5638,7 @@ function exportSelectedVehicle(){
   downloadExcel(`duke_stock_voiture_${cleanPlate}.xls`, rows, `Duke Stock - ${c.plate} / ${c.driver}`);
 }
 $('openVehiclesModule').onclick=()=>{show('carsView');};
-$('openClientsModule').onclick=()=>{show('clientsView');renderClientMachineModule();};
+$('openClientsModule').onclick=()=>{window._missionRestrictMachineId=null;window._missionRestrictMissionId=null;show('clientsView');renderClientMachineModule();};
 // Exports Excel contextuels
 function exportClientsExcel(){
   var rows=[['Client (chemin)','Modele','N Serie','Contact','Telephone','Pannes ouvertes','Interventions']];
@@ -6123,18 +6115,43 @@ function clientAllowedMachines(node,inherited){
   if(!isClientUser()) return filtered;
   return (inherited || clientNodeIsDirectlyAllowed(node)) ? filtered : [];
 }
+function _restrictedMachinePathLabel(m){
+  var found=findMachineById(m.id);
+  if(!found || !found.group || !found.group.id) return T('clientMachineManagement');
+  var pathIds=findClientPathToGroup(found.group.id);
+  var names=(pathIds||[]).map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
+  return names.join(' / ')||T('clientMachineManagement');
+}
 function renderClientMachineModule(){
   try{ syncClientMachineImagesFromFaultModels(); }catch(e){}
   if(!$('clientGroupsGrid')) return;
-  const node=currentClientNode();
+  var _missionRestrictId=window._missionRestrictMachineId||null;
+  const node = _missionRestrictId ? (function(){
+    var mres=findMachineById(_missionRestrictId);
+    return {groups:[], machines: mres&&mres.machine ? [mres.machine] : []};
+  })() : currentClientNode();
   const isRoot=clientPathIds.length===0;
   const clientInheritedAccess=clientPathHasAccess();
-  $('clientUpBtn').classList.toggle('hidden', isRoot);
+  $('clientUpBtn').classList.toggle('hidden', isRoot && !_missionRestrictId);
   $('clientEmptyGroups').classList.add('hidden');
   $('clientEmptyMachines').classList.add('hidden');
 
+  // Mode restreint (arrivée depuis une mission) : pas d'ajout de groupe/machine,
+  // pas de recherche, pas de fil d'ariane cliquable — seule la machine assignée
+  // est visible.
+  var toolbar=$('clientsToolbar');
+  if(toolbar) toolbar.classList.toggle('hidden', !!_missionRestrictId);
+  var searchInput=$('clientSearch');
+  if(searchInput) searchInput.style.display=_missionRestrictId?'none':'';
+
   const path=$('clientPath');
   path.innerHTML='';
+  if(_missionRestrictId){
+    const lockLabel=document.createElement('span');
+    lockLabel.style.cssText='font-weight:900;color:#0A7CC2';
+    lockLabel.textContent='🔒 Machine assignée';
+    path.appendChild(lockLabel);
+  } else {
   const rootBtn=document.createElement('button');
   rootBtn.className='btn secondary';
   rootBtn.textContent=T('clientMachineManagement');
@@ -6150,6 +6167,7 @@ function renderClientMachineModule(){
     path.appendChild(b);
     temp=g;
   });
+  }
 
   $('clientGroupsGrid').innerHTML='';
   const clientSearch=document.getElementById('clientSearch');
@@ -6392,7 +6410,7 @@ function renderClientMachineModule(){
       <div>
         <h3 title="${esc(m.model)}">${esc(m.model)}</h3>
         <p>${T('serialNumber')}: ${esc(m.serial)}</p>
-        <p>${esc(currentClientPathNames().join(' / ') || T('clientMachineManagement'))}</p>
+        <p>${esc(_missionRestrictId ? _restrictedMachinePathLabel(m) : (currentClientPathNames().join(' / ') || T('clientMachineManagement')))}</p>
         ${_mSt==='open'?`<div class="clientFaultBadge clientFaultBadgeOpen">⚠️ ${T('openFaultBadge')}</div>`:_mSt==='in_progress'?`<div class="clientFaultBadge clientFaultBadgeProgress">🔧 ${T('statusInProgress')}</div>`:''}
         ${(function(){
           var mission=getUpcomingMissionForMachine(m.id);
@@ -6413,6 +6431,7 @@ function renderClientMachineModule(){
         <p class="machineClickHint">${T('openMachine')}</p>
         <div class="machineQrInline"><img class="embeddedMachineQr" data-act="qr" title="QR service client" alt="QR service client" src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(clientServiceUrl(m.id))}"></div>
         ${!isClientUser()?`<div class="qtyLine clientMachineActionsWithDocs">
+          ${_missionRestrictId?`<button class="btn primary mini" type="button" data-act="missionRepair" title="Ouvrir le formulaire de réparation" style="flex:1 1 100%;font-weight:900">🛠️ Réparer / Fermer l'appel</button>`:''}
           <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="books" title="Documents techniques" aria-label="Documents techniques" style="position:relative">📚</button>
           <button class="btn secondary mini" type="button" data-act="clientReq" title="Demandes client" aria-label="Demandes client">🔔</button>
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="assignMission" title="Assigner mission" aria-label="Assigner mission">📅</button>`:''}
@@ -6422,6 +6441,13 @@ function renderClientMachineModule(){
         </div>`:''}
       </div>`;
     const qrBtn=card.querySelector('[data-act=qr]');
+    var missionRepairBtn=card.querySelector('[data-act=missionRepair]');
+    if(missionRepairBtn) missionRepairBtn.onclick=(ev)=>{
+      ev.stopPropagation();
+      var msId=window._missionRestrictMissionId;
+      var ms=msId?(db.missions||[]).find(function(x){return x.id===msId;}):null;
+      if(ms && typeof openMissionRepairForm==='function') openMissionRepairForm(ms);
+    };
     if(qrBtn) qrBtn.onclick=(ev)=>{ev.stopPropagation();ev.preventDefault();clientServiceOpenPublic(m.id);};
     const reqBtn=card.querySelector('[data-act=clientReq]');
     if(reqBtn) reqBtn.onclick=(ev)=>{ev.stopPropagation();openClientServiceRequests(m.id);};
@@ -6604,53 +6630,34 @@ function setMissionStatus(id, status){
 // bouton qui ouvre le formulaire de réparation pour fermer l'appel. La mission
 // n'est marquée terminée que lorsque ce formulaire est effectivement rempli et
 // enregistré (voir saveIntervention).
+// ── Accès restreint depuis "Mes missions" ────────────────────────────
+// Navigue vers l'écran RÉEL de la machine (même carte que la gestion clients),
+// mais restreint à cette seule machine (pas d'arbre de groupes, pas de recherche,
+// pas de "+Groupe/+Machine"). Un bouton "🛠️ Réparer" est ajouté sur cette carte
+// pour ouvrir le formulaire de réparation. La mission n'est marquée terminée que
+// lorsque ce formulaire est effectivement rempli et enregistré (voir saveIntervention).
 function openMissionMachine(ms){
   var found=findMachineById(ms.machineId);
   if(!found || !found.machine){ alert('Machine introuvable pour cette mission.'); return; }
-  var machine=found.machine;
-  var machineGroup=found.group||null;
-  var groupPath=[];
-  if(machineGroup && machineGroup.id && typeof findClientPathToGroup==='function'){
-    var pathIds=findClientPathToGroup(machineGroup.id);
-    groupPath=pathIds.map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
-  }
-  var wazeLink=machineGroup&&machineGroup.id&&typeof findNearestGroupWaze==='function'?findNearestGroupWaze(machineGroup.id):'';
-  var contactGroupId=machineGroup&&machineGroup.id&&typeof findNearestGroupWithContact==='function'?findNearestGroupWithContact(machineGroup.id):'';
-  var firstContact=(contactGroupId&&typeof findNearestGroupContact==='function')?(findNearestGroupContact(machineGroup.id)||{}):{};
-
-  var dlg=$('missionMachineDialog');
-  var box=$('missionMachineCard');
-  if(!dlg||!box) return;
-  box.innerHTML=
-    '<div style="font-size:48px;text-align:center;margin-bottom:10px">🏭</div>'
-    +'<h3 style="margin:0 0 4px;text-align:center;font-size:19px">'+esc(machine.model||'Machine')+'</h3>'
-    +'<p style="margin:0 0 14px;text-align:center;color:#6f7b87">'+T('serialNumber')+': '+esc(machine.serial||machine.serialNumber||'-')+'</p>'
-    +(groupPath.length?'<div style="text-align:center;color:#1a7ad4;font-weight:700;margin-bottom:14px">📍 '+esc(groupPath.join(' › '))+'</div>':'')
-    +'<div style="display:flex;gap:8px;margin-bottom:16px">'
-    +(wazeLink?'<a href="'+esc(wazeLink)+'" target="_blank" class="btn secondary" style="flex:1;background:#00d4b1;color:#fff;border:none;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:46px">🚗 Waze</a>':'')
-    +(firstContact.phone?'<a href="tel:'+esc(firstContact.phone)+'" class="btn secondary" style="flex:1;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:46px">📞 Appeler</a>':'')
-    +'</div>'
-    +(ms.notes?'<div style="background:#f5f8fb;border-radius:12px;padding:10px;margin-bottom:16px;font-size:14px">📝 '+esc(ms.notes)+'</div>':'')
-    +'<button type="button" id="missionMachineOpenFormBtn" class="btn primary" style="width:100%;min-height:56px;font-size:16px;font-weight:900">🛠️ Ouvrir le formulaire de réparation</button>';
-
-  var openBtn=$('missionMachineOpenFormBtn');
-  if(openBtn) openBtn.onclick=function(){
-    dlg.close();
-    openMissionRepairForm(ms, found, groupPath);
-  };
-  dlg.showModal();
+  window._missionRestrictMachineId=ms.machineId;
+  window._missionRestrictMissionId=ms.id;
+  show('clientsView');
+  renderClientMachineModule();
 }
 window.openMissionMachine=openMissionMachine;
-if($('missionMachineDialogCancel')) $('missionMachineDialogCancel').onclick=function(){
-  var d=$('missionMachineDialog'); if(d) d.close();
-};
 
-// Étape 2 : ouvre réellement le formulaire de réparation (seulement depuis l'étiquette machine ci-dessus)
+// Ouvre réellement le formulaire de réparation (déclenché par le bouton 🛠️ sur la carte machine)
 function openMissionRepairForm(ms, found, groupPath){
   found=found||findMachineById(ms.machineId);
   if(!found || !found.machine) return;
   var machine=found.machine;
-  groupPath=groupPath||[];
+  if(!groupPath){
+    groupPath=[];
+    if(found.group && found.group.id && typeof findClientPathToGroup==='function'){
+      var pathIds=findClientPathToGroup(found.group.id);
+      groupPath=pathIds.map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
+    }
+  }
   var syntheticRequest={
     id:'mission_'+ms.id,
     serviceNumber:'MISSION',
@@ -8543,6 +8550,12 @@ $('clientMachineForm').onsubmit=e=>{
   renderClientMachineModule();
 };
 $('clientUpBtn').onclick=()=>{
+  if(window._missionRestrictMachineId){
+    window._missionRestrictMachineId=null;
+    window._missionRestrictMissionId=null;
+    show('moduleView');
+    return;
+  }
   if(clientPathIds.length>0){clientPathIds.pop();renderClientMachineModule();}
   else if(currentUser&&currentUser.role==='client'&&currentUser.assignedSupplierId){show('moduleView');}
 };
