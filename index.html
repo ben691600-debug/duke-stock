@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.73'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.75'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -236,6 +236,8 @@ main{max-width:1100px;margin:auto;padding:18px}
 .qtyLine{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px} .qty{font-weight:900;background:#eff7fc;border-radius:14px;padding:8px 12px;min-width:76px;text-align:center}
 .mini{padding:8px 12px;border-radius:14px}
 .modal{border:0;border-radius:24px;width:min(94vw,500px);padding:0;box-shadow:0 25px 70px rgba(0,0,0,.25)} .modal::backdrop{background:rgba(20,38,52,.35)}
+.planningGlobalTabBtn{background:#eef7fc!important;color:#5a6b78!important;border:2px solid var(--line)!important;font-weight:800!important}
+.planningGlobalTabBtn.active{background:#0A7CC2!important;color:white!important;border-color:#0A7CC2!important}
 #docBooksDialog{position:fixed;top:0;left:0;margin:0;inset:0}
 #docBooksDialog::backdrop{background:#eef7fc}
 .docBooksBigBtn{display:flex;align-items:center;gap:16px;width:100%;padding:20px;border-radius:20px;border:2px solid var(--line);background:white;box-shadow:0 4px 16px rgba(0,0,0,.08);font-size:18px;font-weight:800;text-align:left;cursor:pointer}
@@ -2329,8 +2331,21 @@ body.draggingMachine{
 
 <section id="planningView" class="hidden">
 
+  <!-- Menu d'entrée : choix entre gestion par groupes ou vue globale -->
+  <div id="planningMenuPanel">
+    <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
+      <span style="font-size:20px">📅</span> Gestion planning
+    </div>
+    <div class="supplierGrid" id="planningMenuGrid"></div>
+  </div>
+
   <!-- Onglet 1 : Assigner — accès direct -->
   <div id="planningAssignPanel" class="hidden">
+    <div class="toolbar moduleActionToolbar">
+      <div class="actions moduleActionButtons oneButton">
+        <button class="btn secondary" id="planningBackToMenuBtn1">← Menu planning</button>
+      </div>
+    </div>
     <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
       <span style="font-size:20px">📍</span> Gestion planning — Assigner un opérateur
     </div>
@@ -2343,33 +2358,64 @@ body.draggingMachine{
     <div id="planningMachinesList" style="display:flex;flex-direction:column;gap:10px"></div>
   </div>
 
-  <!-- Onglet 2 : Vue globale par opérateur -->
+  <!-- Onglet 2 : Vue globale des alertes / missions -->
   <div id="planningGlobalPanel" class="hidden">
     <div class="toolbar moduleActionToolbar">
       <div class="actions moduleActionButtons oneButton">
         <button class="btn secondary" id="planningBackToMenuBtn2">← Menu planning</button>
       </div>
     </div>
-    <div class="toolbar moduleActionToolbar">
-      <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
-        <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
-          <option value="">👥 Tous les opérateurs</option>
-        </select>
-        <select id="planningStatusFilter" style="flex:1;min-width:120px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
-          <option value="">Tous statuts</option>
-          <option value="planned">📅 Planifiée</option>
-          <option value="done">✅ Terminée</option>
-        </select>
+    <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
+      <span style="font-size:20px">🔔</span> Vue globale des alertes / missions
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--line)">
+      <button type="button" class="btn secondary planningGlobalTabBtn active" data-gtab="alerts" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">🔴 Ouvertes</button>
+      <button type="button" class="btn secondary planningGlobalTabBtn" data-gtab="missions" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📅 Missions</button>
+      <button type="button" class="btn secondary planningGlobalTabBtn" data-gtab="history" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📜 Historique</button>
+    </div>
+
+    <!-- Sous-onglet : appels/alertes ouverts -->
+    <div id="planningGlobalAlerts">
+      <div id="planningAlertsEmpty" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
+        <div style="font-size:48px;margin-bottom:10px">🔴</div>
+        <p>Aucune alerte ouverte</p>
       </div>
+      <div id="planningAlertsList" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
-    <h2 style="margin:14px 0 8px">📅 Planning des interventions</h2>
-    <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
-      <div style="font-size:48px;margin-bottom:10px">📅</div>
-      <p>Aucune mission planifiée</p>
+
+    <!-- Sous-onglet : missions planifiées -->
+    <div id="planningGlobalMissions" class="hidden">
+      <div class="toolbar moduleActionToolbar">
+        <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+            <option value="">👥 Tous les opérateurs</option>
+          </select>
+          <select id="planningStatusFilter" style="flex:1;min-width:120px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+            <option value="">Tous statuts</option>
+            <option value="planned">📅 Planifiée</option>
+            <option value="done">✅ Terminée</option>
+          </select>
+        </div>
+      </div>
+      <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
+        <div style="font-size:48px;margin-bottom:10px">📅</div>
+        <p>Aucune mission planifiée</p>
+      </div>
+      <div id="planningList" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
-    <div id="planningList" style="display:flex;flex-direction:column;gap:10px"></div>
+
+    <!-- Sous-onglet : historique des appels fermés -->
+    <div id="planningGlobalHistory" class="hidden">
+      <div id="planningHistoryEmpty" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
+        <div style="font-size:48px;margin-bottom:10px">📜</div>
+        <p>Aucun appel fermé pour le moment</p>
+      </div>
+      <div id="planningHistoryList" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
   </div>
 </section>
+
 
 <section id="myMissionsView" class="hidden">
   <h2 style="margin:14px 0 8px">📅 Mes missions</h2>
@@ -2738,6 +2784,14 @@ body.draggingMachine{
     <p id="docBooksDialogModel" style="margin:0 0 28px;text-align:center;color:#5a6b78;font-size:15px"></p>
     <div id="docBooksDialogButtons" style="display:flex;flex-direction:column;gap:16px;flex:1"></div>
     <button type="button" class="btn secondary" id="docBooksDialogCancel" style="width:100%;margin-top:20px;min-height:54px;font-size:16px">✕ Fermer</button>
+  </div>
+</dialog>
+
+<dialog id="missionMachineDialog" style="border:0;padding:0;margin:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;background:#eef7fc">
+  <div style="display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))">
+    <h2 style="margin:0 0 20px;text-align:center;font-size:20px">📅 Mission assignée</h2>
+    <div id="missionMachineCard" style="background:white;border:2px solid #b9d7ea;border-radius:20px;padding:16px;flex:1;overflow-y:auto"></div>
+    <button type="button" class="btn secondary" id="missionMachineDialogCancel" style="width:100%;margin-top:16px;min-height:54px;font-size:16px">✕ Fermer</button>
   </div>
 </dialog>
 
@@ -6545,10 +6599,11 @@ function setMissionStatus(id, status){
 }
 
 // ── Accès restreint depuis "Mes missions" ────────────────────────────
-// Au lieu de naviguer dans tout l'arbre clients/groupes (l'opérateur aurait accès
-// à toutes les machines), on ouvre DIRECTEMENT le formulaire de réparation pour
-// la seule machine assignée. La mission n'est marquée terminée que lorsque ce
-// formulaire est effectivement rempli et enregistré (voir saveIntervention).
+// Étape 1 : afficher UNIQUEMENT l'étiquette de la machine assignée (pas l'arbre
+// complet des groupes/clients). Étape 2 : cette étiquette est elle-même le
+// bouton qui ouvre le formulaire de réparation pour fermer l'appel. La mission
+// n'est marquée terminée que lorsque ce formulaire est effectivement rempli et
+// enregistré (voir saveIntervention).
 function openMissionMachine(ms){
   var found=findMachineById(ms.machineId);
   if(!found || !found.machine){ alert('Machine introuvable pour cette mission.'); return; }
@@ -6559,6 +6614,43 @@ function openMissionMachine(ms){
     var pathIds=findClientPathToGroup(machineGroup.id);
     groupPath=pathIds.map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
   }
+  var wazeLink=machineGroup&&machineGroup.id&&typeof findNearestGroupWaze==='function'?findNearestGroupWaze(machineGroup.id):'';
+  var contactGroupId=machineGroup&&machineGroup.id&&typeof findNearestGroupWithContact==='function'?findNearestGroupWithContact(machineGroup.id):'';
+  var firstContact=(contactGroupId&&typeof findNearestGroupContact==='function')?(findNearestGroupContact(machineGroup.id)||{}):{};
+
+  var dlg=$('missionMachineDialog');
+  var box=$('missionMachineCard');
+  if(!dlg||!box) return;
+  box.innerHTML=
+    '<div style="font-size:48px;text-align:center;margin-bottom:10px">🏭</div>'
+    +'<h3 style="margin:0 0 4px;text-align:center;font-size:19px">'+esc(machine.model||'Machine')+'</h3>'
+    +'<p style="margin:0 0 14px;text-align:center;color:#6f7b87">'+T('serialNumber')+': '+esc(machine.serial||machine.serialNumber||'-')+'</p>'
+    +(groupPath.length?'<div style="text-align:center;color:#1a7ad4;font-weight:700;margin-bottom:14px">📍 '+esc(groupPath.join(' › '))+'</div>':'')
+    +'<div style="display:flex;gap:8px;margin-bottom:16px">'
+    +(wazeLink?'<a href="'+esc(wazeLink)+'" target="_blank" class="btn secondary" style="flex:1;background:#00d4b1;color:#fff;border:none;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:46px">🚗 Waze</a>':'')
+    +(firstContact.phone?'<a href="tel:'+esc(firstContact.phone)+'" class="btn secondary" style="flex:1;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:46px">📞 Appeler</a>':'')
+    +'</div>'
+    +(ms.notes?'<div style="background:#f5f8fb;border-radius:12px;padding:10px;margin-bottom:16px;font-size:14px">📝 '+esc(ms.notes)+'</div>':'')
+    +'<button type="button" id="missionMachineOpenFormBtn" class="btn primary" style="width:100%;min-height:56px;font-size:16px;font-weight:900">🛠️ Ouvrir le formulaire de réparation</button>';
+
+  var openBtn=$('missionMachineOpenFormBtn');
+  if(openBtn) openBtn.onclick=function(){
+    dlg.close();
+    openMissionRepairForm(ms, found, groupPath);
+  };
+  dlg.showModal();
+}
+window.openMissionMachine=openMissionMachine;
+if($('missionMachineDialogCancel')) $('missionMachineDialogCancel').onclick=function(){
+  var d=$('missionMachineDialog'); if(d) d.close();
+};
+
+// Étape 2 : ouvre réellement le formulaire de réparation (seulement depuis l'étiquette machine ci-dessus)
+function openMissionRepairForm(ms, found, groupPath){
+  found=found||findMachineById(ms.machineId);
+  if(!found || !found.machine) return;
+  var machine=found.machine;
+  groupPath=groupPath||[];
   var syntheticRequest={
     id:'mission_'+ms.id,
     serviceNumber:'MISSION',
@@ -6574,7 +6666,7 @@ function openMissionMachine(ms){
     window.openInterventionForm(syntheticRequest, machine, groupPath, ms.machineId);
   }
 }
-window.openMissionMachine=openMissionMachine;
+window.openMissionRepairForm=openMissionRepairForm;
 
 // ── Dialog d'assignation rapide (depuis une carte machine) ──────────
 let _missionAssignMachineId=null, _missionEditingId=null;
@@ -7405,7 +7497,7 @@ function showPlanningTab(tab){
   if(tab==='global'){
     if(assignPanel) assignPanel.classList.add('hidden');
     if(globalPanel) globalPanel.classList.remove('hidden');
-    renderPlanningGlobalPanel();
+    showPlanningGlobalTab('alerts');
   } else {
     if(assignPanel) assignPanel.classList.remove('hidden');
     if(globalPanel) globalPanel.classList.add('hidden');
@@ -7413,15 +7505,139 @@ function showPlanningTab(tab){
   }
 }
 function showPlanningMenu(){
-  // conservé pour compatibilité — redirige directement vers l'assignation
-  showPlanningTab('assign');
+  var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
+  var menuPanel=$('planningMenuPanel');
+  if(assignPanel) assignPanel.classList.add('hidden');
+  if(globalPanel) globalPanel.classList.add('hidden');
+  if(menuPanel) menuPanel.classList.remove('hidden');
+  renderPlanningMenu();
+}
+function renderPlanningMenu(){
+  var grid=$('planningMenuGrid'); if(!grid) return;
+  grid.innerHTML='';
+  var tiles=[
+    {icon:'📍', title:'Gérer par groupes', sub:'Parcourir les groupes clients / machines pour assigner un opérateur', tab:'assign'},
+    {icon:'🔔', title:'Vue globale des alertes', sub:'Appels ouverts, missions planifiées et historique, toutes machines confondues', tab:'global'}
+  ];
+  tiles.forEach(function(t){
+    var card=document.createElement('div'); card.className='groupCard';
+    card.innerHTML=
+      '<div class="groupImage" style="height:140px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:56px;background:#eef7fc">'+t.icon+'</div>'
+      +'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 10px;text-align:center;min-height:0">'
+      +'<h3 style="margin:0 0 4px;font-size:16px;color:#0A7CC2">'+t.title+'</h3>'
+      +'<p style="margin:0;font-size:12px;color:#6f7b87;line-height:1.4">'+t.sub+'</p>'
+      +'</div>';
+    card.onclick=function(){ showPlanningTab(t.tab); };
+    grid.appendChild(card);
+  });
+  // ── Carousel vertical identique aux autres menus ──────────────────
+  buildGroupsCarousel(grid);
 }
 if($('planningMenuAssignCard')) $('planningMenuAssignCard').onclick=()=>showPlanningTab('assign');
 if($('planningMenuMyMissionsCard')) $('planningMenuMyMissionsCard').onclick=()=>{
   show('myMissionsView');
   if(typeof renderMyMissionsModule==='function') renderMyMissionsModule();
 };
+if($('planningBackToMenuBtn1')) $('planningBackToMenuBtn1').onclick=showPlanningMenu;
 if($('planningBackToMenuBtn2')) $('planningBackToMenuBtn2').onclick=showPlanningMenu;
+
+// ── Sous-onglets de la vue globale (Alertes / Missions / Historique) ──────
+function showPlanningGlobalTab(gtab){
+  document.querySelectorAll('.planningGlobalTabBtn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.gtab===gtab);
+  });
+  var panels={alerts:'planningGlobalAlerts', missions:'planningGlobalMissions', history:'planningGlobalHistory'};
+  Object.keys(panels).forEach(function(k){
+    var el=$(panels[k]); if(el) el.classList.toggle('hidden', k!==gtab);
+  });
+  if(gtab==='alerts') renderPlanningAlerts();
+  else if(gtab==='missions') renderPlanningGlobalPanel();
+  else if(gtab==='history') renderPlanningHistory();
+}
+document.querySelectorAll('.planningGlobalTabBtn').forEach(function(b){
+  b.onclick=function(){ showPlanningGlobalTab(b.dataset.gtab); };
+});
+
+// ── Onglet "Ouvertes" : appels clients actifs (open / in_progress) ────────
+function renderPlanningAlerts(){
+  var list=$('planningAlertsList'); if(!list) return;
+  list.innerHTML='';
+  var requests=(db.clientServiceRequests||[]).filter(function(r){
+    return (r.status||'open')==='open' || (r.status||'')==='in_progress';
+  }).sort(function(a,b){ return String(b.createdAt||'').localeCompare(String(a.createdAt||'')); });
+  var empty=$('planningAlertsEmpty');
+  if(empty) empty.classList.toggle('hidden', requests.length>0);
+  requests.forEach(function(r){
+    var found=findMachineById(r.machineId);
+    var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial||'')+')':(esc(r.machineModel||'')+' ('+esc(r.serial||'')+')');
+    var clientLabel=(r.groupPath&&r.groupPath.length)?r.groupPath.join(' › '):'';
+    var opened=r.createdAt?new Date(r.createdAt).toLocaleString():'-';
+    var isOpen=(r.status||'open')==='open';
+    var color=isOpen?'#ef5350':'#fb8c00';
+    var bg=isOpen?'#fff5f5':'#fffde7';
+    var label=isOpen?T('statusOpen'):T('statusInProgress');
+    var card=document.createElement('div');
+    card.style.cssText='background:'+bg+';border:2px solid '+color+';border-radius:16px;padding:14px';
+    card.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div style="font-weight:900;font-size:15px">🏭 '+machineLabel+'</div>'
+      +'<span style="font-size:11px;font-weight:900;color:'+color+';white-space:nowrap">'+label+'</span>'
+      +'</div>'
+      +(clientLabel?'<div style="margin-top:4px;color:#1a7ad4;font-weight:700;font-size:13px">📍 '+esc(clientLabel)+'</div>':'')
+      +(r.faultLabel?'<div style="margin-top:4px;font-size:13px">⚡ '+esc(r.faultLabel)+'</div>':'')
+      +'<div style="margin-top:6px;font-size:12px;color:#6f7b87">🕐 Ouvert le '+esc(opened)+'</div>'
+      +'<div style="margin-top:4px;font-size:12px;color:#6f7b87">👤 '+(r.assignedTo?('Assigné à <b>'+esc(r.assignedTo)+'</b>'):'Non assigné')+'</div>';
+    card.onclick=function(){ if(typeof openClientServiceRequests==='function') openClientServiceRequests(r.machineId); };
+    card.style.cursor='pointer';
+    list.appendChild(card);
+  });
+}
+
+// ── Onglet "Historique" : appels fermés (toutes machines) ─────────────────
+function renderPlanningHistory(){
+  var list=$('planningHistoryList'); if(!list) return;
+  list.innerHTML='';
+  var entries=[];
+  function walk(node, pathNames){
+    (node.machines||[]).forEach(function(m){
+      (m.serviceHistory||[]).filter(function(s){ return s.type==='intervention'; }).forEach(function(s){
+        entries.push(Object.assign({}, s, {
+          machineModel:m.model||'', machineSerial:m.serial||m.serialNumber||'',
+          clientPath:pathNames.join(' › ')
+        }));
+      });
+    });
+    (node.groups||[]).forEach(function(g){ walk(g, pathNames.concat([g.name])); });
+  }
+  if(db.clientRoot) walk(db.clientRoot, []);
+  entries.sort(function(a,b){ return String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date)); });
+  var empty=$('planningHistoryEmpty');
+  if(empty) empty.classList.toggle('hidden', entries.length>0);
+  entries.forEach(function(s){
+    var statusColor=s.resolution==='closed'?'#148B57':'#e65100';
+    var statusLabel=s.resolution==='closed'?'✅ Fermé':'🔄 Retour prévu';
+    var card=document.createElement('div');
+    card.style.cssText='background:white;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)';
+    card.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div><div style="font-weight:900;font-size:15px;color:var(--blue)">'+esc(s.serviceNumber||'SRV-???')+'</div>'
+      +'<div style="font-size:13px;color:#6f7b87">'+esc(s.date||'')+'</div></div>'
+      +'<span style="font-size:12px;font-weight:900;color:'+statusColor+'">'+statusLabel+'</span></div>'
+      +'<div style="margin-top:8px;font-size:13px"><b>'+esc(s.machineModel||'')+'</b>'+(s.machineSerial?' — N°'+esc(s.machineSerial):'')+'</div>'
+      +(s.clientPath?'<div style="margin-top:2px;color:#1a7ad4;font-weight:700;font-size:12px">📍 '+esc(s.clientPath)+'</div>':'')
+      +(s.technicianName?'<div style="font-size:12px;color:#6f7b87;margin-top:4px">👤 Fermé par '+esc(s.technicianName)+'</div>':'')
+      +(s.note?'<div style="font-size:13px;margin-top:6px;background:#f5f8fb;padding:8px;border-radius:10px">'+esc(s.note)+'</div>':'');
+    if(s.pdfHtml){
+      card.style.cursor='pointer';
+      card.onclick=function(){
+        var blob=new Blob([s.pdfHtml],{type:'text/html;charset=utf-8'});
+        window.open(URL.createObjectURL(blob),'_blank');
+      };
+    }
+    list.appendChild(card);
+  });
+}
+
 
 function renderPlanningGlobalPanel(){
   missionsEnsure();
@@ -7477,7 +7693,7 @@ if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlann
 if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
 function renderPlanningModule(){
   planningPathIds=[];
-  showPlanningTab('assign');
+  showPlanningMenu();
 }
 if($('openPlanningModule')) $('openPlanningModule').onclick=function(){
   if(!isAdmin()) return;
