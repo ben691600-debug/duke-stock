@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.72'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.73'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6528,6 +6528,7 @@ function createOrUpdateMission(data){
     log('ADD_MISSION', data.machineId+' → '+data.operatorUsername+' '+data.date+' '+data.time);
   }
   save();
+  if(typeof window._updateNotifBell==='function') window._updateNotifBell();
 }
 function deleteMission(id){
   missionsEnsure();
@@ -6542,6 +6543,38 @@ function setMissionStatus(id, status){
   var ms=db.missions.find(function(x){return x.id===id;});
   if(ms){ ms.status=status; log('MISSION_STATUS', ms.machineId+' → '+status); save(); }
 }
+
+// ── Accès restreint depuis "Mes missions" ────────────────────────────
+// Au lieu de naviguer dans tout l'arbre clients/groupes (l'opérateur aurait accès
+// à toutes les machines), on ouvre DIRECTEMENT le formulaire de réparation pour
+// la seule machine assignée. La mission n'est marquée terminée que lorsque ce
+// formulaire est effectivement rempli et enregistré (voir saveIntervention).
+function openMissionMachine(ms){
+  var found=findMachineById(ms.machineId);
+  if(!found || !found.machine){ alert('Machine introuvable pour cette mission.'); return; }
+  var machine=found.machine;
+  var machineGroup=found.group||null;
+  var groupPath=[];
+  if(machineGroup && machineGroup.id && typeof findClientPathToGroup==='function'){
+    var pathIds=findClientPathToGroup(machineGroup.id);
+    groupPath=pathIds.map(function(gid){var g=findGroupById(gid);return g?g.name:'';}).filter(Boolean);
+  }
+  var syntheticRequest={
+    id:'mission_'+ms.id,
+    serviceNumber:'MISSION',
+    status:'open',
+    groupPath:groupPath,
+    faultLabel:ms.notes||'',
+    machineModel:machine.model||'',
+    serial:machine.serial||machine.serialNumber||''
+  };
+  // Marque quelle mission doit être close automatiquement une fois le formulaire envoyé
+  window._intMissionId=ms.id;
+  if(typeof window.openInterventionForm==='function'){
+    window.openInterventionForm(syntheticRequest, machine, groupPath, ms.machineId);
+  }
+}
+window.openMissionMachine=openMissionMachine;
 
 // ── Dialog d'assignation rapide (depuis une carte machine) ──────────
 let _missionAssignMachineId=null, _missionEditingId=null;
@@ -7496,12 +7529,8 @@ function renderMyMissionsModule(){
       +'</div>';
     card.onclick=function(ev){
       if(ev.target.closest('button,a')) return;
-      if(found&&machineGroup){
-        clientPathIds=[];
-        var path=findClientPathToGroup(machineGroup.id);
-        if(path) clientPathIds=path;
-        show('clientsView');
-        renderClientMachineModule();
+      if(found){
+        openMissionMachine(ms);
       }
     };
     var cb=card.querySelector('[data-act=contact]'); if(cb) cb.onclick=function(ev){
@@ -7510,10 +7539,9 @@ function renderMyMissionsModule(){
     };
     var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){
       ev.stopPropagation();
-      log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(machineGroup?' | '+machineGroup.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
-      setMissionStatus(ms.id,'done');
-      deleteMission(ms.id);
-      renderMyMissionsModule();
+      // Le bouton ✓ ne ferme plus la mission directement : il faut remplir le
+      // formulaire de réparation, exactement comme pour un appel client.
+      openMissionMachine(ms);
     };
     var rb=card.querySelector('[data-act=remove]'); if(rb) rb.onclick=function(ev){
       ev.stopPropagation();
@@ -12336,10 +12364,16 @@ function doFallback(csv,filename,email,subject,bodyText){
       (node.machines||[]).forEach(function(m){
         var st = getMachineRequestStatus(m.id);
         // La cloche ne montre que les appels actifs (open ou in_progress), jamais les fermés
-        if(st!=='none') pending.push({machine:m, status:st});
+        if(st!=='none') pending.push({type:'request', machine:m, status:st});
       });
     }
     if(typeof db!=='undefined' && db.clientRoot) walkNode(db.clientRoot);
+
+    // Missions assignées à l'opérateur connecté, pas encore terminées
+    if(typeof getMissionsForOperator==='function' && currentUser.username){
+      var myPendingMissions=getMissionsForOperator(currentUser.username).filter(function(ms){return ms.status!=='done';});
+      myPendingMissions.forEach(function(ms){ pending.push({type:'mission', mission:ms}); });
+    }
 
     if(pending.length){
       btn.style.display='flex';
@@ -12349,6 +12383,16 @@ function doFallback(csv,filename,email,subject,bodyText){
       // Populate list
       if(list){
         list.innerHTML=pending.length?pending.map(function(item){
+          if(item.type==='mission'){
+            var ms=item.mission;
+            var mfound=(typeof findMachineById==='function')?findMachineById(ms.machineId):null;
+            var mLabel=mfound&&mfound.machine?(mfound.machine.model||'-'):'Machine';
+            var mSerial=mfound&&mfound.machine?(mfound.machine.serial||''):'';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:14px;border:2px solid #1a7ad4;background:#eef7fc;margin-bottom:8px;cursor:pointer" data-mission-id="'+esc(ms.id)+'">'
+              +'<span style="font-size:22px">📅</span>'
+              +'<div style="flex:1;min-width:0"><div style="font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mLabel)+'</div><div style="font-size:11px;color:#6f7b87">'+esc(mSerial)+' · '+esc(ms.date||'')+' '+esc(ms.time||'')+'</div></div>'
+              +'<span style="font-size:11px;font-weight:900;color:#1a7ad4;white-space:nowrap">Mission</span></div>';
+          }
           var m=item.machine; var st=item.status;
           var color=st==='open'?'#ef5350':'#fb8c00';
           var bg=st==='open'?'#fff5f5':'#fffde7';
@@ -12363,6 +12407,14 @@ function doFallback(csv,filename,email,subject,bodyText){
             var mid=this.getAttribute('data-machine-id');
             closeDropdown();
             if(typeof openClientServiceRequests==='function') openClientServiceRequests(mid);
+          };
+        });
+        list.querySelectorAll('[data-mission-id]').forEach(function(el){
+          el.onclick=function(){
+            var msid=this.getAttribute('data-mission-id');
+            closeDropdown();
+            var ms=(db.missions||[]).find(function(x){return x.id===msid;});
+            if(ms && typeof openMissionMachine==='function') openMissionMachine(ms);
           };
         });
       }
@@ -12949,6 +13001,16 @@ function saveIntervention(resolution){
     db.clientServiceRequests=(db.clientServiceRequests||[]).filter(function(x){
       return x.id!==_intRequest.id;
     });
+
+    // Si ce formulaire a été ouvert depuis "Mes missions", la mission n'est
+    // marquée terminée (et retirée) que maintenant, une fois le formulaire rempli.
+    if(window._intMissionId){
+      var _midToComplete=window._intMissionId;
+      window._intMissionId=null;
+      if(typeof setMissionStatus==='function') setMissionStatus(_midToComplete,'done');
+      if(typeof deleteMission==='function') deleteMission(_midToComplete);
+      if(typeof renderMyMissionsModule==='function') renderMyMissionsModule();
+    }
 
     save();
     renderClientMachineModule();
