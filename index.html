@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.70'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.71'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -10805,13 +10805,32 @@ translate();
     database.close();
   }
 
+  // window.open() est fréquemment bloqué silencieusement dans les PWA et certains
+  // navigateurs Android (surtout en mode "ajouté à l'écran d'accueil") — sans la
+  // moindre erreur, ce qui donne exactement l'impression de "j'appuie et rien ne
+  // se passe". Un lien <a> cliqué programmatiquement est beaucoup plus fiable.
+  function openExternalUrl(url){
+    if(!url) return;
+    try{
+      var a=document.createElement('a');
+      a.href=url; a.target='_blank'; a.rel='noopener noreferrer';
+      a.style.display='none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ a.remove(); },300);
+    }catch(e){
+      // Dernier recours : navigation directe
+      window.location.href=url;
+    }
+  }
+
   async function openDoc(model,type,key){
     const docs=getDocsForModel(model,type); const doc=docs[key];
     if(!doc){alert(T('docNotSaved'));return;}
     // Système URL : ouvrir directement le lien
     const url = doc.url || doc.data || '';
     if(!url){alert(T('docNotFound'));return;}
-    window.open(url,'_blank');
+    openExternalUrl(url);
   }
   window.openTechDocModel = openDoc;
 
@@ -10861,14 +10880,14 @@ translate();
       if(btn) btn.onclick=function(){
         const inp=$('faultDocUrl_'+k);
         const url=inp&&inp.value.trim();
-        if(url){ window.open(url,'_blank'); }
+        if(url){ openExternalUrl(url); }
         else {
           // Essayer d'ouvrir depuis Firebase
           const model=($('faultMachineModelInput')||{}).value||'';
           const type=($('faultMachineTypeInput')||{}).value||'';
           const docs=getDocsForModel(model,type);
           const doc=docs[k];
-          if(doc&&(doc.url||doc.data)){ window.open(doc.url||doc.data,'_blank'); }
+          if(doc&&(doc.url||doc.data)){ openExternalUrl(doc.url||doc.data); }
           else { alert(T('docNotSaved')); }
         }
       };
