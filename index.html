@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.71'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.72'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -236,6 +236,10 @@ main{max-width:1100px;margin:auto;padding:18px}
 .qtyLine{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px} .qty{font-weight:900;background:#eff7fc;border-radius:14px;padding:8px 12px;min-width:76px;text-align:center}
 .mini{padding:8px 12px;border-radius:14px}
 .modal{border:0;border-radius:24px;width:min(94vw,500px);padding:0;box-shadow:0 25px 70px rgba(0,0,0,.25)} .modal::backdrop{background:rgba(20,38,52,.35)}
+#docBooksDialog{position:fixed;top:0;left:0;margin:0;inset:0}
+#docBooksDialog::backdrop{background:#eef7fc}
+.docBooksBigBtn{display:flex;align-items:center;gap:16px;width:100%;padding:20px;border-radius:20px;border:2px solid var(--line);background:white;box-shadow:0 4px 16px rgba(0,0,0,.08);font-size:18px;font-weight:800;text-align:left;cursor:pointer}
+.docBooksBigBtn .docBooksIcon{font-size:32px}
 form{padding:20px} form h2{margin:0 0 16px;color:var(--blue)} label{display:block;font-weight:800;margin:12px 0}
 label input,label select{display:block;width:100%;margin-top:7px;padding:13px;border:1px solid var(--line);border-radius:15px;background:white}
 .formActions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px} .preview{width:100%;height:160px;border-radius:16px;border:1px solid var(--line);background-size:cover;background-position:center}
@@ -2728,6 +2732,14 @@ body.draggingMachine{
   </div>
 </dialog>
 
+<dialog id="docBooksDialog" style="border:0;padding:0;margin:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;background:#eef7fc">
+  <div style="display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))">
+    <h2 id="docBooksDialogTitle" style="margin:0 0 6px;text-align:center;font-size:22px">📚 Documents techniques</h2>
+    <p id="docBooksDialogModel" style="margin:0 0 28px;text-align:center;color:#5a6b78;font-size:15px"></p>
+    <div id="docBooksDialogButtons" style="display:flex;flex-direction:column;gap:16px;flex:1"></div>
+    <button type="button" class="btn secondary" id="docBooksDialogCancel" style="width:100%;margin-top:20px;min-height:54px;font-size:16px">✕ Fermer</button>
+  </div>
+</dialog>
 
 <dialog class="modal" id="transferDialog"><form id="transferForm">
   <h2 data-i="transfer">Transfert</h2>
@@ -6372,28 +6384,7 @@ function renderClientMachineModule(){
         ev.stopPropagation();
         ev.preventDefault();
         if(btn.dataset.doc==='books'){
-          // Afficher un mini popup sous le bouton avec 3 choix
-          var existing=btn.parentNode.querySelector('.docBooksPopup');
-          if(existing){existing.remove();return;}
-          var popup=document.createElement('div');
-          popup.className='docBooksPopup';
-          popup.style.cssText='position:absolute;left:0;top:calc(100% + 6px);background:white;border:2px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:999;min-width:180px;overflow:hidden';
-          [['📘','Manuel','manual'],['⚙️','Vue explosion / spare parts','spare'],['⚡','Schéma électrique','electrical']].forEach(function(item){
-            var row=document.createElement('button');
-            row.type='button';
-            row.style.cssText='display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:none;background:white;text-align:left;font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation';
-            row.innerHTML='<span style="font-size:18px">'+item[0]+'</span><span>'+item[1]+'</span>';
-            row.onclick=function(e){
-              e.stopPropagation();
-              popup.remove();
-              if(typeof window.openTechDocModel==='function') window.openTechDocModel(m.model||'','',item[2]);
-            };
-            popup.appendChild(row);
-          });
-          // Fermer au clic ailleurs
-          setTimeout(function(){document.addEventListener('click',function close(){popup.remove();document.removeEventListener('click',close);},{once:true});},10);
-          btn.parentNode.style.position='relative';
-          btn.parentNode.appendChild(popup);
+          if(typeof window.openDocBooksDialog==='function') window.openDocBooksDialog(m.model||'', m.name||m.model||'');
         } else {
           if(typeof window.openTechDocModel==='function') window.openTechDocModel(m.model||'','',btn.dataset.doc);
         }
@@ -10833,6 +10824,39 @@ translate();
     openExternalUrl(url);
   }
   window.openTechDocModel = openDoc;
+
+  // Dialog plein écran avec les 3 options (Manuel / Vue explosion / Schéma électrique),
+  // remplace l'ancien petit popup qui était trop petit et coupé dans le carrousel.
+  window.openDocBooksDialog = function(model, displayName){
+    var dlg=document.getElementById('docBooksDialog');
+    if(!dlg) return;
+    var titleModel=document.getElementById('docBooksDialogModel');
+    if(titleModel) titleModel.textContent=displayName||model||'';
+    var box=document.getElementById('docBooksDialogButtons');
+    if(box){
+      box.innerHTML='';
+      DOCS.forEach(function(item){
+        var key=item[0], icon=item[1], label=item[2];
+        var b=document.createElement('button');
+        b.type='button';
+        b.className='docBooksBigBtn';
+        b.innerHTML='<span class="docBooksIcon">'+icon+'</span><span>'+label+'</span>';
+        b.onclick=function(){
+          dlg.close();
+          openDoc(model,'',key);
+        };
+        box.appendChild(b);
+      });
+    }
+    dlg.showModal();
+  };
+  (function wireDocBooksDialog(){
+    var dlg=document.getElementById('docBooksDialog');
+    if(!dlg) return;
+    var cancelBtn=document.getElementById('docBooksDialogCancel');
+    if(cancelBtn) cancelBtn.onclick=function(){dlg.close();};
+    dlg.addEventListener('click',function(e){ if(e.target===dlg) dlg.close(); });
+  })();
 
   function ensureFaultDocPanel(){
     const form=$('faultMachineForm'); if(!form || $('faultMachineDocBox')) return;
