@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.78'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.79'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2467,7 +2467,7 @@ body.draggingMachine{
     <div class="expenseHistoryTotal" id="vehicleExpenseHistoryTotal">0 ₪</div>
   </div>
   <div class="expenseHistoryList" id="vehicleExpenseHistoryList"></div>
-  <div class="formActions" id="vehicleExpenseHistoryActions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  <div class="formActions" id="vehicleExpenseHistoryActions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <button type="button" class="btn secondary close" data-i="cancel"><span data-i="close">Fermer</span></button>
     <button type="button" class="btn secondary" id="vehicleExpenseExcelBtn" style="background:#1d6f42;color:white;border:none" data-i="exportExcel">📊 Exporter Excel</button>
     <button type="button" class="btn secondary" id="vehicleExpenseSendBtn">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
@@ -2767,6 +2767,15 @@ body.draggingMachine{
     <p id="docBooksDialogModel" style="margin:0 0 28px;text-align:center;color:#5a6b78;font-size:15px"></p>
     <div id="docBooksDialogButtons" style="display:flex;flex-direction:column;gap:16px;flex:1"></div>
     <button type="button" class="btn secondary" id="docBooksDialogCancel" style="width:100%;margin-top:20px;min-height:54px;font-size:16px">✕ Fermer</button>
+  </div>
+</dialog>
+
+<dialog class="modal" id="stockPartSupplierDialog" style="max-width:420px;width:94vw;padding:18px">
+  <h2 style="margin:0 0 4px">🏭 Fournisseur(s) de la pièce</h2>
+  <p class="muted" id="stockPartSupplierSub" style="margin:0 0 12px"></p>
+  <div id="stockPartSupplierList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto"></div>
+  <div class="formActions" style="margin-top:14px">
+    <button type="button" class="btn secondary close" data-i="cancel">Fermer</button>
   </div>
 </dialog>
 
@@ -4861,8 +4870,55 @@ function renderItems(){
     e.querySelector('[data-a=plus]').onclick=()=>prepareQtyChange(i.id,1,e);
     e.querySelector('[data-a=saveQty]').onclick=()=>savePreparedQty(i.id);
     e.querySelector('[data-a=del]').onclick=()=>deleteItem(i.id);
+    e.style.cursor='pointer';
+    e.onclick=(ev)=>{
+      if(ev.target.closest('button')) return;
+      openStockPartSupplierDialog(partNumber, i.name);
+    };
     $('items').appendChild(e);
   });
+  // ── Carrousel horizontal infini (gauche/droite) pour les étiquettes du stock ──
+  buildHorizontalCarousel($('items'));
+}
+
+// Affiche le(s) fournisseur(s) associé(s) à une pièce du stock véhicule, avec
+// accès direct (clic) vers la fiche du fournisseur correspondant.
+function openStockPartSupplierDialog(partNumber, partName){
+  var dlg=$('stockPartSupplierDialog');
+  var list=$('stockPartSupplierList');
+  var sub=$('stockPartSupplierSub');
+  if(!dlg||!list) return;
+  var matches=(typeof _findOtherSuppliersForPartNumber==='function')?_findOtherSuppliersForPartNumber(partNumber, null):[];
+  if(sub) sub.textContent=(partName||'')+(partNumber?' — Réf: '+partNumber:'');
+  if(!matches.length){
+    list.innerHTML='<p class="muted" style="text-align:center;padding:12px">Aucun fournisseur trouvé pour cette référence.</p>';
+  } else {
+    list.innerHTML=matches.map(function(m,idx){
+      var loc=m.subgroupName?(esc(m.supplierName)+' › '+esc(m.subgroupName)):esc(m.supplierName);
+      return '<div data-supplier-idx="'+idx+'" style="background:#f5f8fb;border:2px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px">'
+        +'<div><div style="font-weight:900;font-size:14px">'+loc+'</div>'
+        +(m.part.price?'<div style="font-size:12px;color:#6f7b87">'+T('price')+': '+esc(String(m.part.price))+'</div>':'')
+        +'</div><span style="color:#0A7CC2;font-weight:900">→</span></div>';
+    }).join('');
+    list.querySelectorAll('[data-supplier-idx]').forEach(function(row){
+      row.onclick=function(){
+        var idx=parseInt(this.getAttribute('data-supplier-idx'),10);
+        var m=matches[idx];
+        dlg.close();
+        selectedSupplierId=m.supplierId;
+        selectedSupplierSubgroupId=m.subgroupId||null;
+        show('suppliersView');
+        if(m.subgroupId){
+          _supplierShowLevel(2);
+          renderSubgroupParts();
+        } else {
+          _supplierShowLevel(1);
+          renderSupplierParts();
+        }
+      };
+    });
+  }
+  dlg.showModal();
 }
 
 let attendanceSelectedUser=null;
@@ -7300,6 +7356,117 @@ function buildPartsCarousel(container){
   requestAnimationFrame(function(){
     requestAnimationFrame(function(){
       sc.scrollTop = cells[1].offsetTop - (CONT_H-cells[1].offsetHeight)/2;
+      updateVis();
+    });
+  });
+}
+// ── Carrousel HORIZONTAL infini (gauche/droite) — utilisé pour le stock véhicule ──
+// Même principe que les carrousels verticaux (clones aux extrémités pour la boucle
+// infinie), mais orienté en X : chaque étiquette prend l'essentiel de la largeur,
+// avec un léger aperçu des voisines de chaque côté.
+function buildHorizontalCarousel(container){
+  if(!container) return;
+  container.style.display='';
+  container.style.flexDirection='';
+  container.style.minHeight='';
+  container.style.width='';
+  container.style.marginTop='';
+  var cards=Array.from(container.children);
+  if(!cards.length) return;
+  var n=cards.length;
+  var CELL_PAD=8;
+  var containerWidth=container.getBoundingClientRect().width || container.parentNode.getBoundingClientRect().width || 360;
+  var CELL_W=Math.max(Math.floor(containerWidth*0.86),200);
+  var GAP=12;
+  var PARTIAL=Math.max(Math.floor((containerWidth-CELL_W-GAP)/2),0);
+
+  if(n===1){
+    // Une seule étiquette : pas besoin de carrousel, juste centrer proprement
+    container.style.display='flex';
+    container.style.justifyContent='center';
+    cards[0].style.width=CELL_W+'px';
+    cards[0].style.maxWidth='100%';
+    return;
+  }
+
+  if(!document.getElementById('hcCss')){
+    var s=document.createElement('style'); s.id='hcCss';
+    s.textContent='#hcScroll::-webkit-scrollbar{display:none}';
+    document.head.appendChild(s);
+  }
+  var heights=cards.map(function(c){ return Math.max(c.offsetHeight,120); });
+  var maxH=Math.max.apply(null,heights);
+
+  var sc=document.createElement('div'); sc.id='hcScroll';
+  sc.style.cssText=[
+    'position:relative','width:100%',
+    'height:'+(maxH+CELL_PAD*2)+'px',
+    'overflow-x:scroll','overflow-y:hidden',
+    'scroll-snap-type:x mandatory',
+    '-webkit-overflow-scrolling:touch',
+    'scrollbar-width:none',
+    'display:flex','flex-direction:row',
+    'gap:'+GAP+'px',
+    'padding:0 '+PARTIAL+'px',
+    'box-sizing:border-box'
+  ].join(';');
+  var cells=[];
+  function makeCell(el,isClone){
+    var cell=document.createElement('div');
+    cell.style.cssText=[
+      'scroll-snap-align:center','width:'+CELL_W+'px','height:'+(maxH+CELL_PAD*2)+'px',
+      'flex-shrink:0','box-sizing:border-box','overflow:hidden',
+      'border-radius:22px','background:transparent','border:2px solid transparent',
+      'padding:'+CELL_PAD+'px',
+      'transition:transform .22s ease,opacity .22s ease,box-shadow .22s ease,border-color .22s ease'
+    ].join(';');
+    el.style.cssText=(el.style.cssText||'')+';width:100%!important;box-sizing:border-box!important;';
+    if(isClone) cell.style.pointerEvents='none';
+    cell.appendChild(el); sc.appendChild(cell); cells.push(cell);
+  }
+  makeCell(cards[n-1].cloneNode(true),true);
+  cards.forEach(function(card){ makeCell(card,false); });
+  makeCell(cards[0].cloneNode(true),true);
+  var lastCi=1;
+  function updateVis(){
+    var mid=sc.scrollLeft+containerWidth/2;
+    var minD=Infinity,ci=0;
+    cells.forEach(function(c,i){
+      var d=Math.abs((c.offsetLeft+c.offsetWidth/2)-mid);
+      if(d<minD){minD=d;ci=i;}
+    });
+    lastCi=ci;
+    cells.forEach(function(cell,i){
+      var dist=Math.abs((cell.offsetLeft+cell.offsetWidth/2)-mid);
+      var refSlot=cell.offsetWidth+GAP;
+      if(i===ci){cell.style.transform='scale(1)';cell.style.opacity='1';cell.style.borderColor='#0A7CC2';cell.style.boxShadow='0 6px 28px rgba(10,124,194,.18)';}
+      else{var t=Math.min(dist/refSlot,1);cell.style.transform='scale('+(1-t*0.08)+')';cell.style.opacity=''+(1-t*0.55);cell.style.borderColor='transparent';cell.style.boxShadow='none';}
+    });
+  }
+  var _lt=null;
+  sc.addEventListener('scroll',function(){
+    updateVis();
+    clearTimeout(_lt);
+    _lt=setTimeout(function(){
+      if(lastCi===0){
+        sc.style.scrollBehavior='auto';
+        sc.scrollLeft += (cells[n].offsetLeft-cells[0].offsetLeft);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }else if(lastCi===n+1){
+        sc.style.scrollBehavior='auto';
+        sc.scrollLeft -= (cells[n+1].offsetLeft-cells[1].offsetLeft);
+        sc.style.scrollBehavior='';
+        updateVis();
+      }
+    },100);
+  },{passive:true});
+  container.innerHTML='';
+  container.style.display='block';
+  container.appendChild(sc);
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      sc.scrollLeft = cells[1].offsetLeft - (containerWidth-cells[1].offsetWidth)/2;
       updateVis();
     });
   });
@@ -9908,10 +10075,10 @@ function openEditPart(id,inSubgroup){ const target=_getPartTarget(inSubgroup); i
 function _collectAllSupplierPartEntries(){
   var out=[];
   (db.suppliers||[]).forEach(function(s){
-    (s.parts||[]).forEach(function(p){ out.push({part:p, supplierName:s.name, subgroupName:''}); });
+    (s.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, subgroupId:'', subgroupName:''}); });
     (function walkSg(list, parentName){
       (list||[]).forEach(function(sg){
-        (sg.parts||[]).forEach(function(p){ out.push({part:p, supplierName:s.name, subgroupName:sg.name}); });
+        (sg.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, subgroupId:sg.id, subgroupName:sg.name}); });
         if(sg.subgroups&&sg.subgroups.length) walkSg(sg.subgroups, sg.name);
       });
     })(s.subgroups, '');
