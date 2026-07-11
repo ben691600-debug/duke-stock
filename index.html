@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.79'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.80'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2771,9 +2771,9 @@ body.draggingMachine{
 </dialog>
 
 <dialog class="modal" id="stockPartSupplierDialog" style="max-width:420px;width:94vw;padding:18px">
-  <h2 style="margin:0 0 4px">🏭 Fournisseur(s) de la pièce</h2>
+  <div id="stockPartSupplierPhoto" style="width:100%;height:150px;border-radius:16px;background:#eef7fc;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:12px"></div>
   <p class="muted" id="stockPartSupplierSub" style="margin:0 0 12px"></p>
-  <div id="stockPartSupplierList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto"></div>
+  <div id="stockPartSupplierList" style="display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow-y:auto"></div>
   <div class="formActions" style="margin-top:14px">
     <button type="button" class="btn secondary close" data-i="cancel">Fermer</button>
   </div>
@@ -4772,6 +4772,27 @@ function rejectTransfer(transferId){
   if(typeof window._updateNotifBell==='function') window._updateNotifBell();
 }
 
+function _resolveStockItemImage(i){
+  var img=i.image||i.photo||'';
+  if(!img){
+    var pn=(i.partNo||i.partNumber||'').trim().toLowerCase();
+    if(pn){
+      for(var _s=0;_s<(db.stockParts||[]).length;_s++){
+        var _sp=db.stockParts[_s];
+        if((_sp.partNumber||_sp.internalRef||'').trim().toLowerCase()===pn&&_sp.image){img=_sp.image;break;}
+      }
+      if(!img){
+        outer:for(var _si=0;_si<(db.suppliers||[]).length;_si++){
+          for(var _pi=0;_pi<((db.suppliers[_si].parts)||[]).length;_pi++){
+            var _p=db.suppliers[_si].parts[_pi];
+            if((_p.partNumber||'').trim().toLowerCase()===pn&&_p.image){img=_p.image;break outer;}
+          }
+        }
+      }
+    }
+  }
+  return img;
+}
 function renderItems(){
   const car=db.cars.find(x=>x.id===selected);
   if(!car || !canAccessVehicle(car)) { if($('items')) $('items').innerHTML=''; return; }
@@ -4825,24 +4846,7 @@ function renderItems(){
     const partNumber=i.partNo||i.partNumber||'';
     e.innerHTML=`
       ${(function(){
-        var img=i.image||i.photo||'';
-        if(!img){
-          var pn=(i.partNo||i.partNumber||'').trim().toLowerCase();
-          if(pn){
-            for(var _s=0;_s<(db.stockParts||[]).length;_s++){
-              var _sp=db.stockParts[_s];
-              if((_sp.partNumber||_sp.internalRef||'').trim().toLowerCase()===pn&&_sp.image){img=_sp.image;break;}
-            }
-            if(!img){
-              outer:for(var _si=0;_si<(db.suppliers||[]).length;_si++){
-                for(var _pi=0;_pi<((db.suppliers[_si].parts)||[]).length;_pi++){
-                  var _p=db.suppliers[_si].parts[_pi];
-                  if((_p.partNumber||'').trim().toLowerCase()===pn&&_p.image){img=_p.image;break outer;}
-                }
-              }
-            }
-          }
-        }
+        var img=_resolveStockItemImage(i);
         return img?`<img class="itemPhoto" src="${img}">`:`<div class="itemPhoto">${T('noImg')}</div>`;
       })()}
       <div class="stockItemBody">
@@ -4873,7 +4877,7 @@ function renderItems(){
     e.style.cursor='pointer';
     e.onclick=(ev)=>{
       if(ev.target.closest('button')) return;
-      openStockPartSupplierDialog(partNumber, i.name);
+      openStockPartSupplierDialog(partNumber, i.name, _resolveStockItemImage(i));
     };
     $('items').appendChild(e);
   });
@@ -4883,11 +4887,15 @@ function renderItems(){
 
 // Affiche le(s) fournisseur(s) associé(s) à une pièce du stock véhicule, avec
 // accès direct (clic) vers la fiche du fournisseur correspondant.
-function openStockPartSupplierDialog(partNumber, partName){
+function openStockPartSupplierDialog(partNumber, partName, partImage){
   var dlg=$('stockPartSupplierDialog');
   var list=$('stockPartSupplierList');
   var sub=$('stockPartSupplierSub');
+  var photoBox=$('stockPartSupplierPhoto');
   if(!dlg||!list) return;
+  if(photoBox){
+    photoBox.innerHTML=partImage?'<img src="'+esc(partImage)+'" style="width:100%;height:100%;object-fit:contain">':'<span style="font-size:40px">📦</span>';
+  }
   var matches=(typeof _findOtherSuppliersForPartNumber==='function')?_findOtherSuppliersForPartNumber(partNumber, null):[];
   if(sub) sub.textContent=(partName||'')+(partNumber?' — Réf: '+partNumber:'');
   if(!matches.length){
@@ -4895,10 +4903,12 @@ function openStockPartSupplierDialog(partNumber, partName){
   } else {
     list.innerHTML=matches.map(function(m,idx){
       var loc=m.subgroupName?(esc(m.supplierName)+' › '+esc(m.subgroupName)):esc(m.supplierName);
-      return '<div data-supplier-idx="'+idx+'" style="background:#f5f8fb;border:2px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px">'
-        +'<div><div style="font-weight:900;font-size:14px">'+loc+'</div>'
+      var img=m.supplierImage?'<img src="'+esc(m.supplierImage)+'" style="width:100%;height:100%;object-fit:cover">':'<span style="font-size:22px">🏭</span>';
+      return '<div data-supplier-idx="'+idx+'" style="background:#f5f8fb;border:2px solid var(--line);border-radius:14px;padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:12px">'
+        +'<div style="width:48px;height:48px;flex-shrink:0;border-radius:12px;overflow:hidden;background:white;display:flex;align-items:center;justify-content:center">'+img+'</div>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:900;font-size:15px">'+loc+'</div>'
         +(m.part.price?'<div style="font-size:12px;color:#6f7b87">'+T('price')+': '+esc(String(m.part.price))+'</div>':'')
-        +'</div><span style="color:#0A7CC2;font-weight:900">→</span></div>';
+        +'</div></div>';
     }).join('');
     list.querySelectorAll('[data-supplier-idx]').forEach(function(row){
       row.onclick=function(){
@@ -10075,10 +10085,10 @@ function openEditPart(id,inSubgroup){ const target=_getPartTarget(inSubgroup); i
 function _collectAllSupplierPartEntries(){
   var out=[];
   (db.suppliers||[]).forEach(function(s){
-    (s.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, subgroupId:'', subgroupName:''}); });
+    (s.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, supplierImage:s.image||'', subgroupId:'', subgroupName:''}); });
     (function walkSg(list, parentName){
       (list||[]).forEach(function(sg){
-        (sg.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, subgroupId:sg.id, subgroupName:sg.name}); });
+        (sg.parts||[]).forEach(function(p){ out.push({part:p, supplierId:s.id, supplierName:s.name, supplierImage:s.image||'', subgroupId:sg.id, subgroupName:sg.name}); });
         if(sg.subgroups&&sg.subgroups.length) walkSg(sg.subgroups, sg.name);
       });
     })(s.subgroups, '');
