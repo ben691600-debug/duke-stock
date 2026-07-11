@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.81'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.82'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2467,11 +2467,11 @@ body.draggingMachine{
     <div class="expenseHistoryTotal" id="vehicleExpenseHistoryTotal">0 ₪</div>
   </div>
   <div class="expenseHistoryList" id="vehicleExpenseHistoryList"></div>
-  <div class="formActions" id="vehicleExpenseHistoryActions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    <button type="button" class="btn secondary close" data-i="cancel"><span data-i="close">Fermer</span></button>
-    <button type="button" class="btn secondary" id="vehicleExpenseExcelBtn" style="background:#1d6f42;color:white;border:none" data-i="exportExcel">📊 Exporter Excel</button>
-    <button type="button" class="btn secondary" id="vehicleExpenseSendBtn">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
-    <button type="button" class="btn primary" id="vehicleExpenseHistoryAdd" data-i="addExpense">+ Ajouter dépense</button>
+  <div class="formActions" id="vehicleExpenseHistoryActions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;width:100%;box-sizing:border-box">
+    <button type="button" class="btn secondary close" data-i="cancel" style="min-height:52px;font-size:14px;white-space:normal;line-height:1.2;padding:8px 10px;width:100%;box-sizing:border-box"><span data-i="close">Fermer</span></button>
+    <button type="button" class="btn secondary" id="vehicleExpenseExcelBtn" style="background:#1d6f42;color:white;border:none;min-height:52px;font-size:14px;white-space:normal;line-height:1.2;padding:8px 10px;width:100%;box-sizing:border-box" data-i="exportExcel">📊 Exporter Excel</button>
+    <button type="button" class="btn secondary" id="vehicleExpenseSendBtn" style="min-height:52px;font-size:14px;white-space:normal;line-height:1.2;padding:8px 10px;width:100%;box-sizing:border-box">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
+    <button type="button" class="btn primary" id="vehicleExpenseHistoryAdd" data-i="addExpense" style="min-height:52px;font-size:14px;white-space:normal;line-height:1.2;padding:8px 10px;width:100%;box-sizing:border-box">+ Ajouter dépense</button>
   </div>
 </dialog>
 
@@ -4929,28 +4929,9 @@ function openStockPartSupplierDialog(partNumber, partName, partImage){
     });
     // ── Carrousel vertical : seulement si plusieurs fournisseurs (rend visible
     // qu'il y en a plusieurs). Avec un seul, la carte reste simplement affichée.
-    if(matches.length>1){
-      buildGroupsCarousel(list);
-      // Dans un dialog (pas une page complète), on borne la hauteur du carrousel
-      // pour que le bouton "Annuler" reste toujours visible à l'écran.
-      var _sc=list.querySelector('#gcScroll');
-      if(_sc){
-        var _capped=260;
-        var _cells=Array.from(_sc.children);
-        var _maxCellH=0;
-        _cells.forEach(function(c){ _maxCellH=Math.max(_maxCellH, c.offsetHeight); });
-        var _partial=Math.max(Math.floor((_capped-_maxCellH)/2),4);
-        _sc.style.setProperty('height',_capped+'px','important');
-        _sc.style.setProperty('padding',_partial+'px 0px','important');
-        requestAnimationFrame(function(){
-          requestAnimationFrame(function(){
-            requestAnimationFrame(function(){
-              if(_cells[1]) _sc.scrollTop=_cells[1].offsetTop-(_capped-_cells[1].offsetHeight)/2;
-            });
-          });
-        });
-      }
-    }
+    // Hauteur plafonnée à 260px : dans ce petit dialog (pas une page complète),
+    // il ne faut pas que le carrousel essaie de remplir tout l'écran.
+    if(matches.length>1) buildGroupsCarousel(list, 260);
   }
   dlg.showModal();
 }
@@ -6980,7 +6961,7 @@ function _carouselBottomLimit(){
   var mainPadBottom=mainEl?(parseFloat(window.getComputedStyle(mainEl).paddingBottom)||0):0;
   return viewportH-mainPadBottom;
 }
-function buildGroupsCarousel(container){
+function buildGroupsCarousel(container, maxHeightOverride){
   if(!container) return;
   // Réinitialise les styles inline laissés par un rendu précédent (ex: un groupe
   // unique qui forçait un minHeight plein écran pour se centrer) AVANT de vérifier
@@ -7004,6 +6985,7 @@ function buildGroupsCarousel(container){
     // cadre bleu habituel de la carte active du carrousel.
     var topPos1=container.getBoundingClientRect().top;
     var available1=Math.max(Math.floor(_carouselBottomLimit()-topPos1),0);
+    if(maxHeightOverride) available1=Math.min(available1,maxHeightOverride);
     container.style.display='flex';
     container.style.flexDirection='column';
     container.style.justifyContent='center';
@@ -7058,6 +7040,7 @@ function buildGroupsCarousel(container){
   var topPos=container.getBoundingClientRect().top;
   var available=Math.floor(_carouselBottomLimit()-topPos);
   var CONT_H=Math.max(available, maxH+GAP+24); // si l'espace manque vraiment, on garde un minimum lisible
+  if(maxHeightOverride) CONT_H=Math.min(CONT_H, Math.max(maxHeightOverride, maxH+GAP+24));
   var PARTIAL=Math.max(Math.floor((CONT_H-maxH-GAP)/2), 0);
   var sc=document.createElement('div'); sc.id='gcScroll';
   sc.style.cssText=[
