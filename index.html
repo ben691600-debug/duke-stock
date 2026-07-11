@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.77'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.78'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -268,7 +268,7 @@ label input,label select{display:block;width:100%;margin-top:7px;padding:13px;bo
 .expenseHistoryItem{border:1px solid #dde6ee;border-radius:16px;padding:10px;background:#fff;display:grid;gap:6px}
 .expenseHistoryItemTop{display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:900}
 .expenseHistoryActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.expenseHistoryActions button{border:0;border-radius:12px;padding:10px 9px;cursor:pointer;background:#eef4f8;font-weight:800;min-width:0}
+.expenseHistoryActions .btn{min-width:0;font-size:18px}
 .expenseHistoryDocs{font-size:13px;color:#61707B;display:flex;gap:6px;flex-wrap:wrap}
 .expenseHistoryDocs button{border:0;border-radius:10px;padding:5px 8px;cursor:pointer;background:#f5f8fb;color:#334}
 
@@ -1057,9 +1057,7 @@ html[dir="rtl"] #stockView .toolbar .actions{
   overflow-wrap:anywhere;
 }
 .vehicleCardActions{
-  display:grid;
-  grid-auto-flow:column;
-  grid-auto-columns:minmax(0,1fr);
+  display:flex;
   align-items:center;
   gap:8px;
   margin-top:14px;
@@ -1068,27 +1066,30 @@ html[dir="rtl"] #stockView .toolbar .actions{
 }
 .vehicleCardActions .mini,
 .vehicleCardActions .vehicleParkingBtn{
-  width:100%!important;
-  height:50px!important;
-  min-width:0!important;
-  border-radius:18px;
+  flex:0 0 46px!important;
+  width:46px!important;
+  height:46px!important;
+  min-width:46px!important;
+  border-radius:16px;
   padding:0!important;
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  font-size:20px;
+  font-size:19px;
 }
 .vehicleCardActions .vehicleExpenseTotal{
-  width:100%;
-  height:50px;
+  flex:1 1 auto;
+  height:46px;
   min-width:0;
-  padding:0 6px;
-  border-radius:18px;
-  font-size:15px;
+  padding:0 10px;
+  border-radius:16px;
+  font-size:14px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
   white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .vehicleCardHeader .vehiclePhoneBtn{
   width:48px!important;
@@ -1101,8 +1102,8 @@ html[dir="rtl"] #stockView .toolbar .actions{
   .vehicleCompactCard{padding:14px!important}
   .vehicleCardActions{gap:6px}
   .vehicleCardActions .mini,
-  .vehicleCardActions .vehicleParkingBtn,
-  .vehicleCardActions .vehicleExpenseTotal{height:46px!important;font-size:18px}
+  .vehicleCardActions .vehicleParkingBtn{flex-basis:42px!important;width:42px!important;height:42px!important;min-width:42px!important;font-size:17px}
+  .vehicleCardActions .vehicleExpenseTotal{height:42px;font-size:13px}
 }
 
 #cars .card{cursor:pointer}
@@ -2342,7 +2343,7 @@ body.draggingMachine{
   <div id="planningAssignPanel" class="hidden">
     <div id="planningPath" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
     <input class="search" id="planningSearch" placeholder="Rechercher groupe, machine, série...">
-    <h2 data-i="groups" style="margin:14px 0 8px">Groupes</h2>
+    <h2 data-i="groups" id="planningGroupsTitle" style="margin:14px 0 8px">Groupes</h2>
     <div id="planningEmptyGroups" class="hidden"><p class="muted">Aucun groupe ici.</p></div>
     <div class="supplierGrid" id="planningGroupsGrid"></div>
     <h2 data-i="machines" style="margin:18px 0 8px">Machines</h2>
@@ -2466,10 +2467,10 @@ body.draggingMachine{
     <div class="expenseHistoryTotal" id="vehicleExpenseHistoryTotal">0 ₪</div>
   </div>
   <div class="expenseHistoryList" id="vehicleExpenseHistoryList"></div>
-  <div class="formActions">
+  <div class="formActions" id="vehicleExpenseHistoryActions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
     <button type="button" class="btn secondary close" data-i="cancel"><span data-i="close">Fermer</span></button>
     <button type="button" class="btn secondary" id="vehicleExpenseExcelBtn" style="background:#1d6f42;color:white;border:none" data-i="exportExcel">📊 Exporter Excel</button>
-    <button type="button" class="btn secondary" id="vehicleExpenseSendBtn" style="width:100%">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
+    <button type="button" class="btn secondary" id="vehicleExpenseSendBtn">📧 <span data-i="sendExpenseSend">Envoyer rapport</span></button>
     <button type="button" class="btn primary" id="vehicleExpenseHistoryAdd" data-i="addExpense">+ Ajouter dépense</button>
   </div>
 </dialog>
@@ -4626,7 +4627,7 @@ function renderVehicleExpenseHistory(){
       <div class="expenseHistoryItemTop"><span>${esc(x.date||'')}</span><span>${formatShekel(x.amount)}</span></div>
       <div>${esc(x.reason||'')}</div>
       <div class="expenseHistoryDocs">${docs||'<span>Aucun document</span>'}</div>
-      <div class="expenseHistoryActions"><button type="button" data-edit-exp="${esc(x.id)}">✏️ Modifier</button><button type="button" data-del-exp="${esc(x.id)}">🗑️ Supprimer</button></div>
+      <div class="expenseHistoryActions"><button type="button" class="btn secondary mini" data-edit-exp="${esc(x.id)}" title="Modifier">✏️</button><button type="button" class="btn danger mini" data-del-exp="${esc(x.id)}" title="Supprimer">🗑️</button></div>
     </div>`;
   }).join(''):T('noExpensesMonth')?('<div class="muted">'+T('noExpensesMonth')+'</div>'):'';
   $('vehicleExpenseHistoryList').querySelectorAll('[data-edit-exp]').forEach(b=>b.onclick=()=>openVehicleExpenseDialog(carId,b.getAttribute('data-edit-exp')));
@@ -7441,7 +7442,8 @@ function renderPlanningAssignPanel(){
   const q=($('planningSearch')?$('planningSearch').value.toLowerCase().trim():'');
   const grid=$('planningGroupsGrid'); grid.innerHTML='';
   const groups=(node.groups||[]).filter(g=>!q||(g.name||'').toLowerCase().includes(q));
-  if($('planningEmptyGroups')) $('planningEmptyGroups').classList.toggle('hidden', groups.length>0);
+  if($('planningEmptyGroups')) $('planningEmptyGroups').classList.add('hidden');
+  if($('planningGroupsTitle')) $('planningGroupsTitle').style.display=groups.length?'':'none';
   groups.forEach(g=>{
     const card=document.createElement('div'); card.className='groupCard';
     card.innerHTML=`
@@ -12042,23 +12044,22 @@ body.noPageDrag{
 }
 .vehicleCompactCard { display: block !important; padding: 18px !important; overflow: hidden !important; }
 .vehicleCardActions {
-  display: grid !important; grid-auto-flow: column !important;
-  grid-auto-columns: minmax(0,1fr) !important;
+  display: flex !important;
   align-items: center !important; gap: 8px !important;
   margin-top: 14px !important; width: 100% !important;
 }
 .vehicleCardActions .mini,
 .vehicleCardActions .vehicleParkingBtn {
-  width: 100% !important; height: 50px !important; min-width: 0 !important;
+  flex: 0 0 46px !important; width: 46px !important; height: 46px !important; min-width: 46px !important;
   border-radius: var(--radius-btn) !important; padding: 0 !important;
   display: inline-flex !important; align-items: center !important; justify-content: center !important;
-  font-size: 20px;
+  font-size: 19px;
 }
 .vehicleCardActions .vehicleExpenseTotal {
-  width: 100% !important; height: 50px !important;
-  border-radius: var(--radius-btn) !important; font-size: 15px !important;
+  flex: 1 1 auto !important; height: 46px !important;
+  border-radius: var(--radius-btn) !important; font-size: 14px !important;
   display: inline-flex !important; align-items: center !important; justify-content: center !important;
-  white-space: nowrap !important; padding: 0 6px !important;
+  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; padding: 0 10px !important;
 }
 
 /* ══════════════════════════════════════════
@@ -12346,8 +12347,8 @@ body.noPageDrag{
     font-size: 15px !important;
   }
   .vehicleCardActions .mini,
-  .vehicleCardActions .vehicleParkingBtn,
-  .vehicleCardActions .vehicleExpenseTotal { height: 46px !important; font-size: 18px !important; }
+  .vehicleCardActions .vehicleParkingBtn { height: 42px !important; width:42px !important; flex-basis:42px !important; font-size: 17px !important; }
+  .vehicleCardActions .vehicleExpenseTotal { height: 42px !important; font-size: 13px !important; }
   .headerBottomRow .btn { font-size: 13px !important; padding: 0 6px !important; }
 }
 @media (max-width: 390px) {
