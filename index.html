@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.76'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.77'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2331,24 +2331,15 @@ body.draggingMachine{
 
 <section id="planningView" class="hidden">
 
+  <button class="btn secondary floatingBackBtn hidden" id="planningUpBtn" title="Retour">&#8617;</button>
+
   <!-- Menu d'entrée : choix entre gestion par groupes ou vue globale -->
   <div id="planningMenuPanel">
-    <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
-      <span style="font-size:20px">📅</span> Gestion planning
-    </div>
     <div class="supplierGrid" id="planningMenuGrid"></div>
   </div>
 
   <!-- Onglet 1 : Assigner — accès direct -->
   <div id="planningAssignPanel" class="hidden">
-    <div class="toolbar moduleActionToolbar">
-      <div class="actions moduleActionButtons oneButton">
-        <button class="btn secondary" id="planningBackToMenuBtn1">← Menu planning</button>
-      </div>
-    </div>
-    <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
-      <span style="font-size:20px">📍</span> Gestion planning — Assigner un opérateur
-    </div>
     <div id="planningPath" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
     <input class="search" id="planningSearch" placeholder="Rechercher groupe, machine, série...">
     <h2 data-i="groups" style="margin:14px 0 8px">Groupes</h2>
@@ -2360,15 +2351,6 @@ body.draggingMachine{
 
   <!-- Onglet 2 : Vue globale des alertes / missions -->
   <div id="planningGlobalPanel" class="hidden">
-    <div class="toolbar moduleActionToolbar">
-      <div class="actions moduleActionButtons oneButton">
-        <button class="btn secondary" id="planningBackToMenuBtn2">← Menu planning</button>
-      </div>
-    </div>
-    <div style="background:#0A7CC2;color:white;border-radius:16px;padding:12px 16px;margin-bottom:14px;font-weight:900;display:flex;align-items:center;gap:8px">
-      <span style="font-size:20px">🔔</span> Vue globale des alertes / missions
-    </div>
-
     <div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--line)">
       <button type="button" class="btn secondary planningGlobalTabBtn active" data-gtab="alerts" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">🔴 Ouvertes</button>
       <button type="button" class="btn secondary planningGlobalTabBtn" data-gtab="missions" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📅 Missions</button>
@@ -6429,9 +6411,9 @@ function renderClientMachineModule(){
           }
         })()}
         <p class="machineClickHint">${T('openMachine')}</p>
+        ${_missionRestrictId?`<button class="btn primary" type="button" data-act="missionRepair" title="Ouvrir le formulaire de réparation" style="width:100%;margin-top:10px;min-height:48px;font-weight:900;border-radius:14px">🛠️ Réparer / Fermer l'appel</button>`:''}
         <div class="machineQrInline"><img class="embeddedMachineQr" data-act="qr" title="QR service client" alt="QR service client" src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(clientServiceUrl(m.id))}"></div>
         ${!isClientUser()?`<div class="qtyLine clientMachineActionsWithDocs">
-          ${_missionRestrictId?`<button class="btn primary mini" type="button" data-act="missionRepair" title="Ouvrir le formulaire de réparation" style="flex:1 1 100%;font-weight:900">🛠️ Réparer / Fermer l'appel</button>`:''}
           <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="books" title="Documents techniques" aria-label="Documents techniques" style="position:relative">📚</button>
           <button class="btn secondary mini" type="button" data-act="clientReq" title="Demandes client" aria-label="Demandes client">🔔</button>
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="assignMission" title="Assigner mission" aria-label="Assigner mission">📅</button>`:''}
@@ -7494,6 +7476,8 @@ function renderPlanningAssignPanel(){
     card.querySelector('[data-act=assign]').onclick=()=>{openAssignMissionDialog(m.id, mission?mission.id:null);};
     list.appendChild(card);
   });
+  // ── Carousel vertical pour les machines (homogène avec le reste de l'appli) ──
+  buildPartsCarousel(list);
 }
 if($('planningSearch')) $('planningSearch').addEventListener('input',renderPlanningAssignPanel);
 
@@ -7501,6 +7485,7 @@ function showPlanningTab(tab){
   var assignPanel=$('planningAssignPanel'), globalPanel=$('planningGlobalPanel');
   var menuPanel=$('planningMenuPanel');
   if(menuPanel) menuPanel.classList.add('hidden');
+  if($('planningUpBtn')) $('planningUpBtn').classList.remove('hidden');
   if(tab==='global'){
     if(assignPanel) assignPanel.classList.add('hidden');
     if(globalPanel) globalPanel.classList.remove('hidden');
@@ -7517,6 +7502,7 @@ function showPlanningMenu(){
   if(assignPanel) assignPanel.classList.add('hidden');
   if(globalPanel) globalPanel.classList.add('hidden');
   if(menuPanel) menuPanel.classList.remove('hidden');
+  if($('planningUpBtn')) $('planningUpBtn').classList.add('hidden');
   renderPlanningMenu();
 }
 function renderPlanningMenu(){
@@ -7545,8 +7531,7 @@ if($('planningMenuMyMissionsCard')) $('planningMenuMyMissionsCard').onclick=()=>
   show('myMissionsView');
   if(typeof renderMyMissionsModule==='function') renderMyMissionsModule();
 };
-if($('planningBackToMenuBtn1')) $('planningBackToMenuBtn1').onclick=showPlanningMenu;
-if($('planningBackToMenuBtn2')) $('planningBackToMenuBtn2').onclick=showPlanningMenu;
+if($('planningUpBtn')) $('planningUpBtn').onclick=showPlanningMenu;
 
 // ── Sous-onglets de la vue globale (Alertes / Missions / Historique) ──────
 function showPlanningGlobalTab(gtab){
@@ -14628,6 +14613,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if(upBtn && !upBtn.classList.contains('hidden')){ upBtn.click(); return; }
     var supBtn = document.getElementById('supplierUpBtn');
     if(supBtn && !supBtn.classList.contains('hidden')){ supBtn.click(); return; }
+    var planBtn = document.getElementById('planningUpBtn');
+    if(planBtn && !planBtn.classList.contains('hidden')){ planBtn.click(); return; }
     // Pop from navigation history stack
     if(typeof _navHistory !== 'undefined' && _navHistory.length > 0){
       var prev = _navHistory.pop();
