@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.84'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.85'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6751,6 +6751,15 @@ window.openMissionRepairForm=openMissionRepairForm;
 // ── Dialog d'assignation rapide (depuis une carte machine) ──────────
 let _missionAssignMachineId=null, _missionEditingId=null, _missionForRequestId=null;
 function openAssignMissionDialog(machineId, missionId){
+  // Peu importe d'où on arrive (bouton "📅 Assigner mission" sur la carte machine,
+  // ou "Planifier en mission" depuis une demande client) : s'il existe DÉJÀ une
+  // mission non terminée pour cette machine, on la MODIFIE au lieu d'en créer
+  // une nouvelle — une seule mission active par machine à la fois.
+  if(!missionId){
+    missionsEnsure();
+    var _existing=(db.missions||[]).find(function(m){ return m.machineId===machineId && m.status!=='done'; });
+    if(_existing) missionId=_existing.id;
+  }
   _missionAssignMachineId=machineId; _missionEditingId=missionId||null;
   var dlg=$('missionAssignDialog'); if(!dlg) return;
   var sel=$('missionOperatorSelect');
@@ -12810,12 +12819,24 @@ function doFallback(csv,filename,email,subject,bodyText){
     if(isClientUser()){btn.style.display='none'; return;}
     // Collect all machines with open or in_progress requests
     var pending = [];
+    var _todayStr=(function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
     function walkNode(node){
       (node.groups||[]).forEach(function(g){walkNode(g);});
       (node.machines||[]).forEach(function(m){
         var st = getMachineRequestStatus(m.id);
+        if(st==='none') return;
+        // Si cet appel a été planifié en mission pour une date précise, la cloche
+        // n'alerte que le jour J — pas avant. Un appel NON planifié reste urgent
+        // et alerte immédiatement (comme avant).
+        var linkedReq=(db.clientServiceRequests||[]).find(function(r){
+          return r.machineId===m.id && (r.status||'open')!=='closed' && r.missionId;
+        });
+        if(linkedReq){
+          var linkedMs=(db.missions||[]).find(function(x){return x.id===linkedReq.missionId;});
+          if(linkedMs && linkedMs.date && linkedMs.date!==_todayStr) return;
+        }
         // La cloche ne montre que les appels actifs (open ou in_progress), jamais les fermés
-        if(st!=='none') pending.push({type:'request', machine:m, status:st});
+        pending.push({type:'request', machine:m, status:st});
       });
     }
     if(typeof db!=='undefined' && db.clientRoot) walkNode(db.clientRoot);
@@ -12823,13 +12844,16 @@ function doFallback(csv,filename,email,subject,bodyText){
     // Missions assignées à l'opérateur connecté, pas encore terminées.
     // On n'affiche PAS de mission séparée si un appel client est déjà listé pour
     // la même machine (sinon la même intervention apparaît deux fois avec deux
-    // façons différentes de la traiter).
+    // façons différentes de la traiter). La cloche n'alerte que le jour J : les
+    // missions à venir restent consultables dans "Mes missions" sans sonner
+    // avant la date prévue.
     if(typeof getMissionsForOperator==='function' && currentUser.username){
       var _machinesAlreadyPending={};
       pending.forEach(function(item){ if(item.type==='request') _machinesAlreadyPending[item.machine.id]=true; });
       var myPendingMissions=getMissionsForOperator(currentUser.username).filter(function(ms){return ms.status!=='done';});
       myPendingMissions.forEach(function(ms){
         if(_machinesAlreadyPending[ms.machineId]) return;
+        if(ms.date && ms.date!==_todayStr) return;
         pending.push({type:'mission', mission:ms});
       });
     }
