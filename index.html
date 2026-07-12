@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.82'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.83'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6693,6 +6693,18 @@ function setMissionStatus(id, status){
 function openMissionMachine(ms){
   var found=findMachineById(ms.machineId);
   if(!found || !found.machine){ alert('Machine introuvable pour cette mission.'); return; }
+  // Si un appel client est déjà ouvert pour cette machine, on ne montre PAS un
+  // deuxième écran séparé : on ouvre le même dialog "Demandes client" (avec
+  // Waze/contact de celui qui a ouvert l'appel + début/fin de dépannage), pour
+  // qu'il n'existe qu'UNE seule façon de fermer l'appel, pas deux.
+  var openReq=(db.clientServiceRequests||[]).find(function(r){
+    return r.machineId===ms.machineId && (r.status||'open')!=='closed';
+  });
+  if(openReq && typeof openClientServiceRequests==='function'){
+    window._intMissionId=ms.id;
+    openClientServiceRequests(ms.machineId);
+    return;
+  }
   window._missionRestrictMachineId=ms.machineId;
   window._missionRestrictMissionId=ms.id;
   show('clientsView');
@@ -8148,6 +8160,11 @@ function openClientServiceRequests(mid){
       contactHtml='<div style="display:flex;gap:6px;margin-top:8px">'
         +(nearestWaze?'<a href="'+esc(nearestWaze)+'" target="_blank" class="btn secondary mini" style="flex:1;background:#00d4b1;color:#fff;border:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;text-decoration:none"><img src="https://www.waze.com/favicon.ico" style="width:14px;height:14px" onerror="this.style.display=\'none\'">Waze</a>':'')
         +(nearestContactGid?'<button type="button" class="btn secondary mini" data-contact-gid="'+esc(nearestContactGid)+'" style="flex:1">📞 Contact</button>':'')
+        +'<button type="button" class="btn secondary mini" data-docs-mid="'+esc(r.machineId||mid)+'" style="flex:1">📚 Manuel</button>'
+        +'</div>';
+    } else {
+      contactHtml='<div style="display:flex;gap:6px;margin-top:8px">'
+        +'<button type="button" class="btn secondary mini" data-docs-mid="'+esc(r.machineId||mid)+'" style="flex:1">📚 Manuel</button>'
         +'</div>';
     }
 
@@ -8192,6 +8209,16 @@ function openClientServiceRequests(mid){
     // Handler bouton Contact groupe
     var cBtn=div.querySelector('[data-contact-gid]');
     if(cBtn) cBtn.onclick=function(ev){ev.stopPropagation();openClientGroupContactsById(cBtn.dataset.contactGid);};
+
+    // Handler bouton Manuel (documents techniques)
+    var docsBtn=div.querySelector('[data-docs-mid]');
+    if(docsBtn) docsBtn.onclick=function(ev){
+      ev.stopPropagation();
+      var mRes=findMachineById(docsBtn.dataset.docsMid);
+      if(mRes && mRes.machine && typeof window.openDocBooksDialog==='function'){
+        window.openDocBooksDialog(mRes.machine.model||'', mRes.machine.name||mRes.machine.model||'');
+      }
+    };
 
     // Bouton Planifier → ouvre le dialog assignMission pré-rempli avec la panne
     var planBtnEl=div.querySelector('[data-plan-req]');
@@ -12768,10 +12795,18 @@ function doFallback(csv,filename,email,subject,bodyText){
     }
     if(typeof db!=='undefined' && db.clientRoot) walkNode(db.clientRoot);
 
-    // Missions assignées à l'opérateur connecté, pas encore terminées
+    // Missions assignées à l'opérateur connecté, pas encore terminées.
+    // On n'affiche PAS de mission séparée si un appel client est déjà listé pour
+    // la même machine (sinon la même intervention apparaît deux fois avec deux
+    // façons différentes de la traiter).
     if(typeof getMissionsForOperator==='function' && currentUser.username){
+      var _machinesAlreadyPending={};
+      pending.forEach(function(item){ if(item.type==='request') _machinesAlreadyPending[item.machine.id]=true; });
       var myPendingMissions=getMissionsForOperator(currentUser.username).filter(function(ms){return ms.status!=='done';});
-      myPendingMissions.forEach(function(ms){ pending.push({type:'mission', mission:ms}); });
+      myPendingMissions.forEach(function(ms){
+        if(_machinesAlreadyPending[ms.machineId]) return;
+        pending.push({type:'mission', mission:ms});
+      });
     }
 
     if(pending.length){
