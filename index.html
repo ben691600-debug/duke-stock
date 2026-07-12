@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.85'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.86'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -5460,8 +5460,8 @@ $('itemForm').onsubmit=e=>{
 };
 $('search').oninput=renderItems;
 $('usersBtn').onclick=()=>show('usersView'); $('historyBtn').onclick=()=>show('historyView');
-if($('attendanceEntryBtn')) $('attendanceEntryBtn').onclick=()=>punchAttendance('in');
-if($('attendanceExitBtn')) $('attendanceExitBtn').onclick=()=>punchAttendance('out');
+if($('attendanceEntryBtn')) $('attendanceEntryBtn').onclick=()=>{ if(confirm('Confirmer l\'entrée ?')) punchAttendance('in'); };
+if($('attendanceExitBtn')) $('attendanceExitBtn').onclick=()=>{ if(confirm('Confirmer la sortie ?')) punchAttendance('out'); };
 if($('attendanceMonthInput')) $('attendanceMonthInput').onchange=renderAttendanceDialog;
 if($('attendanceExportBtn')) $('attendanceExportBtn').onclick=exportAttendanceMonth;
 // Collecte tous les groupes (récursif) pour le dropdown "Lieu attribué"
@@ -7817,7 +7817,7 @@ function renderPlanningHistory(){
       (m.serviceHistory||[]).filter(function(s){ return s.type==='intervention'; }).forEach(function(s){
         entries.push(Object.assign({}, s, {
           machineModel:m.model||'', machineSerial:m.serial||m.serialNumber||'',
-          clientPath:pathNames.join(' › ')
+          machineId:m.id, clientPath:pathNames.join(' › ')
         }));
       });
     });
@@ -7840,7 +7840,19 @@ function renderPlanningHistory(){
       +'<div style="margin-top:8px;font-size:13px"><b>'+esc(s.machineModel||'')+'</b>'+(s.machineSerial?' — N°'+esc(s.machineSerial):'')+'</div>'
       +(s.clientPath?'<div style="margin-top:2px;color:#1a7ad4;font-weight:700;font-size:12px">📍 '+esc(s.clientPath)+'</div>':'')
       +(s.technicianName?'<div style="font-size:12px;color:#6f7b87;margin-top:4px">👤 Fermé par '+esc(s.technicianName)+'</div>':'')
-      +(s.note?'<div style="font-size:13px;margin-top:6px;background:#f5f8fb;padding:8px;border-radius:10px">'+esc(s.note)+'</div>':'');
+      +(s.note?'<div style="font-size:13px;margin-top:6px;background:#f5f8fb;padding:8px;border-radius:10px">'+esc(s.note)+'</div>':'')
+      +(isAdmin()?'<button type="button" class="btn danger mini" data-del-hist style="width:100%;margin-top:10px">🗑️ Supprimer</button>':'');
+    var delBtn=card.querySelector('[data-del-hist]');
+    if(delBtn) delBtn.onclick=function(ev){
+      ev.stopPropagation();
+      if(!confirm(T('confirmDeleteHistory'))) return;
+      var mRes=findMachineById(s.machineId);
+      if(mRes && mRes.machine && mRes.machine.serviceHistory){
+        mRes.machine.serviceHistory=mRes.machine.serviceHistory.filter(function(x){return x.id!==s.id;});
+        save();
+      }
+      renderPlanningHistory();
+    };
     if(s.pdfHtml){
       card.style.cursor='pointer';
       card.onclick=function(){
@@ -8367,6 +8379,13 @@ function openClientServiceRequests(mid){
   var d=$('clientServiceRequestsDialog'); if(d) d.showModal();
 }
 function clientServiceOpenPublic(mid){
+  // Le QR code d'ouverture d'appel est réservé aux clients (scan externe, non
+  // connectés) et aux admins — un opérateur connecté ne doit pas pouvoir ouvrir
+  // un appel de cette façon.
+  if(typeof currentUser!=='undefined' && currentUser && typeof isOperator==='function' && isOperator()){
+    alert("Cette action est réservée aux clients et aux administrateurs.");
+    return false;
+  }
   const res=findMachineById(mid); if(!res) return false;
   const view=$('clientServicePublicView');
   const machine=res.machine;
