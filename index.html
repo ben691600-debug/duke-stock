@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.83'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.84'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -227,7 +227,7 @@ main{max-width:1100px;margin:auto;padding:18px}
 .roleBadge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e9eef4;color:#425063;font-size:12px;font-weight:800;margin-left:6px}
 .empty{background:white;border:1px dashed #b9c9d7;border-radius:24px;padding:22px;text-align:center;color:#71808c;margin-top:18px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px} .toolbar h2{margin:0;color:var(--blue)}
-.search{width:100%;padding:14px;border:1px solid var(--line);border-radius:17px;background:white;margin:10px 0 14px}
+.search{width:100%;padding:14px;border:1px solid var(--line);border-radius:17px;background:white;margin:10px 0 14px;display:none!important}
 #clientSearch{position:sticky;top:0;z-index:20;background:var(--bg);box-shadow:0 2px 8px rgba(10,124,194,.06)}
 .items{display:grid;gap:13px}
 .item{display:grid;grid-template-columns:96px 1fr;gap:13px;align-items:center;background:white;border:1px solid var(--line);border-radius:22px;padding:12px;box-shadow:var(--shadow)}
@@ -6650,19 +6650,26 @@ function createOrUpdateMission(data){
       ms.operatorUsername=data.operatorUsername;
       ms.date=data.date; ms.time=data.time; ms.notes=data.notes||'';
       ms.status=data.status||ms.status||'planned';
+      ms.missionType=data.missionType||'';
+      ms.faultRef=data.faultRef||'';
       log('EDIT_MISSION', ms.machineId+' → '+data.operatorUsername+' '+data.date+' '+data.time);
     }
+    save();
+    if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+    return data.id;
   } else {
     var nm={
       id:uid(), machineId:data.machineId, operatorUsername:data.operatorUsername,
       date:data.date, time:data.time, notes:data.notes||'', status:'planned',
+      missionType:data.missionType||'', faultRef:data.faultRef||'',
       createdAt:Date.now(), createdBy:currentUser?currentUser.username:''
     };
     db.missions.push(nm);
     log('ADD_MISSION', data.machineId+' → '+data.operatorUsername+' '+data.date+' '+data.time);
+    save();
+    if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+    return nm.id;
   }
-  save();
-  if(typeof window._updateNotifBell==='function') window._updateNotifBell();
 }
 function deleteMission(id){
   missionsEnsure();
@@ -6742,7 +6749,7 @@ function openMissionRepairForm(ms, found, groupPath){
 window.openMissionRepairForm=openMissionRepairForm;
 
 // ── Dialog d'assignation rapide (depuis une carte machine) ──────────
-let _missionAssignMachineId=null, _missionEditingId=null;
+let _missionAssignMachineId=null, _missionEditingId=null, _missionForRequestId=null;
 function openAssignMissionDialog(machineId, missionId){
   _missionAssignMachineId=machineId; _missionEditingId=missionId||null;
   var dlg=$('missionAssignDialog'); if(!dlg) return;
@@ -6792,7 +6799,7 @@ function openAssignMissionDialog(machineId, missionId){
       if(sel) sel.value=ms.operatorUsername;
       if($('missionDateInput')) $('missionDateInput').value=ms.date;
       if($('missionTimeInput')) $('missionTimeInput').value=ms.time||'';
-      if(typeSelect) typeSelect.value=ms.missionType||'';
+      if(typeSelect) typeSelect.value=ms.missionType||'Autre';
       if(ms.missionType==='Panne'&&faultRow) faultRow.style.display='block';
       if(faultSelect) faultSelect.value=ms.faultRef||'';
     }
@@ -6815,7 +6822,7 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   var missionType=($('missionTypeSelect')?$('missionTypeSelect').value:'');
   // Construire les notes automatiquement depuis le type
   var autoNotes=missionType+(faultRef?' — '+faultRef:'');
-  createOrUpdateMission({
+  var newMissionId=createOrUpdateMission({
     id:_missionEditingId,
     machineId:_missionAssignMachineId,
     operatorUsername:$('missionOperatorSelect').value,
@@ -6825,6 +6832,14 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
     missionType:missionType,
     faultRef:faultRef
   });
+  // Si cette mission vient de "Planifier en mission" depuis une demande client,
+  // on relie les deux : une replanification ultérieure modifiera cette MÊME
+  // mission au lieu d'en créer une nouvelle en double.
+  if(_missionForRequestId){
+    var _linkedReq=(db.clientServiceRequests||[]).find(function(x){return x.id===_missionForRequestId;});
+    if(_linkedReq){ _linkedReq.missionId=newMissionId; save(); }
+    _missionForRequestId=null;
+  }
   $('missionAssignDialog').close();
   _missionAssignMachineId=null; _missionEditingId=null;
   if(typeof renderClientMachineModule==='function') renderClientMachineModule();
@@ -7878,6 +7893,8 @@ function renderPlanningGlobalPanel(){
     var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=function(){if(confirm('Supprimer cette mission ?')){deleteMission(ms.id);renderPlanningGlobalPanel();}};
     container.appendChild(card);
   });
+  // ── Carrousel vertical (homogène avec le reste de l'application) ──────
+  buildPartsCarousel(container);
 }
 if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlanningGlobalPanel;
 if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
@@ -8223,13 +8240,21 @@ function openClientServiceRequests(mid){
     // Bouton Planifier → ouvre le dialog assignMission pré-rempli avec la panne
     var planBtnEl=div.querySelector('[data-plan-req]');
     if(planBtnEl) planBtnEl.onclick=function(){
-      openAssignMissionDialog(r.machineId||mid, null);
+      // Si cette demande a déjà une mission planifiée (et qu'elle existe toujours),
+      // on l'ÉDITE au lieu d'en créer une nouvelle — sinon changer la date ne
+      // faisait qu'ajouter une mission en double sans jamais rien "changer".
+      _missionForRequestId=r.id;
+      var existingMissionId=null;
+      if(r.missionId && (db.missions||[]).some(function(m){return m.id===r.missionId;})){
+        existingMissionId=r.missionId;
+      }
+      openAssignMissionDialog(r.machineId||mid, existingMissionId);
       setTimeout(function(){
         // Pré-sélectionner "Panne" et choisir la panne correspondante
         var typeSelect=$('missionTypeSelect');
         var faultSelect=$('missionFaultSelect');
         var faultRow=$('missionFaultRow');
-        if(typeSelect && r.faultLabel){
+        if(typeSelect && r.faultLabel && !existingMissionId){
           typeSelect.value='Panne';
           if(faultRow) faultRow.style.display='block';
           if(faultSelect){
@@ -13436,10 +13461,12 @@ function saveIntervention(resolution){
       return x.id!==_intRequest.id;
     });
 
-    // Si ce formulaire a été ouvert depuis "Mes missions", la mission n'est
-    // marquée terminée (et retirée) que maintenant, une fois le formulaire rempli.
-    if(window._intMissionId){
-      var _midToComplete=window._intMissionId;
+    // Si ce formulaire a été ouvert depuis "Mes missions", OU si la demande
+    // client fermée avait une mission planifiée liée (bouton "Planifier en
+    // mission"), cette mission est marquée terminée (et retirée) maintenant,
+    // une fois le formulaire de réparation effectivement rempli.
+    var _midToComplete=window._intMissionId || _intRequest.missionId || null;
+    if(_midToComplete){
       window._intMissionId=null;
       if(typeof setMissionStatus==='function') setMissionStatus(_midToComplete,'done');
       if(typeof deleteMission==='function') deleteMission(_midToComplete);
