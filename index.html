@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.86'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.87'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8039,11 +8039,24 @@ function findNearestGroupWithContact(groupId){
   }
   return '';
 }
+// Récupère les contacts d'un groupe ET de tous ses sous-groupes (récursif),
+// pour qu'un contact enregistré dans un sous-groupe reste visible depuis le
+// groupe principal.
+function _collectGroupContactsRecursive(group, subLabel){
+  var out=[];
+  normalizeGroupContacts(group).forEach(function(c){
+    out.push(Object.assign({}, c, {_subgroupName: subLabel||''}));
+  });
+  (group.groups||[]).forEach(function(sg){
+    out=out.concat(_collectGroupContactsRecursive(sg, sg.name||''));
+  });
+  return out;
+}
 function openClientGroupContactsById(gid){
   // Version indépendante de currentClientNode — fonctionne depuis n'importe quelle vue
   var group=findGroupById(gid);
   if(!group) return;
-  var contacts=normalizeGroupContacts(group);
+  var contacts=_collectGroupContactsRecursive(group);
   $('clientGroupContactsTitle').textContent='📞 Contacts - '+(group.name||'');
   var list=$('clientGroupContactsList');
   list.innerHTML='';
@@ -8053,7 +8066,7 @@ function openClientGroupContactsById(gid){
     contacts.forEach(function(c){
       var line=document.createElement('div');
       line.className='contactLine';
-      line.innerHTML='<div><b>'+esc(c.firstName||'-')+'</b>'+(c.role?' <span class="muted">('+esc(c.role)+')</span>':'')+'<br><span class="muted">'+esc(c.phone||'-')+'</span></div>'+(c.phone?'<a class="btn primary mini contactCallBtn" href="tel:'+esc(c.phone)+'">📞</a>':'');
+      line.innerHTML='<div><b>'+esc(c.firstName||'-')+'</b>'+(c.role?' <span class="muted">('+esc(c.role)+')</span>':'')+(c._subgroupName?' <span class="muted">— '+esc(c._subgroupName)+'</span>':'')+'<br><span class="muted">'+esc(c.phone||'-')+'</span></div>'+(c.phone?'<a class="btn primary mini contactCallBtn" href="tel:'+esc(c.phone)+'">📞</a>':'');
       list.appendChild(line);
     });
   }
@@ -8513,7 +8526,7 @@ function openClientGroupContacts(gid){
   const node=currentClientNode();
   const group=(node.groups||[]).find(g=>g.id===gid);
   if(!group) return;
-  const contacts=normalizeGroupContacts(group);
+  const contacts=_collectGroupContactsRecursive(group);
   $('clientGroupContactsTitle').textContent='📞 Contacts - '+(group.name||'');
   const list=$('clientGroupContactsList');
   list.innerHTML='';
@@ -8523,7 +8536,7 @@ function openClientGroupContacts(gid){
     contacts.forEach(c=>{
       const line=document.createElement('div');
       line.className='contactLine';
-      line.innerHTML=`<div><b>${esc(c.firstName||'-')}</b>${c.role?` <span class="muted">(${esc(c.role)})</span>`:''}<br><span class="muted">${esc(c.phone||'-')}</span></div>${c.phone?`<a class="btn primary mini contactCallBtn" href="tel:${esc(c.phone)}">📞</a>`:''}`;
+      line.innerHTML=`<div><b>${esc(c.firstName||'-')}</b>${c.role?` <span class="muted">(${esc(c.role)})</span>`:''}${c._subgroupName?` <span class="muted">— ${esc(c._subgroupName)}</span>`:''}<br><span class="muted">${esc(c.phone||'-')}</span></div>${c.phone?`<a class="btn primary mini contactCallBtn" href="tel:${esc(c.phone)}">📞</a>`:''}`;
       list.appendChild(line);
     });
   }
