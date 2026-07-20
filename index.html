@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.87'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.88'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -8052,11 +8052,23 @@ function _collectGroupContactsRecursive(group, subLabel){
   });
   return out;
 }
+// Retire les doublons (même numéro, ou même nom+rôle sans numéro) : garde la
+// première occurrence rencontrée (le groupe le plus proche a la priorité).
+function _dedupeContacts(contacts){
+  var seen={}; var out=[];
+  contacts.forEach(function(c){
+    var key=(c.phone&&c.phone.trim())?('p:'+c.phone.trim()):('n:'+(c.firstName||'').trim().toLowerCase()+'|'+(c.role||'').trim().toLowerCase());
+    if(seen[key]) return;
+    seen[key]=true;
+    out.push(c);
+  });
+  return out;
+}
 function openClientGroupContactsById(gid){
   // Version indépendante de currentClientNode — fonctionne depuis n'importe quelle vue
   var group=findGroupById(gid);
   if(!group) return;
-  var contacts=_collectGroupContactsRecursive(group);
+  var contacts=_dedupeContacts(_collectGroupContactsRecursive(group));
   $('clientGroupContactsTitle').textContent='📞 Contacts - '+(group.name||'');
   var list=$('clientGroupContactsList');
   list.innerHTML='';
@@ -8526,7 +8538,7 @@ function openClientGroupContacts(gid){
   const node=currentClientNode();
   const group=(node.groups||[]).find(g=>g.id===gid);
   if(!group) return;
-  const contacts=_collectGroupContactsRecursive(group);
+  const contacts=_dedupeContacts(_collectGroupContactsRecursive(group));
   $('clientGroupContactsTitle').textContent='📞 Contacts - '+(group.name||'');
   const list=$('clientGroupContactsList');
   list.innerHTML='';
