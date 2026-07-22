@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.95'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.96'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7960,6 +7960,15 @@ document.querySelectorAll('.planningMissionsViewBtn').forEach(function(b){
 });
 
 // ── Vue calendrier mensuel (façon Google Agenda) ───────────────────
+// Couleur déterministe par opérateur (le même opérateur garde toujours la même
+// couleur, sur le calendrier comme sur les étiquettes de mission).
+var OPERATOR_COLOR_PALETTE=['#0A7CC2','#fb8c00','#43a047','#8e24aa','#e53935','#00897b','#d81b60','#6d4c41','#3949ab','#00acc1','#c0851f','#5e35b1'];
+function _operatorColor(username){
+  if(!username) return '#8a97a3';
+  var hash=0;
+  for(var i=0;i<username.length;i++){ hash=(hash*31+username.charCodeAt(i))>>>0; }
+  return OPERATOR_COLOR_PALETTE[hash % OPERATOR_COLOR_PALETTE.length];
+}
 function renderPlanningMissionsCalendar(missionsList){
   var wrap=$('planningMissionsCalendarWrap'); if(!wrap) return;
   // Sur cet écran (comme les autres écrans à carrousel de l'appli), le
@@ -8007,15 +8016,14 @@ function renderPlanningMissionsCalendar(missionsList){
     var dayMissions=byDate[dateStr]||[];
     var isToday=dateStr===todayStr;
     var isSelected=dateStr===selectedDate;
-    var hasPlanned=dayMissions.some(function(m){return (m.status||'planned')==='planned';});
-    var hasPostponed=dayMissions.some(function(m){return m.status==='postponed';});
-    var hasDone=dayMissions.some(function(m){return m.status==='done';});
+    var dayOperators=[];
+    dayMissions.forEach(function(m){
+      if(m.operatorUsername && dayOperators.indexOf(m.operatorUsername)===-1) dayOperators.push(m.operatorUsername);
+    });
     html+='<button type="button" data-cal-day="'+dateStr+'" style="position:relative;height:34px;border-radius:9px;border:1.5px solid '+(isSelected?'#0A7CC2':isToday?'#00d4b1':'transparent')+';background:'+(isSelected?'#eaf4fc':'transparent')+';font-weight:'+(isToday?'900':'700')+';color:'+(isToday?'#00a389':'#20303c')+';font-size:11px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:1px">'
       +'<span>'+d+'</span>'
-      +(dayMissions.length?'<span style="display:flex;gap:2px">'
-        +(hasPlanned?'<span style="width:4px;height:4px;border-radius:50%;background:#0A7CC2"></span>':'')
-        +(hasPostponed?'<span style="width:4px;height:4px;border-radius:50%;background:#f0b429"></span>':'')
-        +(hasDone?'<span style="width:4px;height:4px;border-radius:50%;background:#2e7d32"></span>':'')
+      +(dayOperators.length?'<span style="display:flex;gap:2px">'
+        +dayOperators.map(function(op){ return '<span style="width:4px;height:4px;border-radius:50%;background:'+_operatorColor(op)+'"></span>'; }).join('')
         +'</span>':'<span style="height:4px"></span>')
       +'</button>';
   }
@@ -8045,11 +8053,13 @@ function renderPlanningMissionsCalendar(missionsList){
       var op=(db.users||[]).find(function(u){return u.username===ms.operatorUsername;});
       var opName=op?((op.firstName||op.username)):ms.operatorUsername;
       var isDone=ms.status==='done'; var isPostponed=ms.status==='postponed';
+      var opColor=_operatorColor(ms.operatorUsername);
       var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
       var card=document.createElement('div');
-      card.style.cssText='background:'+(isPostponed?'#fff8e1':'white')+';border:2px solid '+(isDone?'#c8e6c9':isPostponed?'#f0b429':'#b9d7ea')+';border-radius:16px;padding:12px'+(isDone?';opacity:.65':'');
-      card.innerHTML='<div style="font-weight:900">'+esc(ms.time||'')+' — '+machineLabel+'</div>'
-        +'<div style="color:#1a7ad4;font-weight:700;font-size:13px;margin-top:2px">👤 '+esc(opName)+'</div>'
+      card.style.cssText='background:white;border:2px solid '+opColor+';border-left:6px solid '+opColor+';border-radius:16px;padding:12px'+(isDone?';opacity:.65':'');
+      card.innerHTML=(isPostponed?'<div style="display:inline-block;background:#f0b429;color:#5c3d00;font-weight:900;font-size:10px;padding:2px 8px;border-radius:8px;margin-bottom:5px">🔄 REPORTÉE</div><br>':'')
+        +'<div style="font-weight:900">'+esc(ms.time||'')+' — '+machineLabel+'</div>'
+        +'<div style="display:flex;align-items:center;gap:5px;font-weight:700;font-size:13px;margin-top:2px;color:'+opColor+'"><span style="width:9px;height:9px;border-radius:50%;background:'+opColor+';flex-shrink:0"></span>'+esc(opName)+'</div>'
         +(ms.notes?'<div style="color:#6f7b87;font-size:12px;margin-top:2px">📝 '+esc(ms.notes)+'</div>':'')
         +'<div style="display:flex;gap:6px;margin-top:8px">'
         +'<button class="btn secondary mini" data-act="edit">✏️ '+(isPostponed?'Replanifier':'Modifier')+'</button>'
