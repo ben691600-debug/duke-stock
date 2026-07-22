@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.91'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.92'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7978,7 +7978,7 @@ function renderMyMissionsModule(){
         :'<div style="flex:1"></div>')
       +(contactGroupId?'<button class="btn secondary mini" data-act="contact" style="flex:1;min-width:0">📞</button>'
         :'<div style="flex:1"></div>')
-      +(!isDone?'<button data-act="postpone" title="Reporter — non faite aujourd\'hui" style="flex:0 0 44px;width:44px;min-height:38px;border-radius:12px;background:#fff4dc;color:#9a5b00;border:1.5px solid #f0c060;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">🔄</button>':'')
+      +(!isDone?'<button class="btn secondary mini" data-act="postpone" title="Reporter — non faite aujourd\'hui" style="flex:0 0 52px;min-width:52px;background:#fff4dc;color:#9a5b00;border:none;font-size:18px;display:inline-flex;align-items:center;justify-content:center">🔄</button>':'')
       +'</div>'
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">📝 '+esc(ms.notes)+'</div>':'')
       +'</div>';
