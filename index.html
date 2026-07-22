@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.97'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.98'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7335,8 +7335,10 @@ function buildPartsCarousel(container){
     container.style.boxSizing='border-box';
     cards[0].style.width='100%';
     cards[0].style.boxSizing='border-box';
-    cards[0].style.border=cards[0].classList.contains('partCard')?'2px solid #0A7CC2':cards[0].style.border;
-    cards[0].style.boxShadow=cards[0].classList.contains('partCard')?'0 6px 28px rgba(10,124,194,.18)':cards[0].style.boxShadow;
+    if(cards[0].classList.contains('partCard')){
+      cards[0].style.border='2px solid #0A7CC2';
+      cards[0].style.boxShadow='0 6px 28px rgba(10,124,194,.18)';
+    }
     return;
   }
   if(!document.getElementById('pcCss')){
