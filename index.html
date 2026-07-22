@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.93'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.94'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7980,15 +7980,15 @@ function renderPlanningMissionsCalendar(missionsList){
   var todayStr=(function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
   var selectedDate=window._planningCalSelectedDate||todayStr;
 
-  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-    +'<button type="button" id="calPrevBtn" class="btn secondary mini" style="min-width:40px">‹</button>'
-    +'<div style="font-weight:900;font-size:16px;color:#0A7CC2">'+monthNames[month]+' '+year+'</div>'
-    +'<button type="button" id="calNextBtn" class="btn secondary mini" style="min-width:40px">›</button>'
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    +'<button type="button" id="calPrevBtn" class="btn secondary mini" style="min-width:34px;padding:6px 10px">‹</button>'
+    +'<div style="font-weight:900;font-size:14px;color:#0A7CC2">'+monthNames[month]+' '+year+'</div>'
+    +'<button type="button" id="calNextBtn" class="btn secondary mini" style="min-width:34px;padding:6px 10px">›</button>'
     +'</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11px;font-weight:900;color:#8a97a3;margin-bottom:4px">'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:10px;font-weight:900;color:#8a97a3;margin-bottom:3px">'
     +dayNames.map(function(d){return '<div>'+d+'</div>';}).join('')
     +'</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">';
 
   for(var i=0;i<startOffset;i++) html+='<div></div>';
   for(var d=1; d<=daysInMonth; d++){
@@ -7999,18 +7999,18 @@ function renderPlanningMissionsCalendar(missionsList){
     var hasPlanned=dayMissions.some(function(m){return (m.status||'planned')==='planned';});
     var hasPostponed=dayMissions.some(function(m){return m.status==='postponed';});
     var hasDone=dayMissions.some(function(m){return m.status==='done';});
-    html+='<button type="button" data-cal-day="'+dateStr+'" style="position:relative;aspect-ratio:1;border-radius:12px;border:2px solid '+(isSelected?'#0A7CC2':isToday?'#00d4b1':'transparent')+';background:'+(isSelected?'#eaf4fc':'transparent')+';font-weight:'+(isToday?'900':'700')+';color:'+(isToday?'#00a389':'#20303c')+';font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px">'
+    html+='<button type="button" data-cal-day="'+dateStr+'" style="position:relative;height:34px;border-radius:9px;border:1.5px solid '+(isSelected?'#0A7CC2':isToday?'#00d4b1':'transparent')+';background:'+(isSelected?'#eaf4fc':'transparent')+';font-weight:'+(isToday?'900':'700')+';color:'+(isToday?'#00a389':'#20303c')+';font-size:11px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:1px">'
       +'<span>'+d+'</span>'
       +(dayMissions.length?'<span style="display:flex;gap:2px">'
-        +(hasPlanned?'<span style="width:5px;height:5px;border-radius:50%;background:#0A7CC2"></span>':'')
-        +(hasPostponed?'<span style="width:5px;height:5px;border-radius:50%;background:#f0b429"></span>':'')
-        +(hasDone?'<span style="width:5px;height:5px;border-radius:50%;background:#2e7d32"></span>':'')
-        +'</span>':'<span style="height:5px"></span>')
+        +(hasPlanned?'<span style="width:4px;height:4px;border-radius:50%;background:#0A7CC2"></span>':'')
+        +(hasPostponed?'<span style="width:4px;height:4px;border-radius:50%;background:#f0b429"></span>':'')
+        +(hasDone?'<span style="width:4px;height:4px;border-radius:50%;background:#2e7d32"></span>':'')
+        +'</span>':'<span style="height:4px"></span>')
       +'</button>';
   }
   html+='</div>';
 
-  html+='<div id="calSelectedDayList" style="margin-top:16px;display:flex;flex-direction:column;gap:10px"></div>';
+  html+='<div id="calSelectedDayList" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;padding-bottom:90px"></div>';
 
   wrap.innerHTML=html;
 
