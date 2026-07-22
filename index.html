@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.92'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.93'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2370,17 +2370,23 @@ body.draggingMachine{
     <!-- Sous-onglet : missions planifiées -->
     <div id="planningGlobalMissions" class="hidden">
       <div class="toolbar moduleActionToolbar">
-        <div class="actions moduleActionButtons" style="display:flex;gap:8px;flex-wrap:wrap">
-          <select id="planningOperatorFilter" style="flex:1;min-width:140px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
-            <option value="">👥 Tous les opérateurs</option>
+        <div class="actions moduleActionButtons twoButtons">
+          <select id="planningOperatorFilter" style="padding:10px 8px;border-radius:14px;border:2px solid #b9d7ea;background:#eef7fc;color:#0A7CC2;font-weight:800;font-size:13px">
+            <option value="">👥 Tous</option>
           </select>
-          <select id="planningStatusFilter" style="flex:1;min-width:120px;padding:10px 14px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+          <select id="planningStatusFilter" style="padding:10px 8px;border-radius:14px;border:2px solid #b9d7ea;background:#eef7fc;color:#0A7CC2;font-weight:800;font-size:13px">
             <option value="">Tous statuts</option>
             <option value="planned">📅 Planifiée</option>
+            <option value="postponed">🔄 Reportée</option>
             <option value="done">✅ Terminée</option>
           </select>
         </div>
       </div>
+      <div style="display:flex;gap:6px;margin:2px 0 12px;border-bottom:2px solid var(--line)">
+        <button type="button" class="btn secondary planningMissionsViewBtn active" data-mview="list" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📋 Liste</button>
+        <button type="button" class="btn secondary planningMissionsViewBtn" data-mview="calendar" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📆 Calendrier</button>
+      </div>
+      <div id="planningMissionsCalendarWrap" class="hidden"></div>
       <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
         <div style="font-size:48px;margin-bottom:10px">📅</div>
         <p>Aucune mission planifiée</p>
@@ -7892,6 +7898,17 @@ function renderPlanningGlobalPanel(){
     if(stVal && (ms.status||'planned')!==stVal) return false;
     return true;
   }).sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
+
+  if(window._planningMissionsView==='calendar'){
+    if($('planningList')) $('planningList').classList.add('hidden');
+    if($('planningEmptyState')) $('planningEmptyState').classList.add('hidden');
+    if($('planningMissionsCalendarWrap')) $('planningMissionsCalendarWrap').classList.remove('hidden');
+    renderPlanningMissionsCalendar(list);
+    return;
+  }
+  if($('planningMissionsCalendarWrap')) $('planningMissionsCalendarWrap').classList.add('hidden');
+  if($('planningList')) $('planningList').classList.remove('hidden');
+
   var container=$('planningList'); if(!container) return;
   container.innerHTML='';
   var empty=$('planningEmptyState');
@@ -7929,6 +7946,113 @@ function renderPlanningGlobalPanel(){
 }
 if($('planningOperatorFilter')) $('planningOperatorFilter').onchange=renderPlanningGlobalPanel;
 if($('planningStatusFilter')) $('planningStatusFilter').onchange=renderPlanningGlobalPanel;
+
+// ── Bascule Liste / Calendrier ─────────────────────────────────────
+window._planningMissionsView='list';
+window._planningCalMonth=null; // Date du 1er du mois affiché ; null = mois courant
+document.querySelectorAll('.planningMissionsViewBtn').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('.planningMissionsViewBtn').forEach(function(x){x.classList.toggle('active', x===b);});
+    window._planningMissionsView=b.dataset.mview;
+    window._planningCalMonth=null;
+    renderPlanningGlobalPanel();
+  };
+});
+
+// ── Vue calendrier mensuel (façon Google Agenda) ───────────────────
+function renderPlanningMissionsCalendar(missionsList){
+  var wrap=$('planningMissionsCalendarWrap'); if(!wrap) return;
+  var base=window._planningCalMonth||new Date();
+  var year=base.getFullYear(), month=base.getMonth();
+  var monthNames=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var dayNames=['D','L','M','M','J','V','S'];
+
+  // Regrouper les missions par date (YYYY-MM-DD)
+  var byDate={};
+  missionsList.forEach(function(ms){
+    if(!ms.date) return;
+    (byDate[ms.date]=byDate[ms.date]||[]).push(ms);
+  });
+
+  var firstOfMonth=new Date(year,month,1);
+  var startOffset=firstOfMonth.getDay(); // 0=dimanche
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var todayStr=(function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  var selectedDate=window._planningCalSelectedDate||todayStr;
+
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<button type="button" id="calPrevBtn" class="btn secondary mini" style="min-width:40px">‹</button>'
+    +'<div style="font-weight:900;font-size:16px;color:#0A7CC2">'+monthNames[month]+' '+year+'</div>'
+    +'<button type="button" id="calNextBtn" class="btn secondary mini" style="min-width:40px">›</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:11px;font-weight:900;color:#8a97a3;margin-bottom:4px">'
+    +dayNames.map(function(d){return '<div>'+d+'</div>';}).join('')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+
+  for(var i=0;i<startOffset;i++) html+='<div></div>';
+  for(var d=1; d<=daysInMonth; d++){
+    var dateStr=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var dayMissions=byDate[dateStr]||[];
+    var isToday=dateStr===todayStr;
+    var isSelected=dateStr===selectedDate;
+    var hasPlanned=dayMissions.some(function(m){return (m.status||'planned')==='planned';});
+    var hasPostponed=dayMissions.some(function(m){return m.status==='postponed';});
+    var hasDone=dayMissions.some(function(m){return m.status==='done';});
+    html+='<button type="button" data-cal-day="'+dateStr+'" style="position:relative;aspect-ratio:1;border-radius:12px;border:2px solid '+(isSelected?'#0A7CC2':isToday?'#00d4b1':'transparent')+';background:'+(isSelected?'#eaf4fc':'transparent')+';font-weight:'+(isToday?'900':'700')+';color:'+(isToday?'#00a389':'#20303c')+';font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px">'
+      +'<span>'+d+'</span>'
+      +(dayMissions.length?'<span style="display:flex;gap:2px">'
+        +(hasPlanned?'<span style="width:5px;height:5px;border-radius:50%;background:#0A7CC2"></span>':'')
+        +(hasPostponed?'<span style="width:5px;height:5px;border-radius:50%;background:#f0b429"></span>':'')
+        +(hasDone?'<span style="width:5px;height:5px;border-radius:50%;background:#2e7d32"></span>':'')
+        +'</span>':'<span style="height:5px"></span>')
+      +'</button>';
+  }
+  html+='</div>';
+
+  html+='<div id="calSelectedDayList" style="margin-top:16px;display:flex;flex-direction:column;gap:10px"></div>';
+
+  wrap.innerHTML=html;
+
+  var pv=$('calPrevBtn'); if(pv) pv.onclick=function(){window._planningCalMonth=new Date(year,month-1,1);renderPlanningGlobalPanel();};
+  var nx=$('calNextBtn'); if(nx) nx.onclick=function(){window._planningCalMonth=new Date(year,month+1,1);renderPlanningGlobalPanel();};
+  wrap.querySelectorAll('[data-cal-day]').forEach(function(btn){
+    btn.onclick=function(){
+      window._planningCalSelectedDate=btn.getAttribute('data-cal-day');
+      renderPlanningGlobalPanel();
+    };
+  });
+
+  // Liste des missions du jour sélectionné, sous le calendrier
+  var dayList=$('calSelectedDayList');
+  var selMissions=byDate[selectedDate]||[];
+  if(!selMissions.length){
+    dayList.innerHTML='<p class="muted" style="text-align:center;padding:10px 0">Aucune mission ce jour-là.</p>';
+  } else {
+    selMissions.sort(function(a,b){return (a.time||'').localeCompare(b.time||'');}).forEach(function(ms){
+      var found=findMachineById(ms.machineId);
+      var op=(db.users||[]).find(function(u){return u.username===ms.operatorUsername;});
+      var opName=op?((op.firstName||op.username)):ms.operatorUsername;
+      var isDone=ms.status==='done'; var isPostponed=ms.status==='postponed';
+      var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
+      var card=document.createElement('div');
+      card.style.cssText='background:'+(isPostponed?'#fff8e1':'white')+';border:2px solid '+(isDone?'#c8e6c9':isPostponed?'#f0b429':'#b9d7ea')+';border-radius:16px;padding:12px'+(isDone?';opacity:.65':'');
+      card.innerHTML='<div style="font-weight:900">'+esc(ms.time||'')+' — '+machineLabel+'</div>'
+        +'<div style="color:#1a7ad4;font-weight:700;font-size:13px;margin-top:2px">👤 '+esc(opName)+'</div>'
+        +(ms.notes?'<div style="color:#6f7b87;font-size:12px;margin-top:2px">📝 '+esc(ms.notes)+'</div>':'')
+        +'<div style="display:flex;gap:6px;margin-top:8px">'
+        +'<button class="btn secondary mini" data-act="edit">✏️ '+(isPostponed?'Replanifier':'Modifier')+'</button>'
+        +(!isDone?'<button class="btn ok mini" data-act="done">✅ Terminée</button>':'')
+        +'<button class="btn danger mini" data-act="delete">🗑️</button>'
+        +'</div>';
+      var eb=card.querySelector('[data-act=edit]'); if(eb) eb.onclick=function(){openAssignMissionDialog(ms.machineId, ms.id);};
+      var db3=card.querySelector('[data-act=done]'); if(db3) db3.onclick=function(){setMissionStatus(ms.id,'done');renderPlanningGlobalPanel();};
+      var dl=card.querySelector('[data-act=delete]'); if(dl) dl.onclick=function(){if(confirm('Supprimer cette mission ?')){deleteMission(ms.id);renderPlanningGlobalPanel();}};
+      dayList.appendChild(card);
+    });
+  }
+}
+
 function renderPlanningModule(){
   planningPathIds=[];
   showPlanningMenu();
