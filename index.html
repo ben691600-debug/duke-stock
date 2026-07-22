@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.89'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.90'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6629,6 +6629,7 @@ function getMissionsForOperator(username){
   return db.missions.filter(function(ms){
     if(ms.operatorUsername!==username) return false;
     if(ms.status==='cancelled') return false;
+    if(ms.status==='postponed') return false;
     return true;
   }).sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
 }
@@ -6831,6 +6832,8 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
   var missionType=($('missionTypeSelect')?$('missionTypeSelect').value:'');
   // Construire les notes automatiquement depuis le type
   var autoNotes=missionType+(faultRef?' — '+faultRef:'');
+  var _existingMs=_missionEditingId?(db.missions||[]).find(function(x){return x.id===_missionEditingId;}):null;
+  var _newStatus=(_existingMs&&_existingMs.status==='postponed')?'planned':undefined;
   var newMissionId=createOrUpdateMission({
     id:_missionEditingId,
     machineId:_missionAssignMachineId,
@@ -6839,7 +6842,8 @@ if($('missionAssignForm')) $('missionAssignForm').onsubmit=function(e){
     time:$('missionTimeInput')?$('missionTimeInput').value:'',
     notes:autoNotes,
     missionType:missionType,
-    faultRef:faultRef
+    faultRef:faultRef,
+    status:_newStatus
   });
   // Si cette mission vient de "Planifier en mission" depuis une demande client,
   // on relie les deux : une replanification ultérieure modifiera cette MÊME
@@ -7897,19 +7901,21 @@ function renderPlanningGlobalPanel(){
     var op=(db.users||[]).find(function(u){return u.username===ms.operatorUsername;});
     var opName=op?((op.firstName||op.username)+(op.lastName?' '+op.lastName:'')):ms.operatorUsername;
     var isDone=ms.status==='done';
+    var isPostponed=ms.status==='postponed';
     var card=document.createElement('div');
-    card.style.cssText='background:white;border:2px solid '+(isDone?'#c8e6c9':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start'+(isDone?';opacity:.65':'');
+    card.style.cssText='background:'+(isPostponed?'#fff8e1':'white')+';border:2px solid '+(isDone?'#c8e6c9':isPostponed?'#f0b429':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start'+(isDone?';opacity:.65':'');
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
     var groupLabel=found&&found.group?esc(found.group.name):'';
     card.innerHTML=
-      '<div style="font-size:28px">'+(isDone?'\u2705':'\ud83d\udcc5')+'</div>'
+      '<div style="font-size:28px">'+(isDone?'\u2705':isPostponed?'\ud83d\udd04':'\ud83d\udcc5')+'</div>'
       +'<div style="flex:1;min-width:0">'
+      +(isPostponed?'<div style="display:inline-block;background:#f0b429;color:#5c3d00;font-weight:900;font-size:11px;padding:3px 9px;border-radius:8px;margin-bottom:4px">🔄 REPORTÉE — à replanifier</div><br>':'')
       +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' \u00e0 '+esc(ms.time)+'</div>'
       +'<div style="font-weight:800;color:#1a7ad4;margin-top:2px">\ud83d\udc64 '+esc(opName)+'</div>'
       +'<div style="margin-top:4px">\ud83c\udfed '+machineLabel+(groupLabel?' \u2014 '+groupLabel:'')+'</div>'
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">\ud83d\udcdd '+esc(ms.notes)+'</div>':'')
       +'<div style="display:flex;gap:6px;margin-top:10px">'
-      +'<button class="btn secondary mini" data-act="edit">\u270f\ufe0f Modifier</button>'
+      +'<button class="btn secondary mini" data-act="edit">\u270f\ufe0f '+(isPostponed?'Replanifier':'Modifier')+'</button>'
       +(!isDone?'<button class="btn ok mini" data-act="done">\u2705 Termin\u00e9e</button>':'')
       +'<button class="btn danger mini" data-act="delete">\ud83d\uddd1\ufe0f</button>'
       +'</div></div>';
@@ -7973,8 +7979,10 @@ function renderMyMissionsModule(){
       +(contactGroupId?'<button class="btn secondary mini" data-act="contact" style="flex:1">📞</button>'
         :'<div style="flex:1"></div>')
       +'</div>'
+      +(!isDone?'<button data-act="postpone" style="width:100%;margin-top:8px;min-height:38px;border-radius:12px;background:#fff4dc;color:#9a5b00;border:1.5px solid #f0c060;font-weight:800;font-size:13px;cursor:pointer">🔄 Reporter — non faite aujourd\'hui</button>':'')
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">📝 '+esc(ms.notes)+'</div>':'')
       +'</div>';
+    // Clic sur la carte (hors boutons) : ouvre l'étiquette de la machine
     card.onclick=function(ev){
       if(ev.target.closest('button,a')) return;
       if(found){
@@ -7985,11 +7993,27 @@ function renderMyMissionsModule(){
       ev.stopPropagation();
       openClientGroupContactsById(contactGroupId);
     };
+    // Le bouton ✓ valide et enlève directement la mission (distinct du clic sur la carte)
     var db2=card.querySelector('[data-act=done]'); if(db2) db2.onclick=function(ev){
       ev.stopPropagation();
-      // Le bouton ✓ ne ferme plus la mission directement : il faut remplir le
-      // formulaire de réparation, exactement comme pour un appel client.
-      openMissionMachine(ms);
+      if(!confirm('Marquer cette mission comme terminée et la retirer de la liste ?')) return;
+      log('MISSION_COMPLETED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+(machineGroup?' | '+machineGroup.name:'')+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
+      setMissionStatus(ms.id,'done');
+      deleteMission(ms.id);
+      renderMyMissionsModule();
+    };
+    // Le bouton Reporter renvoie la mission à l'administrateur (non faite aujourd'hui)
+    var pb=card.querySelector('[data-act=postpone]'); if(pb) pb.onclick=function(ev){
+      ev.stopPropagation();
+      if(!confirm('Signaler à l\'administrateur que cette mission n\'a pas pu être faite aujourd\'hui, pour qu\'il la replanifie ?')) return;
+      ms.status='postponed';
+      ms.postponedBy=currentUser?currentUser.username:'';
+      ms.postponedAt=Date.now();
+      ms.notes=(ms.notes?ms.notes+' | ':'')+'⚠️ Reportée par '+(currentUser?currentUser.username:'')+' — à replanifier';
+      log('MISSION_POSTPONED', (found?found.machine.model+' ('+found.machine.serial+')':ms.machineId)+' | '+ms.date+' '+ms.time+' | '+(currentUser?currentUser.username:''));
+      save();
+      if(typeof window._updateNotifBell==='function') window._updateNotifBell();
+      renderMyMissionsModule();
     };
     var rb=card.querySelector('[data-act=remove]'); if(rb) rb.onclick=function(ev){
       ev.stopPropagation();
