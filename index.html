@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.96'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.97'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -238,6 +238,8 @@ main{max-width:1100px;margin:auto;padding:18px}
 .modal{border:0;border-radius:24px;width:min(94vw,500px);padding:0;box-shadow:0 25px 70px rgba(0,0,0,.25)} .modal::backdrop{background:rgba(20,38,52,.35)}
 .planningGlobalTabBtn{background:#eef7fc!important;color:#5a6b78!important;border:2px solid var(--line)!important;font-weight:800!important}
 .planningGlobalTabBtn.active{background:#0A7CC2!important;color:white!important;border-color:#0A7CC2!important}
+.planningMissionsViewBtn{background:#eef7fc!important;color:#5a6b78!important;border:2px solid var(--line)!important;font-weight:800!important}
+.planningMissionsViewBtn.active{background:#0A7CC2!important;color:white!important;border-color:#0A7CC2!important}
 #docBooksDialog{position:fixed;top:0;left:0;margin:0;inset:0}
 #docBooksDialog::backdrop{background:#eef7fc}
 .docBooksBigBtn{display:flex;align-items:center;gap:16px;width:100%;padding:20px;border-radius:20px;border:2px solid var(--line);background:white;box-shadow:0 4px 16px rgba(0,0,0,.08);font-size:18px;font-weight:800;text-align:left;cursor:pointer}
@@ -7919,8 +7921,9 @@ function renderPlanningGlobalPanel(){
     var opName=op?((op.firstName||op.username)+(op.lastName?' '+op.lastName:'')):ms.operatorUsername;
     var isDone=ms.status==='done';
     var isPostponed=ms.status==='postponed';
+    var opColor=_operatorColor(ms.operatorUsername);
     var card=document.createElement('div');
-    card.style.cssText='background:'+(isPostponed?'#fff8e1':'white')+';border:2px solid '+(isDone?'#c8e6c9':isPostponed?'#f0b429':'#b9d7ea')+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start'+(isDone?';opacity:.65':'');
+    card.style.cssText='background:white;border-top:2px solid '+opColor+';border-right:2px solid '+opColor+';border-bottom:2px solid '+opColor+';border-left:6px solid '+opColor+';border-radius:18px;padding:14px;display:flex;gap:12px;align-items:flex-start'+(isDone?';opacity:.65':'');
     var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
     var groupLabel=found&&found.group?esc(found.group.name):'';
     card.innerHTML=
@@ -7928,7 +7931,7 @@ function renderPlanningGlobalPanel(){
       +'<div style="flex:1;min-width:0">'
       +(isPostponed?'<div style="display:inline-block;background:#f0b429;color:#5c3d00;font-weight:900;font-size:11px;padding:3px 9px;border-radius:8px;margin-bottom:4px">🔄 REPORTÉE — à replanifier</div><br>':'')
       +'<div style="font-weight:900;font-size:15px">'+esc(ms.date)+' \u00e0 '+esc(ms.time)+'</div>'
-      +'<div style="font-weight:800;color:#1a7ad4;margin-top:2px">\ud83d\udc64 '+esc(opName)+'</div>'
+      +'<div style="display:flex;align-items:center;gap:5px;font-weight:800;margin-top:2px;color:'+opColor+'"><span style="width:9px;height:9px;border-radius:50%;background:'+opColor+';flex-shrink:0"></span>'+esc(opName)+'</div>'
       +'<div style="margin-top:4px">\ud83c\udfed '+machineLabel+(groupLabel?' \u2014 '+groupLabel:'')+'</div>'
       +(ms.notes?'<div style="margin-top:4px;color:#6f7b87;font-size:13px">\ud83d\udcdd '+esc(ms.notes)+'</div>':'')
       +'<div style="display:flex;gap:6px;margin-top:10px">'
@@ -8056,7 +8059,7 @@ function renderPlanningMissionsCalendar(missionsList){
       var opColor=_operatorColor(ms.operatorUsername);
       var machineLabel=found?esc(found.machine.model)+' ('+esc(found.machine.serial)+')':'Machine introuvable';
       var card=document.createElement('div');
-      card.style.cssText='background:white;border:2px solid '+opColor+';border-left:6px solid '+opColor+';border-radius:16px;padding:12px'+(isDone?';opacity:.65':'');
+      card.style.cssText='background:white;border-top:2px solid '+opColor+';border-right:2px solid '+opColor+';border-bottom:2px solid '+opColor+';border-left:6px solid '+opColor+';border-radius:16px;padding:12px'+(isDone?';opacity:.65':'');
       card.innerHTML=(isPostponed?'<div style="display:inline-block;background:#f0b429;color:#5c3d00;font-weight:900;font-size:10px;padding:2px 8px;border-radius:8px;margin-bottom:5px">🔄 REPORTÉE</div><br>':'')
         +'<div style="font-weight:900">'+esc(ms.time||'')+' — '+machineLabel+'</div>'
         +'<div style="display:flex;align-items:center;gap:5px;font-weight:700;font-size:13px;margin-top:2px;color:'+opColor+'"><span style="width:9px;height:9px;border-radius:50%;background:'+opColor+';flex-shrink:0"></span>'+esc(opName)+'</div>'
