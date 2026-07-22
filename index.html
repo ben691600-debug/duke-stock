@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.94'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.95'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -7962,6 +7962,17 @@ document.querySelectorAll('.planningMissionsViewBtn').forEach(function(b){
 // ── Vue calendrier mensuel (façon Google Agenda) ───────────────────
 function renderPlanningMissionsCalendar(missionsList){
   var wrap=$('planningMissionsCalendarWrap'); if(!wrap) return;
+  // Sur cet écran (comme les autres écrans à carrousel de l'appli), le
+  // défilement de la PAGE est volontairement désactivé pour ne pas gêner les
+  // carrousels — mais le calendrier n'est pas un carrousel : il a donc besoin
+  // de son propre défilement interne pour voir tout son contenu.
+  var topPos=wrap.getBoundingClientRect().top || (window.innerHeight*0.4);
+  var available=Math.max(Math.floor(_carouselBottomLimit()-topPos), 200);
+  wrap.style.maxHeight=available+'px';
+  wrap.style.overflowY='auto';
+  wrap.style.webkitOverflowScrolling='touch';
+  wrap.style.paddingBottom='16px';
+  wrap.style.boxSizing='border-box';
   var base=window._planningCalMonth||new Date();
   var year=base.getFullYear(), month=base.getMonth();
   var monthNames=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -8010,7 +8021,7 @@ function renderPlanningMissionsCalendar(missionsList){
   }
   html+='</div>';
 
-  html+='<div id="calSelectedDayList" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;padding-bottom:90px"></div>';
+  html+='<div id="calSelectedDayList" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;padding-bottom:20px"></div>';
 
   wrap.innerHTML=html;
 
@@ -11903,6 +11914,12 @@ var _waitReady=setInterval(function(){
       clearInterval(_waitReady);
       var _oldShow=show;
       window.show=function(view){
+        // Filet de sécurité : si un glisser-déposer (réorganisation de groupes
+        // fournisseurs) a été interrompu sans se terminer proprement (geste
+        // annulé, changement d'appli, etc.), le défilement de toute la page
+        // pouvait rester bloqué en permanence. On le débloque systématiquement
+        // à chaque changement d'écran.
+        document.body.classList.remove('draggingSupplierGroup');
         var cu=(typeof currentUser!=='undefined')?currentUser:null;
         // Bloquer uniquement si utilisateur connecté ET non-admin ET permission manquante
         if(cu&&cu.role&&cu.role!=='admin'){
