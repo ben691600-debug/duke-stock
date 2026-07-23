@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.04'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v2.05'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2822,6 +2822,11 @@ body.draggingMachine{
     <p>Aucune pièce dans ce stock fournisseur.</p>
   </div>
   <div id="maintenanceFilterList" style="display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto"></div>
+  <div id="maintenanceFilterSharedWrap" class="hidden" style="margin-top:14px">
+    <div style="font-weight:800;font-size:13px;color:#1a7ad4;margin-bottom:6px">🔗 Autres machines utilisant le même filtre</div>
+    <p class="muted" style="margin:0 0 8px;font-size:12px">Coche celles où ce même changement de filtre a aussi été fait (le stock n'est déduit qu'une fois).</p>
+    <div id="maintenanceFilterSharedList" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
   <div class="formActions" style="margin-top:14px">
     <button type="button" class="btn secondary close" data-i="cancel">Annuler</button>
     <button type="button" class="btn primary" id="maintenanceFilterValidateBtn">✅ Valider</button>
@@ -10572,6 +10577,26 @@ function _getMaintenanceFilterParts(match){
   sg.parts=sg.parts||[];
   return sg.parts;
 }
+// Trouve toutes les autres machines (activées pour Maintenance Filter) dont le
+// filtre correspond au MÊME fournisseur/sous-groupe — pour pouvoir appliquer la
+// même maintenance sans déduire le stock deux fois.
+function _findMachinesSharingMaintenanceFilter(match, excludeMachineId){
+  var out=[];
+  function walk(node, group){
+    (node.machines||[]).forEach(function(m){
+      if(m.id===excludeMachineId) return;
+      if(!m.maintenanceFilterEnabled) return;
+      var gName=group?group.name:'';
+      var mMatch=_findSupplierOrSubgroupByName(gName);
+      if(mMatch && mMatch.supplierId===match.supplierId && (mMatch.subgroupId||null)===(match.subgroupId||null)){
+        out.push({machine:m, group:group});
+      }
+    });
+    (node.groups||[]).forEach(function(g){ walk(g, g); });
+  }
+  walk(db.clientRoot, null);
+  return out;
+}
 function openMaintenanceFilterForMachine(machineId){
   var res=findMachineById(machineId);
   if(!res || !res.machine){ alert('Machine introuvable.'); return; }
@@ -10607,7 +10632,48 @@ function openMaintenanceFilterForMachine(machineId){
         +'</label>';
     }).join('');
   }
+  // Machines partageant le même filtre
+  var sharedWrap=$('maintenanceFilterSharedWrap');
+  var sharedList=$('maintenanceFilterSharedList');
+  var sharedMachines=_findMachinesSharingMaintenanceFilter(match, machineId);
+  if(sharedWrap) sharedWrap.classList.toggle('hidden', sharedMachines.length===0);
+  if(sharedList){
+    sharedList.innerHTML=sharedMachines.map(function(sm,idx){
+      return '<label data-shared-idx="'+idx+'" style="display:flex;align-items:center;gap:10px;background:#eef7fc;border:2px solid #b9d7ea;border-radius:14px;padding:10px 12px;cursor:pointer">'
+        +'<input type="checkbox" data-shared-chk style="width:20px;height:20px;flex-shrink:0">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:800;font-size:13px">'+esc(sm.machine.model||'-')+' — S/N '+esc(sm.machine.serial||'')+'</div>'
+        +'<div style="font-size:11px;color:#6f7b87">'+esc(sm.group?sm.group.name:'')+'</div>'
+        +'</div></label>';
+    }).join('');
+    window._maintFilterSharedCandidates=sharedMachines;
+  }
   $('maintenanceFilterDialog').showModal();
+}
+function _applyMaintenanceFilterRecord(machine, group, freqMonths, todayISO, nextDueISO, usedLabels, sharedWith){
+  var today=new Date().toLocaleDateString('fr-FR');
+  machine.maintenanceFilterFrequencyMonths=freqMonths||machine.maintenanceFilterFrequencyMonths||null;
+  machine.maintenanceFilterLastDone=todayISO;
+  machine.maintenanceFilterNextDue=nextDueISO;
+  machine.serviceHistory=machine.serviceHistory||[];
+  machine.serviceHistory.unshift({
+    id:uid(), type:'maintenance', date:today,
+    note:'🧰 Maintenance Filter — Pièces utilisées : '+usedLabels.join(', ')+(freqMonths?' | Fréquence : tous les '+freqMonths+' mois':'')+(sharedWith?' | Partagé avec : '+sharedWith:'')
+  });
+  if(!Array.isArray(db.maintenanceFilterHistory)) db.maintenanceFilterHistory=[];
+  db.maintenanceFilterHistory.push({
+    id:uid(),
+    machineId:machine.id,
+    machineModel:machine.model||'',
+    machineSerial:machine.serial||machine.serialNumber||'',
+    groupName:group?group.name:'',
+    partsUsed:usedLabels,
+    frequencyMonths:freqMonths||null,
+    nextDue:nextDueISO,
+    date:todayISO,
+    performedBy:currentUser?currentUser.username:'',
+    sharedWith:sharedWith||null
+  });
 }
 if($('maintenanceFilterValidateBtn')) $('maintenanceFilterValidateBtn').onclick=function(){
   var match=window._maintFilterMatch;
@@ -10643,42 +10709,35 @@ if($('maintenanceFilterValidateBtn')) $('maintenanceFilterValidateBtn').onclick=
     nd.setMonth(nd.getMonth()+freqMonths);
     nextDueISO=nd.toISOString().slice(0,10);
   }
-  // Trace dans l'historique de la machine
+  // Machines partagées cochées : même maintenance appliquée, SANS redéduire le stock
+  var sharedCandidates=window._maintFilterSharedCandidates||[];
+  var sharedRows=document.querySelectorAll('#maintenanceFilterSharedList [data-shared-idx]');
+  var sharedApplied=[];
+  sharedRows.forEach(function(row){
+    var chk=row.querySelector('[data-shared-chk]');
+    if(!chk || !chk.checked) return;
+    var idx=parseInt(row.getAttribute('data-shared-idx'),10);
+    var sm=sharedCandidates[idx]; if(!sm) return;
+    sharedApplied.push(sm);
+  });
   var res=findMachineById(window._maintFilterMachineId);
+  var primaryLabel=res&&res.machine?(res.machine.model+' (S/N '+(res.machine.serial||'')+')'):'';
+  var sharedNames=sharedApplied.map(function(sm){ return sm.machine.model+' (S/N '+(sm.machine.serial||'')+')'; });
   if(res && res.machine){
-    res.machine.maintenanceFilterFrequencyMonths=freqMonths||res.machine.maintenanceFilterFrequencyMonths||null;
-    res.machine.maintenanceFilterLastDone=todayISO;
-    res.machine.maintenanceFilterNextDue=nextDueISO;
-    res.machine.serviceHistory=res.machine.serviceHistory||[];
-    var today=new Date().toLocaleDateString('fr-FR');
-    res.machine.serviceHistory.unshift({
-      id:uid(), type:'maintenance', date:today,
-      note:'🧰 Maintenance Filter — Pièces utilisées : '+usedLabels.join(', ')+(freqMonths?' | Fréquence : tous les '+freqMonths+' mois':'')
-    });
-    // Suivi dédié (pour le compteur/historique global des maintenances)
-    if(!Array.isArray(db.maintenanceFilterHistory)) db.maintenanceFilterHistory=[];
-    db.maintenanceFilterHistory.push({
-      id:uid(),
-      machineId:window._maintFilterMachineId,
-      machineModel:res.machine.model||'',
-      machineSerial:res.machine.serial||res.machine.serialNumber||'',
-      groupName:res.group?res.group.name:'',
-      partsUsed:usedLabels,
-      frequencyMonths:freqMonths||null,
-      nextDue:nextDueISO,
-      date:todayISO,
-      performedBy:currentUser?currentUser.username:''
-    });
-    save();
+    _applyMaintenanceFilterRecord(res.machine, res.group, freqMonths, todayISO, nextDueISO, usedLabels, sharedNames.length?sharedNames.join(', '):null);
   }
+  sharedApplied.forEach(function(sm){
+    _applyMaintenanceFilterRecord(sm.machine, sm.group, freqMonths, todayISO, nextDueISO, usedLabels, primaryLabel);
+  });
+  save();
   $('maintenanceFilterDialog').close();
-  alert('✅ Stock mis à jour : '+usedLabels.join(', '));
+  alert('✅ Stock mis à jour : '+usedLabels.join(', ')+(sharedApplied.length?'\n🔗 Maintenance aussi appliquée à '+sharedApplied.length+' autre(s) machine(s) (stock non redéduit).':''));
   if(typeof renderClientMachineModule==='function') renderClientMachineModule();
 };
 window.openMaintenanceFilterForMachine=openMaintenanceFilterForMachine;
 
 // ── Suivi / historique des maintenances (Maintenance Filter) ──────────
-if($('maintenanceFilterHistoryBtn')) $('maintenanceFilterHistoryBtn').onclick=function(){
+function renderMaintenanceFilterHistoryDialog(){
   var mid=window._maintFilterMachineId;
   var res=findMachineById(mid);
   var hist=(db.maintenanceFilterHistory||[]).filter(function(h){return h.machineId===mid;})
@@ -10691,17 +10750,30 @@ if($('maintenanceFilterHistoryBtn')) $('maintenanceFilterHistoryBtn').onclick=fu
       list.innerHTML='<p class="muted" style="text-align:center;padding:20px 0">Aucune maintenance enregistrée pour cette machine.</p>';
     } else {
       list.innerHTML=hist.map(function(h){
-        return '<div style="background:white;border:2px solid #b9d7ea;border-radius:14px;padding:12px">'
+        return '<div data-hist-id="'+esc(h.id)+'" style="background:white;border:2px solid #b9d7ea;border-radius:14px;padding:12px">'
+          +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
           +'<div style="font-weight:900;font-size:14px">'+esc(h.date)+'</div>'
+          +'<button type="button" class="btn danger mini" data-del-hist style="flex-shrink:0">🗑️</button>'
+          +'</div>'
           +(h.frequencyMonths?'<div style="font-size:12px;color:#1a7ad4;font-weight:700;margin-top:2px">🔁 Tous les '+h.frequencyMonths+' mois'+(h.nextDue?' — Prochaine : '+esc(h.nextDue):'')+'</div>':'')
           +'<div style="font-size:13px;margin-top:4px">🧰 '+esc((h.partsUsed||[]).join(', '))+'</div>'
           +(h.performedBy?'<div style="font-size:12px;color:#6f7b87;margin-top:4px">👤 '+esc(h.performedBy)+'</div>':'')
           +'</div>';
       }).join('');
+      list.querySelectorAll('[data-del-hist]').forEach(function(btn){
+        btn.onclick=function(){
+          if(!confirm('Supprimer cette entrée d\'historique ?')) return;
+          var hid=btn.closest('[data-hist-id]').getAttribute('data-hist-id');
+          db.maintenanceFilterHistory=(db.maintenanceFilterHistory||[]).filter(function(x){return x.id!==hid;});
+          save();
+          renderMaintenanceFilterHistoryDialog();
+        };
+      });
     }
   }
   $('maintenanceFilterHistoryDialog').showModal();
-};
+}
+if($('maintenanceFilterHistoryBtn')) $('maintenanceFilterHistoryBtn').onclick=renderMaintenanceFilterHistoryDialog;
 function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subgroupPartSearch'))$('subgroupPartSearch').value=''; _supplierShowLevel(2); renderSubgroupParts(); }
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
   if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
