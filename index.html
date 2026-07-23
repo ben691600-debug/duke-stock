@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.01'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v2.02'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2790,6 +2790,20 @@ body.draggingMachine{
   <div id="stockPartSupplierList" style="display:flex;flex-direction:column;gap:8px"></div>
   <div class="formActions" style="margin-top:14px">
     <button type="button" class="btn secondary close" data-i="cancel">Fermer</button>
+  </div>
+</dialog>
+
+<dialog class="modal" id="maintenanceFilterDialog" style="max-width:460px;width:96vw;padding:18px">
+  <h2 style="margin:0 0 2px">🧰 Maintenance Filter</h2>
+  <p class="muted" id="maintenanceFilterSub" style="margin:0 0 12px"></p>
+  <div id="maintenanceFilterEmpty" class="hidden" style="text-align:center;padding:30px 10px;color:#6f7b87">
+    <div style="font-size:40px;margin-bottom:8px">📦</div>
+    <p>Aucune pièce dans ce stock fournisseur.</p>
+  </div>
+  <div id="maintenanceFilterList" style="display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto"></div>
+  <div class="formActions" style="margin-top:14px">
+    <button type="button" class="btn secondary close" data-i="cancel">Annuler</button>
+    <button type="button" class="btn primary" id="maintenanceFilterValidateBtn">✅ Valider</button>
   </div>
 </dialog>
 
@@ -10498,6 +10512,25 @@ function _findSupplierOrSubgroupByName(name){
   });
   return found;
 }
+// Retourne la référence RÉELLE (mutable) du tableau de pièces du fournisseur ou
+// sous-groupe fournisseur correspondant — pour pouvoir décrémenter le stock.
+function _getMaintenanceFilterParts(match){
+  var s=(db.suppliers||[]).find(function(x){return x.id===match.supplierId;});
+  if(!s) return [];
+  if(!match.subgroupId){ s.parts=s.parts||[]; return s.parts; }
+  function findSg(list){
+    for(var i=0;i<(list||[]).length;i++){
+      if(list[i].id===match.subgroupId) return list[i];
+      var found=findSg(list[i].subgroups);
+      if(found) return found;
+    }
+    return null;
+  }
+  var sg=findSg(s.subgroups);
+  if(!sg) return [];
+  sg.parts=sg.parts||[];
+  return sg.parts;
+}
 function openMaintenanceFilterForMachine(machineId){
   var res=findMachineById(machineId);
   if(!res || !res.machine){ alert('Machine introuvable.'); return; }
@@ -10507,18 +10540,71 @@ function openMaintenanceFilterForMachine(machineId){
     alert('Aucun stock fournisseur ne correspond au nom "'+groupName+'".\n\nCrée un fournisseur (ou sous-groupe) portant exactement ce nom dans Gestion fournisseurs / pièces pour lier son stock à cette machine.');
     return;
   }
-  show('suppliersView');
-  selectedSupplierId=match.supplierId;
-  if(match.subgroupId){
-    selectedSupplierSubgroupId=match.subgroupId;
-    _supplierShowLevel(2);
-    renderSubgroupParts();
-  } else {
-    selectedSupplierSubgroupId=null;
-    _supplierShowLevel(1);
-    renderSupplierParts();
+  window._maintFilterMachineId=machineId;
+  window._maintFilterMatch=match;
+  var parts=_getMaintenanceFilterParts(match);
+  var sub=$('maintenanceFilterSub');
+  if(sub) sub.textContent=(res.machine.model||'')+' — S/N '+(res.machine.serial||'')+' · Stock : '+groupName;
+  var list=$('maintenanceFilterList');
+  var empty=$('maintenanceFilterEmpty');
+  if(empty) empty.classList.toggle('hidden', parts.length>0);
+  if(list){
+    list.innerHTML=parts.map(function(p,idx){
+      var cur=parseFloat(p.qtyActuelle);
+      cur=isNaN(cur)?0:cur;
+      var img=p.image?'<img src="'+esc(p.image)+'" style="width:100%;height:100%;object-fit:contain">':'<span style="font-size:20px">📦</span>';
+      return '<label data-idx="'+idx+'" style="display:flex;align-items:center;gap:10px;background:#f5f8fb;border:2px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer">'
+        +'<input type="checkbox" data-chk style="width:20px;height:20px;flex-shrink:0">'
+        +'<div style="width:38px;height:38px;flex-shrink:0;border-radius:10px;overflow:hidden;background:white;display:flex;align-items:center;justify-content:center">'+img+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name||'-')+'</div>'
+        +'<div style="font-size:11px;color:#6f7b87">'+(p.partNumber?'Réf: '+esc(p.partNumber)+' · ':'')+'Stock: '+cur+'</div>'
+        +'</div>'
+        +'<input type="number" data-qty min="1" max="'+cur+'" value="1" style="width:54px;padding:6px;border:2px solid var(--line);border-radius:10px;text-align:center;font-weight:800" onclick="event.stopPropagation()">'
+        +'</label>';
+    }).join('');
   }
+  $('maintenanceFilterDialog').showModal();
 }
+if($('maintenanceFilterValidateBtn')) $('maintenanceFilterValidateBtn').onclick=function(){
+  var match=window._maintFilterMatch;
+  if(!match) return;
+  var parts=_getMaintenanceFilterParts(match);
+  var rows=document.querySelectorAll('#maintenanceFilterList [data-idx]');
+  var usedLabels=[];
+  var anyError=false;
+  rows.forEach(function(row){
+    var chk=row.querySelector('[data-chk]');
+    if(!chk || !chk.checked) return;
+    var idx=parseInt(row.getAttribute('data-idx'),10);
+    var p=parts[idx]; if(!p) return;
+    var qtyInput=row.querySelector('[data-qty]');
+    var qty=parseFloat(qtyInput.value);
+    var cur=parseFloat(p.qtyActuelle); cur=isNaN(cur)?0:cur;
+    if(!qty || qty<=0 || qty>cur){ anyError=true; return; }
+    p.qtyActuelle=cur-qty;
+    usedLabels.push((p.name||'-')+' x'+qty);
+  });
+  if(!usedLabels.length){
+    alert(anyError?'Quantité invalide pour une ou plusieurs pièces cochées (vérifie le stock disponible).':'Coche au moins une pièce utilisée.');
+    return;
+  }
+  save();
+  // Trace dans l'historique de la machine
+  var res=findMachineById(window._maintFilterMachineId);
+  if(res && res.machine){
+    res.machine.serviceHistory=res.machine.serviceHistory||[];
+    var today=new Date().toLocaleDateString('fr-FR');
+    res.machine.serviceHistory.unshift({
+      id:uid(), type:'maintenance', date:today,
+      note:'🧰 Maintenance Filter — Pièces utilisées : '+usedLabels.join(', ')
+    });
+    save();
+  }
+  $('maintenanceFilterDialog').close();
+  alert('✅ Stock mis à jour : '+usedLabels.join(', '));
+  if(typeof renderClientMachineModule==='function') renderClientMachineModule();
+};
 window.openMaintenanceFilterForMachine=openMaintenanceFilterForMachine;
 function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subgroupPartSearch'))$('subgroupPartSearch').value=''; _supplierShowLevel(2); renderSubgroupParts(); }
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
