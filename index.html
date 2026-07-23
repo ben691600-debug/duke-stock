@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.00'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v2.01'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -6442,33 +6442,48 @@ function renderClientMachineModule(){
     else if(_mSt==='in_progress') card.classList.add('clientMachineInProgress');
     var _faultMachine=(db.faultMachines||[]).find(function(fm){var mn=(fm.model||'').toLowerCase().trim();var mm=(m.model||'').toLowerCase().trim();return mn===mm;});
     var _hasMaint=_faultMachine&&(_faultMachine.maintenances||[]).some(function(maint){if(!maint.specificSerial) return true;return (maint.specificSerial.trim().toLowerCase()===(m.serial||m.serialNumber||'').trim().toLowerCase());});
-    // La languette "Maintenance" ne s'affiche QUE s'il y a des maintenances réellement définies pour ce modèle/série
-    var _isEndo=_hasMaint;
-    // Wrapper pour la languette
+    var _hasMaintFilter=!!(m.maintenanceFilterEnabled&&(isAdmin()||(typeof hasPermission==='function'&&hasPermission('maintenanceFilterButton'))));
+    // Les languettes "Maintenance" et "Maintenance Filter" ne s'affichent QUE si
+    // elles sont réellement applicables — et côte à côte si les deux existent.
+    var _isEndo=_hasMaint||_hasMaintFilter;
+    // Wrapper pour la/les languette(s)
     var wrapper=document.createElement('div');
     wrapper.style.cssText='position:relative;margin-top:'+(_isEndo?'26px':'0');
     if(_isEndo){
-      var _maintColor=getMachineMaintenanceColor(m, _faultMachine);
-      var _tabStyle=_maintColor==='red'
-        ?'background:#c62828;color:#fff'
-        :_maintColor==='orange'?'background:#e65100;color:#fff'
-        :'background:#1a7ad4;color:#fff';
-      var tab=document.createElement('button');
-      tab.type='button';
-      tab.textContent='🔧 Maintenance';
-      tab.dataset.machineId=m.id;
-      tab.style.cssText=[
-        'position:absolute','top:-26px','left:14px',
-        _tabStyle,
+      var tabRow=document.createElement('div');
+      tabRow.style.cssText='position:absolute;top:-26px;left:14px;display:flex;gap:4px';
+      var _tabBaseStyle=[
         'font-size:12px','font-weight:800',
         'padding:5px 16px 7px 16px',
         'border-radius:8px 8px 0 0',
         'letter-spacing:0.5px','font-family:inherit',
         'line-height:1','border:none','cursor:pointer',
-        'touch-action:manipulation',
+        'touch-action:manipulation'
       ].join(';');
-      tab.onclick=function(e){e.stopPropagation();openMachineMaintenanceDialog(m.id);};
-      wrapper.appendChild(tab);
+      if(_hasMaint){
+        var _maintColor=getMachineMaintenanceColor(m, _faultMachine);
+        var _tabStyle=_maintColor==='red'
+          ?'background:#c62828;color:#fff'
+          :_maintColor==='orange'?'background:#e65100;color:#fff'
+          :'background:#1a7ad4;color:#fff';
+        var tab=document.createElement('button');
+        tab.type='button';
+        tab.textContent='🔧 Maintenance';
+        tab.dataset.machineId=m.id;
+        tab.style.cssText=_tabStyle+';'+_tabBaseStyle;
+        tab.onclick=function(e){e.stopPropagation();openMachineMaintenanceDialog(m.id);};
+        tabRow.appendChild(tab);
+      }
+      if(_hasMaintFilter){
+        var filterTab=document.createElement('button');
+        filterTab.type='button';
+        filterTab.textContent='🧰 Maintenance Filter';
+        filterTab.dataset.machineId=m.id;
+        filterTab.style.cssText='background:#00897b;color:#fff;'+_tabBaseStyle;
+        filterTab.onclick=function(e){e.stopPropagation();openMaintenanceFilterForMachine(m.id);};
+        tabRow.appendChild(filterTab);
+      }
+      wrapper.appendChild(tabRow);
     }
     wrapper.appendChild(card);
     $('clientMachinesList').appendChild(wrapper);
@@ -6502,7 +6517,6 @@ function renderClientMachineModule(){
         ${!isClientUser()?`<div class="qtyLine clientMachineActionsWithDocs">
           <button class="btn secondary mini clientDocMiniBtn" type="button" data-doc="books" title="Documents techniques" aria-label="Documents techniques" style="position:relative">📚</button>
           <button class="btn secondary mini" type="button" data-act="clientReq" title="Demandes client" aria-label="Demandes client">🔔</button>
-          ${(m.maintenanceFilterEnabled&&(isAdmin()||(typeof hasPermission==='function'&&hasPermission('maintenanceFilterButton'))))?`<button class="btn secondary mini" type="button" data-act="maintenanceFilter" title="Maintenance Filter" aria-label="Maintenance Filter">🧰</button>`:''}
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="assignMission" title="Assigner mission" aria-label="Assigner mission">📅</button>`:''}
           ${(isAdmin()||isOperator())?`<button class="btn secondary mini" type="button" data-act="machineCredentials" title="Acces machine" style="font-size:14px">🔐</button>`:''}
           ${isAdmin()?`<button class="btn secondary mini" type="button" data-act="edit" title="Modifier" aria-label="Modifier">✏️</button>`:''}
@@ -6520,8 +6534,6 @@ function renderClientMachineModule(){
     if(qrBtn) qrBtn.onclick=(ev)=>{ev.stopPropagation();ev.preventDefault();clientServiceOpenPublic(m.id);};
     const reqBtn=card.querySelector('[data-act=clientReq]');
     if(reqBtn) reqBtn.onclick=(ev)=>{ev.stopPropagation();openClientServiceRequests(m.id);};
-    const maintFilterBtn=card.querySelector('[data-act=maintenanceFilter]');
-    if(maintFilterBtn) maintFilterBtn.onclick=(ev)=>{ev.stopPropagation();openMaintenanceFilterForMachine(m.id);};
     const assignBtn2=card.querySelector('[data-act=assignMission]');
     if(assignBtn2) assignBtn2.onclick=(ev)=>{ev.stopPropagation();openAssignMissionDialog(m.id,null);};
     const credBtn=card.querySelector('[data-act=machineCredentials]');
