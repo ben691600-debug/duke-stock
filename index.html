@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v1.98'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v1.99'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2387,8 +2387,10 @@ body.draggingMachine{
       <div style="display:flex;gap:6px;margin:2px 0 12px;border-bottom:2px solid var(--line)">
         <button type="button" class="btn secondary planningMissionsViewBtn active" data-mview="list" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📋 Liste</button>
         <button type="button" class="btn secondary planningMissionsViewBtn" data-mview="calendar" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📆 Calendrier</button>
+        <button type="button" class="btn secondary planningMissionsViewBtn" data-mview="stats" style="flex:1;border-radius:12px 12px 0 0;border-bottom:none">📊 Stats</button>
       </div>
       <div id="planningMissionsCalendarWrap" class="hidden"></div>
+      <div id="planningMissionsStatsWrap" class="hidden"></div>
       <div id="planningEmptyState" class="hidden" style="text-align:center;padding:40px 20px;color:#6f7b87">
         <div style="font-size:48px;margin-bottom:10px">📅</div>
         <p>Aucune mission planifiée</p>
@@ -6691,7 +6693,31 @@ function deleteMission(id){
 function setMissionStatus(id, status){
   missionsEnsure();
   var ms=db.missions.find(function(x){return x.id===id;});
-  if(ms){ ms.status=status; log('MISSION_STATUS', ms.machineId+' → '+status); save(); }
+  if(ms){
+    var wasAlreadyDone=ms.status==='done';
+    ms.status=status;
+    log('MISSION_STATUS', ms.machineId+' → '+status);
+    // Historique permanent des interventions validées (pour les statistiques par
+    // opérateur/mois) — conservé même si la mission est ensuite supprimée.
+    if(status==='done' && !wasAlreadyDone){
+      if(!Array.isArray(db.missionHistory)) db.missionHistory=[];
+      var found=(typeof findMachineById==='function')?findMachineById(ms.machineId):null;
+      db.missionHistory.push({
+        id:uid(),
+        missionId:ms.id,
+        operatorUsername:ms.operatorUsername,
+        machineId:ms.machineId,
+        machineModel:found&&found.machine?(found.machine.model||''):'',
+        machineSerial:found&&found.machine?(found.machine.serial||found.machine.serialNumber||''):'',
+        groupName:found&&found.group?(found.group.name||''):'',
+        missionDate:ms.date, missionTime:ms.time||'',
+        notes:ms.notes||'',
+        completedAt:Date.now(),
+        completedBy:currentUser?currentUser.username:''
+      });
+    }
+    save();
+  }
 }
 
 // ── Accès restreint depuis "Mes missions" ────────────────────────────
@@ -7906,11 +7932,21 @@ function renderPlanningGlobalPanel(){
   if(window._planningMissionsView==='calendar'){
     if($('planningList')) $('planningList').classList.add('hidden');
     if($('planningEmptyState')) $('planningEmptyState').classList.add('hidden');
+    if($('planningMissionsStatsWrap')) $('planningMissionsStatsWrap').classList.add('hidden');
     if($('planningMissionsCalendarWrap')) $('planningMissionsCalendarWrap').classList.remove('hidden');
     renderPlanningMissionsCalendar(list);
     return;
   }
+  if(window._planningMissionsView==='stats'){
+    if($('planningList')) $('planningList').classList.add('hidden');
+    if($('planningEmptyState')) $('planningEmptyState').classList.add('hidden');
+    if($('planningMissionsCalendarWrap')) $('planningMissionsCalendarWrap').classList.add('hidden');
+    if($('planningMissionsStatsWrap')) $('planningMissionsStatsWrap').classList.remove('hidden');
+    renderPlanningMissionsStats();
+    return;
+  }
   if($('planningMissionsCalendarWrap')) $('planningMissionsCalendarWrap').classList.add('hidden');
+  if($('planningMissionsStatsWrap')) $('planningMissionsStatsWrap').classList.add('hidden');
   if($('planningList')) $('planningList').classList.remove('hidden');
 
   var container=$('planningList'); if(!container) return;
@@ -7973,6 +8009,112 @@ function _operatorColor(username){
   var hash=0;
   for(var i=0;i<username.length;i++){ hash=(hash*31+username.charCodeAt(i))>>>0; }
   return OPERATOR_COLOR_PALETTE[hash % OPERATOR_COLOR_PALETTE.length];
+}
+// ── Statistiques : interventions validées par opérateur / par mois ────────
+function renderPlanningMissionsStats(){
+  var wrap=$('planningMissionsStatsWrap'); if(!wrap) return;
+  var hist=Array.isArray(db.missionHistory)?db.missionHistory:[];
+
+  // Bornes de hauteur identiques au calendrier (défilement interne requis sur
+  // cet écran, cf. renderPlanningMissionsCalendar)
+  var topPos=wrap.getBoundingClientRect().top || (window.innerHeight*0.4);
+  var available=Math.max(Math.floor(_carouselBottomLimit()-topPos), 200);
+  wrap.style.maxHeight=available+'px';
+  wrap.style.overflowY='auto';
+  wrap.style.webkitOverflowScrolling='touch';
+  wrap.style.boxSizing='border-box';
+
+  if(!hist.length){
+    wrap.innerHTML='<div style="text-align:center;padding:40px 20px;color:#6f7b87"><div style="font-size:48px;margin-bottom:10px">📊</div><p>Aucune intervention validée pour le moment.</p></div>';
+    return;
+  }
+
+  // 6 derniers mois (le mois courant inclus)
+  var monthLabels=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  var now=new Date();
+  var months=[]; // [{key:'2026-07', label:'Jul 26'}]
+  for(var i=5;i>=0;i--){
+    var d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label:monthLabels[d.getMonth()]+' '+String(d.getFullYear()).slice(2)});
+  }
+
+  // Regrouper par opérateur
+  var byOperator={};
+  hist.forEach(function(h){
+    var op=h.operatorUsername||'—';
+    if(!byOperator[op]) byOperator[op]={total:0, byMonth:{}};
+    byOperator[op].total++;
+    var mKey=(h.missionDate||'').slice(0,7);
+    byOperator[op].byMonth[mKey]=(byOperator[op].byMonth[mKey]||0)+1;
+  });
+  var operators=Object.keys(byOperator).sort(function(a,b){ return byOperator[b].total-byOperator[a].total; });
+
+  var html='';
+
+  // ── Résumé par opérateur ──
+  html+='<h3 style="margin:0 0 10px;color:#0A7CC2">👥 Total par opérateur</h3>';
+  html+='<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">';
+  operators.forEach(function(op){
+    var color=_operatorColor(op);
+    var u=(db.users||[]).find(function(x){return x.username===op;});
+    var name=u?(u.firstName||u.username):op;
+    html+='<div style="display:flex;align-items:center;gap:10px;background:white;border:2px solid '+color+';border-left:6px solid '+color+';border-radius:14px;padding:10px 14px">'
+      +'<span style="width:12px;height:12px;border-radius:50%;background:'+color+';flex-shrink:0"></span>'
+      +'<span style="flex:1;font-weight:800;color:'+color+'">'+esc(name)+'</span>'
+      +'<span style="font-weight:900;font-size:18px;color:#20303c">'+byOperator[op].total+'</span>'
+      +'</div>';
+  });
+  html+='</div>';
+
+  // ── Courbe mensuelle par opérateur ──
+  html+='<h3 style="margin:0 0 10px;color:#0A7CC2">📈 Interventions validées par mois</h3>';
+  var maxVal=1;
+  operators.forEach(function(op){
+    months.forEach(function(m){ maxVal=Math.max(maxVal, byOperator[op].byMonth[m.key]||0); });
+  });
+  var W=600, H=240, padL=34, padR=14, padT=14, padB=30;
+  var plotW=W-padL-padR, plotH=H-padT-padB;
+  var stepX=months.length>1?plotW/(months.length-1):0;
+  function yFor(v){ return padT + plotH - (v/maxVal)*plotH; }
+  function xFor(i){ return padL + i*stepX; }
+
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;background:white;border-radius:16px;border:1px solid var(--line)">';
+  // Grille horizontale + graduations Y
+  var gridSteps=4;
+  for(var g=0; g<=gridSteps; g++){
+    var val=Math.round(maxVal*g/gridSteps);
+    var y=yFor(val);
+    svg+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#eef1f4" stroke-width="1"/>';
+    svg+='<text x="'+(padL-6)+'" y="'+(y+3)+'" font-size="9" fill="#8a97a3" text-anchor="end">'+val+'</text>';
+  }
+  // Labels mois
+  months.forEach(function(m,i){
+    svg+='<text x="'+xFor(i)+'" y="'+(H-8)+'" font-size="9" fill="#8a97a3" text-anchor="middle">'+esc(m.label)+'</text>';
+  });
+  // Une courbe par opérateur
+  operators.forEach(function(op){
+    var color=_operatorColor(op);
+    var pts=months.map(function(m,i){ return xFor(i)+','+yFor(byOperator[op].byMonth[m.key]||0); }).join(' ');
+    svg+='<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    months.forEach(function(m,i){
+      var v=byOperator[op].byMonth[m.key]||0;
+      svg+='<circle cx="'+xFor(i)+'" cy="'+yFor(v)+'" r="3.5" fill="'+color+'"/>';
+    });
+  });
+  svg+='</svg>';
+  html+=svg;
+
+  // Légende
+  html+='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;padding-bottom:20px">';
+  operators.forEach(function(op){
+    var color=_operatorColor(op);
+    var u=(db.users||[]).find(function(x){return x.username===op;});
+    var name=u?(u.firstName||u.username):op;
+    html+='<div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:'+color+'"><span style="width:16px;height:3px;background:'+color+';border-radius:2px;display:inline-block"></span>'+esc(name)+'</div>';
+  });
+  html+='</div>';
+
+  wrap.innerHTML=html;
 }
 function renderPlanningMissionsCalendar(missionsList){
   var wrap=$('planningMissionsCalendarWrap'); if(!wrap) return;
