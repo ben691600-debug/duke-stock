@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.02'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v2.04'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -2794,8 +2794,29 @@ body.draggingMachine{
 </dialog>
 
 <dialog class="modal" id="maintenanceFilterDialog" style="max-width:460px;width:96vw;padding:18px">
-  <h2 style="margin:0 0 2px">🧰 Maintenance Filter</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <h2 style="margin:0 0 2px">🧰 Maintenance Filter</h2>
+    <button type="button" class="btn secondary mini" id="maintenanceFilterHistoryBtn" title="Historique des maintenances" style="flex-shrink:0">📜 Historique</button>
+  </div>
   <p class="muted" id="maintenanceFilterSub" style="margin:0 0 12px"></p>
+  <label style="display:block;margin-bottom:14px">
+    <span style="font-weight:800;font-size:13px;color:#1a7ad4">🔁 Fréquence de maintenance</span>
+    <select id="maintenanceFilterFrequencyInput" style="width:100%;margin-top:6px;padding:10px 12px;border-radius:14px;border:2px solid var(--line);font-weight:700">
+      <option value="">— Non définie —</option>
+      <option value="1">Tous les 1 mois</option>
+      <option value="2">Tous les 2 mois</option>
+      <option value="3">Tous les 3 mois</option>
+      <option value="4">Tous les 4 mois</option>
+      <option value="5">Tous les 5 mois</option>
+      <option value="6">Tous les 6 mois</option>
+      <option value="7">Tous les 7 mois</option>
+      <option value="8">Tous les 8 mois</option>
+      <option value="9">Tous les 9 mois</option>
+      <option value="10">Tous les 10 mois</option>
+      <option value="11">Tous les 11 mois</option>
+      <option value="12">Tous les 12 mois</option>
+    </select>
+  </label>
   <div id="maintenanceFilterEmpty" class="hidden" style="text-align:center;padding:30px 10px;color:#6f7b87">
     <div style="font-size:40px;margin-bottom:8px">📦</div>
     <p>Aucune pièce dans ce stock fournisseur.</p>
@@ -2804,6 +2825,15 @@ body.draggingMachine{
   <div class="formActions" style="margin-top:14px">
     <button type="button" class="btn secondary close" data-i="cancel">Annuler</button>
     <button type="button" class="btn primary" id="maintenanceFilterValidateBtn">✅ Valider</button>
+  </div>
+</dialog>
+
+<dialog class="modal" id="maintenanceFilterHistoryDialog" style="max-width:460px;width:96vw;padding:18px">
+  <h2 style="margin:0 0 12px">📜 Historique des maintenances</h2>
+  <p class="muted" id="maintenanceFilterHistorySub" style="margin:-8px 0 12px"></p>
+  <div id="maintenanceFilterHistoryList" style="display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow-y:auto"></div>
+  <div class="formActions" style="margin-top:14px">
+    <button type="button" class="btn secondary close" data-i="cancel">Fermer</button>
   </div>
 </dialog>
 
@@ -6489,11 +6519,15 @@ function renderClientMachineModule(){
         tabRow.appendChild(tab);
       }
       if(_hasMaintFilter){
+        var _mfColor=(typeof getMaintenanceFilterColor==='function')?getMaintenanceFilterColor(m):'blue';
+        var _mfStyle=_mfColor==='red'?'background:#c62828;color:#fff'
+          :_mfColor==='orange'?'background:#e65100;color:#fff'
+          :'background:#00897b;color:#fff';
         var filterTab=document.createElement('button');
         filterTab.type='button';
         filterTab.textContent='🧰 Maintenance Filter';
         filterTab.dataset.machineId=m.id;
-        filterTab.style.cssText='background:#00897b;color:#fff;'+_tabBaseStyle;
+        filterTab.style.cssText=_mfStyle+';'+_tabBaseStyle;
         filterTab.onclick=function(e){e.stopPropagation();openMaintenanceFilterForMachine(m.id);};
         tabRow.appendChild(filterTab);
       }
@@ -7612,6 +7646,13 @@ function _calcNextDate(lastDateStr, freqMonths){
   d.setMonth(d.getMonth()+parseInt(freqMonths));
   return d.toISOString().slice(0,10);
 }
+// Couleur de l'onglet "Maintenance Filter" selon la proximité de l'échéance :
+// bleu/teal = à jour, orange = à moins d'un mois, rouge = échéance dépassée.
+function getMaintenanceFilterColor(machine){
+  if(!machine||!machine.maintenanceFilterNextDue) return 'blue';
+  return _maintColor(machine.maintenanceFilterNextDue);
+}
+window.getMaintenanceFilterColor=getMaintenanceFilterColor;
 function getMachineMaintenanceColor(machine, faultMachine){
   // Retourne la couleur la plus urgente parmi toutes les maintenances de la machine
   var maints=(faultMachine&&faultMachine.maintenances)||[];
@@ -10542,6 +10583,8 @@ function openMaintenanceFilterForMachine(machineId){
   }
   window._maintFilterMachineId=machineId;
   window._maintFilterMatch=match;
+  var freqInput=$('maintenanceFilterFrequencyInput');
+  if(freqInput) freqInput.value=res.machine.maintenanceFilterFrequencyMonths||'';
   var parts=_getMaintenanceFilterParts(match);
   var sub=$('maintenanceFilterSub');
   if(sub) sub.textContent=(res.machine.model||'')+' — S/N '+(res.machine.serial||'')+' · Stock : '+groupName;
@@ -10590,14 +10633,41 @@ if($('maintenanceFilterValidateBtn')) $('maintenanceFilterValidateBtn').onclick=
     return;
   }
   save();
+  // Fréquence de maintenance : sauvegarde + calcul de la prochaine échéance
+  var freqInput=$('maintenanceFilterFrequencyInput');
+  var freqMonths=freqInput&&freqInput.value?parseInt(freqInput.value,10):null;
+  var todayISO=new Date().toISOString().slice(0,10);
+  var nextDueISO=null;
+  if(freqMonths){
+    var nd=new Date();
+    nd.setMonth(nd.getMonth()+freqMonths);
+    nextDueISO=nd.toISOString().slice(0,10);
+  }
   // Trace dans l'historique de la machine
   var res=findMachineById(window._maintFilterMachineId);
   if(res && res.machine){
+    res.machine.maintenanceFilterFrequencyMonths=freqMonths||res.machine.maintenanceFilterFrequencyMonths||null;
+    res.machine.maintenanceFilterLastDone=todayISO;
+    res.machine.maintenanceFilterNextDue=nextDueISO;
     res.machine.serviceHistory=res.machine.serviceHistory||[];
     var today=new Date().toLocaleDateString('fr-FR');
     res.machine.serviceHistory.unshift({
       id:uid(), type:'maintenance', date:today,
-      note:'🧰 Maintenance Filter — Pièces utilisées : '+usedLabels.join(', ')
+      note:'🧰 Maintenance Filter — Pièces utilisées : '+usedLabels.join(', ')+(freqMonths?' | Fréquence : tous les '+freqMonths+' mois':'')
+    });
+    // Suivi dédié (pour le compteur/historique global des maintenances)
+    if(!Array.isArray(db.maintenanceFilterHistory)) db.maintenanceFilterHistory=[];
+    db.maintenanceFilterHistory.push({
+      id:uid(),
+      machineId:window._maintFilterMachineId,
+      machineModel:res.machine.model||'',
+      machineSerial:res.machine.serial||res.machine.serialNumber||'',
+      groupName:res.group?res.group.name:'',
+      partsUsed:usedLabels,
+      frequencyMonths:freqMonths||null,
+      nextDue:nextDueISO,
+      date:todayISO,
+      performedBy:currentUser?currentUser.username:''
     });
     save();
   }
@@ -10606,6 +10676,32 @@ if($('maintenanceFilterValidateBtn')) $('maintenanceFilterValidateBtn').onclick=
   if(typeof renderClientMachineModule==='function') renderClientMachineModule();
 };
 window.openMaintenanceFilterForMachine=openMaintenanceFilterForMachine;
+
+// ── Suivi / historique des maintenances (Maintenance Filter) ──────────
+if($('maintenanceFilterHistoryBtn')) $('maintenanceFilterHistoryBtn').onclick=function(){
+  var mid=window._maintFilterMachineId;
+  var res=findMachineById(mid);
+  var hist=(db.maintenanceFilterHistory||[]).filter(function(h){return h.machineId===mid;})
+    .sort(function(a,b){return String(b.date).localeCompare(String(a.date));});
+  var sub=$('maintenanceFilterHistorySub');
+  if(sub) sub.textContent=(res&&res.machine?(res.machine.model+' — S/N '+(res.machine.serial||'')):'')+' · '+hist.length+' maintenance(s) effectuée(s)';
+  var list=$('maintenanceFilterHistoryList');
+  if(list){
+    if(!hist.length){
+      list.innerHTML='<p class="muted" style="text-align:center;padding:20px 0">Aucune maintenance enregistrée pour cette machine.</p>';
+    } else {
+      list.innerHTML=hist.map(function(h){
+        return '<div style="background:white;border:2px solid #b9d7ea;border-radius:14px;padding:12px">'
+          +'<div style="font-weight:900;font-size:14px">'+esc(h.date)+'</div>'
+          +(h.frequencyMonths?'<div style="font-size:12px;color:#1a7ad4;font-weight:700;margin-top:2px">🔁 Tous les '+h.frequencyMonths+' mois'+(h.nextDue?' — Prochaine : '+esc(h.nextDue):'')+'</div>':'')
+          +'<div style="font-size:13px;margin-top:4px">🧰 '+esc((h.partsUsed||[]).join(', '))+'</div>'
+          +(h.performedBy?'<div style="font-size:12px;color:#6f7b87;margin-top:4px">👤 '+esc(h.performedBy)+'</div>':'')
+          +'</div>';
+      }).join('');
+    }
+  }
+  $('maintenanceFilterHistoryDialog').showModal();
+};
 function openSupplierSubgroup(sgId){ selectedSupplierSubgroupId=sgId; if($('subgroupPartSearch'))$('subgroupPartSearch').value=''; _supplierShowLevel(2); renderSubgroupParts(); }
 if($('supplierUpBtn')) $('supplierUpBtn').onclick=()=>{
   if($('supplierSubgroupDetail')&&!$('supplierSubgroupDetail').classList.contains('hidden')){ selectedSupplierSubgroupId=null; _supplierShowLevel(1); renderSupplierParts(); }
