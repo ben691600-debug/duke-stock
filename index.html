@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <script>
 // ===== Duke Stock Manager - Gestion de version & mises à jour =====
-const APP_VERSION = 'v2.05'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
+const APP_VERSION = 'v2.06'; window.APP_VERSION = APP_VERSION; // ← à incrémenter à chaque update
 document.addEventListener('DOMContentLoaded', function(){
   var badge = document.getElementById('loginVersionBadge');
   if(badge) badge.textContent = APP_VERSION;
@@ -10558,6 +10558,46 @@ function _findSupplierOrSubgroupByName(name){
   });
   return found;
 }
+// Trouve tous les sous-groupes "כללית" existants, tous fournisseurs confondus —
+// c'est sous l'un d'eux qu'un groupe manquant (même nom que le groupe client)
+// doit être créé automatiquement.
+var GENERAL_SUBGROUP_NAME='כללית';
+function _findAllGeneralSubgroups(){
+  var out=[];
+  (db.suppliers||[]).forEach(function(s){
+    (function walk(list, path){
+      (list||[]).forEach(function(sg){
+        if((sg.name||'').trim()===GENERAL_SUBGROUP_NAME){
+          out.push({supplierId:s.id, supplierName:s.name||'', subgroupId:sg.id, path:path.concat([sg.name])});
+        }
+        walk(sg.subgroups, path.concat([sg.name]));
+      });
+    })(s.subgroups, []);
+  });
+  return out;
+}
+// Crée un nouveau sous-groupe (même nom que le groupe client) sous le "כללית"
+// choisi, et retourne la correspondance {supplierId, subgroupId} prête à l'emploi.
+function _createMissingMaintenanceFilterGroup(generalSubgroup, groupName){
+  var s=(db.suppliers||[]).find(function(x){return x.id===generalSubgroup.supplierId;});
+  if(!s) return null;
+  function findSg(list){
+    for(var i=0;i<(list||[]).length;i++){
+      if(list[i].id===generalSubgroup.subgroupId) return list[i];
+      var found=findSg(list[i].subgroups);
+      if(found) return found;
+    }
+    return null;
+  }
+  var parent=findSg(s.subgroups);
+  if(!parent) return null;
+  parent.subgroups=parent.subgroups||[];
+  var newSg={id:uid(), name:groupName, image:'', parts:[], subgroups:[]};
+  parent.subgroups.push(newSg);
+  log('ADD_SUBGROUP', groupName+' (auto, sous '+GENERAL_SUBGROUP_NAME+')');
+  save();
+  return {supplierId:s.id, subgroupId:newSg.id};
+}
 // Retourne la référence RÉELLE (mutable) du tableau de pièces du fournisseur ou
 // sous-groupe fournisseur correspondant — pour pouvoir décrémenter le stock.
 function _getMaintenanceFilterParts(match){
@@ -10603,9 +10643,59 @@ function openMaintenanceFilterForMachine(machineId){
   var groupName=res.group?res.group.name:'';
   var match=_findSupplierOrSubgroupByName(groupName);
   if(!match){
-    alert('Aucun stock fournisseur ne correspond au nom "'+groupName+'".\n\nCrée un fournisseur (ou sous-groupe) portant exactement ce nom dans Gestion fournisseurs / pièces pour lier son stock à cette machine.');
+    var candidates=_findAllGeneralSubgroups();
+    if(!candidates.length){
+      alert('Aucun stock fournisseur ne correspond au nom "'+groupName+'", et aucun groupe "'+GENERAL_SUBGROUP_NAME+'" n\'existe pour créer automatiquement ce groupe.\n\nCrée d\'abord un sous-groupe "'+GENERAL_SUBGROUP_NAME+'" dans Gestion fournisseurs / pièces.');
+      return;
+    }
+    if(candidates.length===1){
+      var newMatch=_createMissingMaintenanceFilterGroup(candidates[0], groupName);
+      if(newMatch){ _openMaintenanceFilterDialogWithMatch(machineId, newMatch); return; }
+      alert('Impossible de créer le groupe automatiquement.');
+      return;
+    }
+    // Plusieurs "כללית" possibles : on demande sous lequel créer le groupe
+    _openMaintenanceFilterGeneralPicker(machineId, groupName, candidates);
     return;
   }
+  _openMaintenanceFilterDialogWithMatch(machineId, match);
+}
+// Petite fenêtre de choix quand plusieurs fournisseurs ont un sous-groupe "כללית"
+function _openMaintenanceFilterGeneralPicker(machineId, groupName, candidates){
+  var existing=document.getElementById('maintFilterGeneralPickerDialog');
+  if(existing) existing.remove();
+  var dlg=document.createElement('dialog');
+  dlg.className='modal';
+  dlg.id='maintFilterGeneralPickerDialog';
+  dlg.style.cssText='max-width:420px;width:94vw;padding:18px';
+  dlg.innerHTML='<h2 style="margin:0 0 6px">📁 Sous quel fournisseur ?</h2>'
+    +'<p class="muted" style="margin:0 0 14px">Le groupe "'+esc(groupName)+'" n\'existe pas encore. Choisis sous quel "'+esc(GENERAL_SUBGROUP_NAME)+'" le créer :</p>'
+    +'<div id="maintFilterGeneralPickerList" style="display:flex;flex-direction:column;gap:8px"></div>'
+    +'<div class="formActions" style="margin-top:14px"><button type="button" class="btn secondary" id="maintFilterGeneralPickerCancel">Annuler</button></div>';
+  document.body.appendChild(dlg);
+  var list=dlg.querySelector('#maintFilterGeneralPickerList');
+  candidates.forEach(function(c,idx){
+    var row=document.createElement('button');
+    row.type='button';
+    row.className='btn secondary';
+    row.style.cssText='width:100%;text-align:left;padding:12px 14px';
+    row.textContent=(c.supplierName||'-')+' › '+c.path.join(' › ');
+    row.onclick=function(){
+      var newMatch=_createMissingMaintenanceFilterGroup(c, groupName);
+      dlg.close(); dlg.remove();
+      if(newMatch) _openMaintenanceFilterDialogWithMatch(machineId, newMatch);
+      else alert('Impossible de créer le groupe automatiquement.');
+    };
+    list.appendChild(row);
+  });
+  dlg.querySelector('#maintFilterGeneralPickerCancel').onclick=function(){ dlg.close(); dlg.remove(); };
+  document.body.appendChild(dlg);
+  dlg.showModal();
+}
+function _openMaintenanceFilterDialogWithMatch(machineId, match){
+  var res=findMachineById(machineId);
+  if(!res || !res.machine) return;
+  var groupName=res.group?res.group.name:'';
   window._maintFilterMachineId=machineId;
   window._maintFilterMatch=match;
   var freqInput=$('maintenanceFilterFrequencyInput');
